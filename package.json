@@ -1,0 +1,44 @@
+{
+  "name": "job-finish",
+  "version": "0.1.0",
+  "description": "Focus-aware completion notifications for Claude Code & Codex — toast, OS notification, and taskbar flashing when your agent finishes. Cross-platform, npx-installable.",
+  "type": "module",
+  "bin": {
+    "job-finish": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "hooks",
+    "notification",
+    "toast",
+    "cli",
+    "vscode"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.7.0",
+    "@iarna/toml": "^2.2.5",
+    "picocolors": "^1.0.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsup": "^8.1.0",
+    "typescript": "^5.5.0"
+  }
+}
