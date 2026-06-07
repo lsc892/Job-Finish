@@ -12,11 +12,31 @@ import {
   installDir as resolveInstallDir,
 } from "./detect.js";
 import { generate } from "./generate.js";
-import { installClaude, uninstallClaude } from "./installers/claude.js";
+import { claudeHasJobFinish, installClaude, uninstallClaude } from "./installers/claude.js";
 import { installCodex, uninstallCodex } from "./installers/codex.js";
 import { finish, runWizard, type WizardResult } from "./wizard.js";
 
 const PKG = "job-finish";
+
+/**
+ * Strip job-finish hooks from every Claude scope except the one we are about to
+ * install into. Claude merges user + project settings and runs *both* sets of
+ * hooks, so a leftover entry in the other scope double-fires on every event
+ * (the "두 번 알림" bug that survives reboots because it lives in two files).
+ * Pass `keepScope: null` to clean every scope. Returns the paths actually cleaned.
+ */
+function resetClaudeResidue(keepScope: "global" | "project" | null, cwd: string): string[] {
+  const cleaned: string[] = [];
+  for (const scope of ["global", "project"] as const) {
+    if (scope === keepScope) continue;
+    const sp = claudeSettingsPath(scope, cwd);
+    if (existsSync(sp) && claudeHasJobFinish(sp)) {
+      uninstallClaude(sp);
+      cleaned.push(sp);
+    }
+  }
+  return cleaned;
+}
 
 /** Run the generated notifier once (used by doctor/preview). */
 function runNotifier(scriptPath: string, platform: Platform, test: boolean): Promise<number> {
@@ -50,12 +70,22 @@ async function cmdInit(): Promise<void> {
   const { scope, agents, config } = result;
 
   const dir = resolveInstallDir(scope, cwd);
+
+  // Reset first: purge any previous job-finish hooks from the *other* scope so
+  // exactly one install stays active (avoids the double-fire bug). If Claude
+  // isn't being (re)installed this round, clean every scope.
+  const keepScope = agents.includes("claude") ? scope : null;
+  const cleaned = resetClaudeResidue(keepScope, cwd);
+
   const s = spinner();
   s.start("스크립트와 설정을 생성하는 중");
   const { scriptPath, configPath } = generate(dir, platform, config);
   s.stop("notifier 생성 완료");
 
   const lines: string[] = [`스크립트: ${scriptPath}`, `설정:     ${configPath}`];
+  if (cleaned.length) {
+    lines.push(`리셋:     이전 설치 잔재 정리 (${cleaned.length}곳) — ${cleaned.join(", ")}`);
+  }
 
   if (agents.includes("claude")) {
     const sp = claudeSettingsPath(scope, cwd);

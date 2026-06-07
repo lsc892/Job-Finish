@@ -2,6 +2,7 @@ import type { Platform } from "../../shared/config-schema.js";
 import { buildCommand, notifierScriptPath, type EventKind } from "../command.js";
 import {
   backup,
+  JOB_FINISH_MARKER,
   readJsonSafe,
   removeClaudeHook,
   upsertClaudeHook,
@@ -61,6 +62,17 @@ export function installClaude(
 
   writeJson(settingsPath, settings);
   return { settingsPath, backupPath: bak };
+}
+
+/** True if any hook entry in this settings file was installed by job-finish. */
+export function claudeHasJobFinish(settingsPath: string): boolean {
+  const settings = readJsonSafe(settingsPath) as ClaudeSettings;
+  const hooks = settings.hooks ?? {};
+  return Object.values(hooks).some((entries) =>
+    (entries ?? []).some((entry) =>
+      entry.hooks?.some((h) => typeof h.command === "string" && h.command.includes(JOB_FINISH_MARKER)),
+    ),
+  );
 }
 
 /** Remove job-finish entries from Claude settings, pruning empty arrays. */

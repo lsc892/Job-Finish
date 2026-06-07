@@ -45,13 +45,17 @@ VSCode 통합 터미널, Claude Code 확장, 순수 터미널 어디서 실행�
 ## 동작 방식
 
 ```
-에이전트 작업 완료
-   └─ hook(Stop/Notification) 또는 Codex notify
+에이전트 작업 완료 / 입력 대기
+   └─ hook(Stop / PreToolUse:AskUserQuestion) 또는 Codex notify
         └─ job-finish-notify.(ps1|sh)   ← OS별 생성 스크립트
              ├─ job-finish.config.(json|sh) 읽기
              ├─ 호스트 창 포커스 판정
              └─ 알림 / 깜빡임 / 소리 디스패치
 ```
+
+> `init` 은 설치 전에 **다른 스코프(전역/프로젝트)에 남은 job-finish 훅을 먼저 리셋**합니다.
+> Claude 는 유저·프로젝트 설정의 훅을 모두 실행하므로, 두 곳에 남아 있으면 한 번 일에 알림이 두 번 떠요.
+> 그래서 항상 **선택한 한 스코프에만** 활성 훅을 남깁니다.
 
 설치되는 파일 (범위에 따라 `~/.job-finish/` 또는 `./.claude/job-finish/`):
 
