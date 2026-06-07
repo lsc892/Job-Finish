@@ -104,6 +104,12 @@ function Show-Toast($title, $text) {
     $nodes = $tmpl.GetElementsByTagName('text')
     $nodes.Item(0).AppendChild($tmpl.CreateTextNode($title)) | Out-Null
     $nodes.Item(1).AppendChild($tmpl.CreateTextNode($text)) | Out-Null
+    # Silence the toast's built-in Windows sound so job-finish's own `sound`
+    # setting is the single switch — otherwise Windows chimes even when muted,
+    # and doubles up when sound is on. (Only affects toasts we create.)
+    $audio = $tmpl.CreateElement('audio')
+    $audio.SetAttribute('silent', 'true')
+    $tmpl.DocumentElement.AppendChild($audio) | Out-Null
     $toast = [Windows.UI.Notifications.ToastNotification]::new($tmpl)
     # Unique Tag per notification (so unread toasts stack while you're away),
     # shared Group (so the focus watcher can clear them all in one call).
