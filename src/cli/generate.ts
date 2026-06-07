@@ -18,7 +18,6 @@ function shellConfig(config: Config): string {
     `JF_MODES="${config.modes.join(" ")}"`,
     `JF_FLASH_TIMEOUT="${config.flashTimeout}"`,
     `JF_SOUND_ENABLED="${sound.enabled ? 1 : 0}"`,
-    `JF_SOUND_PATH=${JSON.stringify(sound.customPath)}`,
     `JF_SUPPRESS_FOCUSED="${config.suppressWhenFocused ? 1 : 0}"`,
     `JF_WATCH_APP=${JSON.stringify(config.watchApp)}`,
     "",

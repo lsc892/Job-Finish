@@ -7,7 +7,6 @@ import {
   note,
   outro,
   select,
-  text,
 } from "@clack/prompts";
 import pc from "picocolors";
 import {
@@ -99,21 +98,8 @@ export async function runWizard(platform: Platform): Promise<WizardResult> {
   }
 
   const soundOn = unwrap(
-    await confirm({ message: "작업 완료 시 소리를 켤까요?", initialValue: true }),
+    await confirm({ message: "작업 완료 시 소리를 켤까요? (OS 기본음)", initialValue: true }),
   ) as boolean;
-
-  let customPath = "";
-  if (soundOn) {
-    customPath = (
-      unwrap(
-        await text({
-          message: "커스텀 사운드 파일 경로 (비워두면 OS 기본음)",
-          placeholder: platform === "win32" ? "C:\\sounds\\done.wav" : "/path/to/done.wav",
-          defaultValue: "",
-        }),
-      ) as string
-    ).trim();
-  }
 
   const suppressWhenFocused = unwrap(
     await confirm({
@@ -127,7 +113,7 @@ export async function runWizard(platform: Platform): Promise<WizardResult> {
     platform,
     modes,
     flashTimeout,
-    sound: { enabled: soundOn, customPath },
+    sound: { enabled: soundOn },
     suppressWhenFocused,
     watchApp: "",
   };
@@ -138,7 +124,7 @@ export async function runWizard(platform: Platform): Promise<WizardResult> {
       `에이전트: ${agents.join(", ")}`,
       `모드:   ${modes.join(", ")}`,
       modes.includes("flash") ? `깜빡임:  최대 ${flashTimeout}` : null,
-      `소리:   ${soundOn ? (customPath ? `켜짐 (${customPath})` : "켜짐 (OS 기본음)") : "꺼짐"}`,
+      `소리:   ${soundOn ? "켜짐 (OS 기본음)" : "꺼짐"}`,
       `포커스: ${suppressWhenFocused ? "보고 있으면 생략" : "항상 알림"}`,
     ]
       .filter(Boolean)

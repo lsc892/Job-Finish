@@ -21,8 +21,6 @@ export type Platform = (typeof PLATFORMS)[number];
 
 export const SoundConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  /** Absolute path to a custom sound file. Empty = OS default system sound. */
-  customPath: z.string().default(""),
 });
 
 export const ConfigSchema = z.object({
@@ -32,7 +30,7 @@ export const ConfigSchema = z.object({
   /** Which visual notification modes are enabled. */
   modes: z.array(z.enum(NOTIFY_MODES)).default(["os", "flash"]),
   flashTimeout: z.enum(FLASH_TIMEOUTS).default("5m"),
-  sound: SoundConfigSchema.default({ enabled: true, customPath: "" }),
+  sound: SoundConfigSchema.default({ enabled: true }),
   /**
    * When true, suppress all notifications if the host window (the GUI app that
    * launched the agent, e.g. VSCode) is currently focused.

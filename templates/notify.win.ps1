@@ -19,7 +19,7 @@ if (Test-Path -LiteralPath $cfgPath) {
 if ($null -eq $cfg) {
   $cfg = [pscustomobject]@{
     modes = @('os', 'flash'); flashTimeout = '5m';
-    sound = [pscustomobject]@{ enabled = $true; customPath = '' };
+    sound = [pscustomobject]@{ enabled = $true };
     suppressWhenFocused = $true; watchApp = ''
   }
 }
@@ -145,8 +145,7 @@ if (($modes -contains 'flash') -and $hwnd -ne [IntPtr]::Zero) {
 
 # ------------------------------------------------------------------- sound
 if ($cfg.sound.enabled) {
-  $sp = [string]$cfg.sound.customPath
-  if ([string]::IsNullOrWhiteSpace($sp)) { $sp = 'C:\Windows\Media\chimes.wav' }
+  $sp = 'C:\Windows\Media\chimes.wav'
   try {
     if (Test-Path -LiteralPath $sp) { (New-Object Media.SoundPlayer $sp).PlaySync() }
     else { [System.Media.SystemSounds]::Asterisk.Play() }

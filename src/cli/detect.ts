@@ -23,7 +23,7 @@ export function homeDir(): string {
   return os.homedir();
 }
 
-/** Default OS system sound used when the user has no custom sound. */
+/** OS system sound the notifier plays when sound is enabled. */
 export function defaultSoundPath(platform: Platform): string {
   switch (platform) {
     case "win32":

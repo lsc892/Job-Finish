@@ -9,7 +9,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ----------------------------------------------------------------- load config
 JF_MODES="os flash"; JF_FLASH_TIMEOUT="5m"; JF_SOUND_ENABLED="1"
-JF_SOUND_PATH=""; JF_SUPPRESS_FOCUSED="1"; JF_WATCH_APP=""
+JF_SUPPRESS_FOCUSED="1"; JF_WATCH_APP=""
 # shellcheck source=/dev/null
 [ -f "$DIR/job-finish.config.sh" ] && . "$DIR/job-finish.config.sh"
 
@@ -72,7 +72,7 @@ fi
 
 # ------------------------------------------------------------------- sound
 if [ "$JF_SOUND_ENABLED" = "1" ]; then
-  SND="$JF_SOUND_PATH"; [ -z "$SND" ] && SND="/System/Library/Sounds/Glass.aiff"
+  SND="/System/Library/Sounds/Glass.aiff"
   [ -f "$SND" ] && afplay "$SND" >/dev/null 2>&1 &
 fi
 
