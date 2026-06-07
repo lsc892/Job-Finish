@@ -25,6 +25,11 @@ if ($null -eq $cfg) {
 }
 $modes = @($cfg.modes)
 
+# Toast identity — a stable (registered) AppId + a shared Group so a focus
+# watcher can clear the whole job-finish stack from the Action Center at once.
+$AppId = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
+$ToastGroup = 'jobfinish'
+
 # ------------------------------------------------------- read event payload
 $payload = $null
 if ($Event -eq 'codex') {
@@ -100,8 +105,11 @@ function Show-Toast($title, $text) {
     $nodes.Item(0).AppendChild($tmpl.CreateTextNode($title)) | Out-Null
     $nodes.Item(1).AppendChild($tmpl.CreateTextNode($text)) | Out-Null
     $toast = [Windows.UI.Notifications.ToastNotification]::new($tmpl)
-    $appId = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
-    [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($appId).Show($toast)
+    # Unique Tag per notification (so unread toasts stack while you're away),
+    # shared Group (so the focus watcher can clear them all in one call).
+    $toast.Tag = ('{0}-{1}' -f $Event, (Get-Date -Format 'HHmmssfff'))
+    $toast.Group = $ToastGroup
+    [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($AppId).Show($toast)
     return $true
   } catch { return $false }
 }
@@ -120,8 +128,57 @@ function Show-Balloon($title, $text) {
   } catch {}
 }
 
+# Spawn a hidden process that waits for the host window to regain focus, then
+# wipes the whole job-finish toast group from the Action Center — "reading" the
+# app dismisses the backlog, messenger-style. One watcher per host window
+# (mutex); it self-exits after a timeout if focus never returns.
+function Start-ToastClearWatcher($targetHwnd) {
+  $hwndVal = [int64]$targetHwnd
+  switch ($cfg.flashTimeout) {
+    '30s'      { $watchSec = 300 }
+    '5m'       { $watchSec = 600 }
+    '10m'      { $watchSec = 1200 }
+    'infinite' { $watchSec = 3600 }
+    default    { $watchSec = 600 }
+  }
+  $watchSrc = @"
+`$ErrorActionPreference = 'SilentlyContinue'
+# Single watcher per host window; a duplicate launch exits immediately.
+`$m = New-Object System.Threading.Mutex(`$false, 'JobFinishToastWatch_$hwndVal')
+if (-not `$m.WaitOne(0)) { return }
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class JFW { [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); }
+'@
+`$target = [IntPtr]([int64]$hwndVal)
+`$deadline = (Get-Date).AddSeconds($watchSec)
+while ((Get-Date) -lt `$deadline) {
+  if ([JFW]::GetForegroundWindow() -eq `$target) {
+    try {
+      `$null = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
+      [Windows.UI.Notifications.ToastNotificationManager]::History.RemoveGroup('$ToastGroup', '$AppId')
+    } catch {}
+    break
+  }
+  Start-Sleep -Milliseconds 400
+}
+"@
+  $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($watchSrc))
+  Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden `
+    -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $enc) | Out-Null
+}
+
+$toastShown = $false
 if ($modes -contains 'os') {
-  if (-not (Show-Toast $title $text)) { Show-Balloon $title $text }
+  $toastShown = Show-Toast $title $text
+  if (-not $toastShown) { Show-Balloon $title $text }
+}
+
+# Once a toast is parked in the Action Center, arm the focus watcher to clear it
+# on return. (Flash already auto-stops on refocus via FLASHW_TIMERNOFG.)
+if ($toastShown -and -not $Test -and $hwnd -ne [IntPtr]::Zero) {
+  Start-ToastClearWatcher $hwnd
 }
 
 # ------------------------------------------------------------------- flash
