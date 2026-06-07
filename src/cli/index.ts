@@ -80,7 +80,7 @@ async function cmdInit(): Promise<void> {
   const wantTest = await confirm({ message: "지금 테스트 알림을 보낼까요?", initialValue: true });
   if (!isCancel(wantTest) && wantTest) {
     await runNotifier(scriptPath, platform, true);
-    log.success("테스트 알림을 보냈어요. 토스트/소리를 확인하세요.");
+    log.success("테스트 알림을 보냈어요. 알림/소리를 확인하세요.");
   }
 
   finish("끝났어요! 에이전트를 다시 시작하면 작업 완료 시 알림이 옵니다.");

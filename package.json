@@ -14,7 +14,16 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lsc892/Job-Finish.git"
+  },
+  "homepage": "https://github.com/lsc892/Job-Finish#readme",
+  "bugs": {
+    "url": "https://github.com/lsc892/Job-Finish/issues"
   },
   "keywords": [
     "claude-code",

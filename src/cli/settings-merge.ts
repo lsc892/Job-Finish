@@ -60,18 +60,21 @@ export interface ClaudeHookEntry {
 }
 
 /**
- * Merge a single command into a Claude hook event array (Stop / Notification),
- * replacing any prior job-finish entry rather than duplicating it.
+ * Merge a single command into a Claude hook event array (Stop / Notification /
+ * PreToolUse), replacing any prior job-finish entry rather than duplicating it.
+ * `matcher` is a tool-name pattern for PreToolUse (e.g. "AskUserQuestion"); the
+ * eventless Stop/Notification hooks use "*".
  */
 export function upsertClaudeHook(
   existing: ClaudeHookEntry[] | undefined,
   command: string,
+  matcher = "*",
 ): ClaudeHookEntry[] {
   const others = (existing ?? []).filter(
     (entry) =>
       !entry.hooks?.some((h) => typeof h.command === "string" && h.command.includes(JOB_FINISH_MARKER)),
   );
-  others.push({ matcher: "*", hooks: [{ type: "command", command }] });
+  others.push({ matcher, hooks: [{ type: "command", command }] });
   return others;
 }
 

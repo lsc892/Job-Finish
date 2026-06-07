@@ -69,7 +69,6 @@ export async function runWizard(platform: Platform): Promise<WizardResult> {
   ) as Agent[];
 
   const modeOptions: Opt<NotifyMode>[] = [
-    { value: "toast", label: "토스트 팝업", hint: "일시적 배너" },
     { value: "os", label: "OS 알림창", hint: "알림 센터에 기록" },
     { value: "flash", label: "작업표시줄 깜빡임", hint: "창 안 볼 때만 / 다시 보면 멈춤" },
   ];
@@ -77,7 +76,7 @@ export async function runWizard(platform: Platform): Promise<WizardResult> {
     await multiselect({
       message: "알림 모드 (스페이스로 체크)",
       options: modeOptions,
-      initialValues: ["toast", "flash"] as NotifyMode[],
+      initialValues: ["os", "flash"] as NotifyMode[],
       required: true,
     }),
   ) as NotifyMode[];

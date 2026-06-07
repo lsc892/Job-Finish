@@ -18,7 +18,7 @@ if (Test-Path -LiteralPath $cfgPath) {
 }
 if ($null -eq $cfg) {
   $cfg = [pscustomobject]@{
-    modes = @('toast', 'flash'); flashTimeout = '5m';
+    modes = @('os', 'flash'); flashTimeout = '5m';
     sound = [pscustomobject]@{ enabled = $true; customPath = '' };
     suppressWhenFocused = $true; watchApp = ''
   }
@@ -91,7 +91,7 @@ if (-not $Test -and $cfg.suppressWhenFocused -and $hwnd -ne [IntPtr]::Zero) {
   if ([JF]::GetForegroundWindow() -eq $hwnd) { exit 0 }
 }
 
-# ------------------------------------------------------------------- toast
+# ------------------------------------------------------------------- notify
 function Show-Toast($title, $text) {
   try {
     $null = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
@@ -120,7 +120,7 @@ function Show-Balloon($title, $text) {
   } catch {}
 }
 
-if (($modes -contains 'toast') -or ($modes -contains 'os')) {
+if ($modes -contains 'os') {
   if (-not (Show-Toast $title $text)) { Show-Balloon $title $text }
 }
 

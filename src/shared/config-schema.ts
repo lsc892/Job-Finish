@@ -6,7 +6,7 @@ import { z } from "zod";
  * users tweak behavior without re-running the wizard.
  */
 
-export const NOTIFY_MODES = ["toast", "os", "flash"] as const;
+export const NOTIFY_MODES = ["os", "flash"] as const;
 export type NotifyMode = (typeof NOTIFY_MODES)[number];
 
 /** Max taskbar/dock flashing duration. "infinite" flashes until refocused. */
@@ -30,7 +30,7 @@ export const ConfigSchema = z.object({
   version: z.literal(1).default(1),
   platform: z.enum(PLATFORMS),
   /** Which visual notification modes are enabled. */
-  modes: z.array(z.enum(NOTIFY_MODES)).default(["toast", "flash"]),
+  modes: z.array(z.enum(NOTIFY_MODES)).default(["os", "flash"]),
   flashTimeout: z.enum(FLASH_TIMEOUTS).default("5m"),
   sound: SoundConfigSchema.default({ enabled: true, customPath: "" }),
   /**

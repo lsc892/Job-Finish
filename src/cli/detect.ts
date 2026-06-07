@@ -80,7 +80,7 @@ export function checkDependencies(platform: Platform): DependencyCheck[] {
       name: "notify-send",
       ok: !!notify,
       detail: notify ?? "not found",
-      hint: "Install libnotify-bin (Debian/Ubuntu) for toast/OS notifications.",
+      hint: "Install libnotify-bin (Debian/Ubuntu) for OS notifications.",
     });
     const wmctrl = which("wmctrl") ?? which("xdotool");
     checks.push({

@@ -8,7 +8,7 @@ EVENT="${1:-stop}"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ----------------------------------------------------------------- load config
-JF_MODES="toast flash"; JF_FLASH_TIMEOUT="5m"; JF_SOUND_ENABLED="1"
+JF_MODES="os flash"; JF_FLASH_TIMEOUT="5m"; JF_SOUND_ENABLED="1"
 JF_SOUND_PATH=""; JF_SUPPRESS_FOCUSED="1"; JF_WATCH_APP=""
 # shellcheck source=/dev/null
 [ -f "$DIR/job-finish.config.sh" ] && . "$DIR/job-finish.config.sh"
@@ -60,7 +60,7 @@ if [ "$JF_SUPPRESS_FOCUSED" = "1" ] && is_focused; then
 fi
 
 # ------------------------------------------------------------------- notify
-if has_mode toast || has_mode os; then
+if has_mode os; then
   # Escape double quotes for AppleScript.
   AT="${TITLE//\"/\\\"}"; AX="${TEXT//\"/\\\"}"
   osascript -e "display notification \"$AX\" with title \"$AT\"" 2>/dev/null
