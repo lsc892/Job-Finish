@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "platform": "win32",
+  "modes": [
+    "os",
+    "flash"
+  ],
+  "flashTimeout": "5m",
+  "sound": {
+    "enabled": true
+  },
+  "suppressWhenFocused": true,
+  "watchApp": ""
+}
