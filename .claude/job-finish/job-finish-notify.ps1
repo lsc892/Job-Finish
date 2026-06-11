@@ -1,4 +1,4 @@
-# job-finish-notify (Windows) — focus-aware completion notifier for Claude Code / Codex.
+﻿# job-finish-notify (Windows) — focus-aware completion notifier for Claude Code / Codex.
 # Invoked by a hook. Reads choices from job-finish.config.json next to this script.
 #   -Event stop|notify|codex   which agent event fired
 #   -Test                      bypass focus suppression (used by `doctor`)

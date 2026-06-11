@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\Users\\safi2\\Documents\\GitHub\\Job-Finish\\.claude\\job-finish\\job-finish-notify.ps1\" -Event stop"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\Users\\safi2\\Documents\\GitHub\\Job-Finish\\.claude\\job-finish\\job-finish-notify.ps1\" -Event notify"
+          }
+        ]
+      }
+    ]
+  }
+}
