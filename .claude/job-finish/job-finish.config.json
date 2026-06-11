@@ -5,7 +5,7 @@
     "os",
     "flash"
   ],
-  "flashTimeout": "5m",
+  "flashTimeout": "infinite",
   "sound": {
     "enabled": true
   },

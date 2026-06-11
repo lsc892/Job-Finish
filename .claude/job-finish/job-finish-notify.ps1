@@ -15,9 +15,15 @@ param(
 $ErrorActionPreference = 'SilentlyContinue'
 $extraArgs = $args
 
-# Toast identity. The AppID must match a registered Start-menu shortcut so the
-# OS will surface the toast; the group lets us clear all our toasts at once.
-$appId = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
+# Toast identity. Each agent gets its own AppUserModelID, registered under HKCU
+# with a DisplayName, so the toast header shows the agent's name instead of
+# "Windows PowerShell". The group lets us clear all our toasts at once.
+if ($Event -eq 'codex') { $agentName = 'Codex';       $appId = 'JobFinish.Codex' }
+else                    { $agentName = 'Claude Code'; $appId = 'JobFinish.ClaudeCode' }
+# PowerShell's own AppID — fallback when the custom one can't show, and kept in
+# the cleanup list so toasts posted under it are cleared too.
+$psAppId = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
+$allAppIds = @('JobFinish.ClaudeCode', 'JobFinish.Codex', $psAppId)
 $toastGroup = 'job-finish'
 
 # ---------------------------------------------------------------- load config
@@ -51,9 +57,15 @@ using System.Runtime.InteropServices;
 public static class JF {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
   [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern void SwitchToThisWindow(IntPtr hWnd, bool fAltTab);
+  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+  [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
   [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
   [StructLayout(LayoutKind.Sequential)]
   public struct FLASHWINFO { public uint cbSize; public IntPtr hwnd; public uint dwFlags; public uint uCount; public uint dwTimeout; }
@@ -64,17 +76,61 @@ public static class JF {
 function Clear-Toast {
   try {
     $null = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
-    [Windows.UI.Notifications.ToastNotificationManager]::History.RemoveGroup($toastGroup, $appId)
+    foreach ($id in $allAppIds) {
+      try { [Windows.UI.Notifications.ToastNotificationManager]::History.RemoveGroup($toastGroup, $id) } catch {}
+    }
   } catch {}
 }
 
-# Count of our toasts still sitting in the Action Center.
+# Count of our toasts still sitting in the Action Center (across every AppID).
 function Get-ToastCount {
+  $n = 0
   try {
     $null = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
-    return @([Windows.UI.Notifications.ToastNotificationManager]::History.GetHistory($appId) |
-      Where-Object { $_.Group -eq $toastGroup }).Count
-  } catch { return 0 }
+    foreach ($id in $allAppIds) {
+      try {
+        $n += @([Windows.UI.Notifications.ToastNotificationManager]::History.GetHistory($id) |
+          Where-Object { $_.Group -eq $toastGroup }).Count
+      } catch {}
+    }
+  } catch {}
+  return $n
+}
+
+# Bring a window to the foreground reliably. The toast protocol handler is
+# launched by the shell as a background process, so a bare SetForegroundWindow
+# is rejected (the taskbar just flashes). Escalate through the standard
+# workarounds until the window actually owns the foreground.
+function Focus-Window([IntPtr]$h) {
+  if (-not [JF]::IsWindow($h)) { return }
+  # SW_RESTORE only when minimized — on a maximized window it would shrink it.
+  if ([JF]::IsIconic($h)) { [JF]::ShowWindow($h, 9) | Out-Null }
+  [JF]::BringWindowToTop($h) | Out-Null
+  [JF]::SetForegroundWindow($h) | Out-Null
+  if ([JF]::GetForegroundWindow() -eq $h) { return }
+
+  # Borrow input-queue rights from the foreground and target threads.
+  $myThread = [JF]::GetCurrentThreadId()
+  $tmpPid = [uint32]0
+  $fgThread = [JF]::GetWindowThreadProcessId([JF]::GetForegroundWindow(), [ref]$tmpPid)
+  $targetThread = [JF]::GetWindowThreadProcessId($h, [ref]$tmpPid)
+  if ($fgThread -ne 0 -and $fgThread -ne $myThread) { [JF]::AttachThreadInput($myThread, $fgThread, $true) | Out-Null }
+  if ($targetThread -ne 0 -and $targetThread -ne $myThread) { [JF]::AttachThreadInput($myThread, $targetThread, $true) | Out-Null }
+  [JF]::BringWindowToTop($h) | Out-Null
+  [JF]::SetForegroundWindow($h) | Out-Null
+  if ($targetThread -ne 0 -and $targetThread -ne $myThread) { [JF]::AttachThreadInput($myThread, $targetThread, $false) | Out-Null }
+  if ($fgThread -ne 0 -and $fgThread -ne $myThread) { [JF]::AttachThreadInput($myThread, $fgThread, $false) | Out-Null }
+  if ([JF]::GetForegroundWindow() -eq $h) { return }
+
+  # A synthetic Alt tap counts as input to this process and unlocks
+  # SetForegroundWindow for one call.
+  [JF]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)   # VK_MENU down
+  [JF]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)   # VK_MENU up (KEYEVENTF_KEYUP)
+  [JF]::SetForegroundWindow($h) | Out-Null
+  if ([JF]::GetForegroundWindow() -eq $h) { return }
+
+  # Last resort: the Alt-Tab switcher path ignores the foreground lock.
+  [JF]::SwitchToThisWindow($h, $true)
 }
 
 # =====================================================================
@@ -83,11 +139,7 @@ function Get-ToastCount {
 # =====================================================================
 if ($Activate) {
   if ($Activate -match 'h=(\d+)') {
-    $h = [IntPtr][long]$Matches[1]
-    if ([JF]::IsWindow($h)) {
-      [JF]::ShowWindowAsync($h, 9) | Out-Null   # SW_RESTORE — un-minimize
-      [JF]::SetForegroundWindow($h) | Out-Null
-    }
+    Focus-Window ([IntPtr][long]$Matches[1])
   }
   Clear-Toast
   exit 0
@@ -188,14 +240,26 @@ function Register-Protocol {
   } catch {}
 }
 
+# Register the agent's AppUserModelID under HKCU so the toast header shows the
+# agent's name (not "Windows PowerShell"). Idempotent; cheap to repeat.
+function Register-AppId([string]$id, [string]$name) {
+  try {
+    $key = "HKCU:\Software\Classes\AppUserModelId\$id"
+    if (-not (Test-Path -LiteralPath $key)) { New-Item -Path $key -Force | Out-Null }
+    Set-ItemProperty -Path $key -Name 'DisplayName' -Value $name
+  } catch {}
+}
+
 # Returns $true if the toast was shown, so the caller can spawn the watcher.
-function Show-Toast($title, $text, $winHandle) {
+function Show-Toast($title, $text, $winHandle, $useAppId) {
   try {
     $null = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
     $null = [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom, ContentType = WindowsRuntime]
     $launch = "jobfinish:focus?h=$($winHandle.ToInt64())"
     $eTitle = [Security.SecurityElement]::Escape([string]$title)
     $eText  = [Security.SecurityElement]::Escape([string]$text)
+    # audio silent: job-finish's own `sound` setting is the single sound switch;
+    # otherwise Windows chimes even when muted, and doubles up when sound is on.
     $xmlText = @"
 <toast launch="$launch" activationType="protocol">
   <visual>
@@ -204,6 +268,7 @@ function Show-Toast($title, $text, $winHandle) {
       <text>$eText</text>
     </binding>
   </visual>
+  <audio silent="true" />
 </toast>
 "@
     $xml = New-Object Windows.Data.Xml.Dom.XmlDocument
@@ -211,7 +276,7 @@ function Show-Toast($title, $text, $winHandle) {
     $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
     $toast.Tag = 'jf'
     $toast.Group = $toastGroup
-    [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($appId).Show($toast)
+    [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($useAppId).Show($toast)
     return $true
   } catch { return $false }
 }
@@ -231,13 +296,12 @@ function Show-Balloon($title, $text) {
 }
 
 if ($modes -contains 'os') {
-  $shown = $false
-  if ($hostHwnd -ne [IntPtr]::Zero) { Register-Protocol }
-  if ($hostHwnd -ne [IntPtr]::Zero) { $shown = Show-Toast $title $text $hostHwnd }
-  if (-not $shown) {
-    if (-not (Show-Toast $title $text ([IntPtr]::Zero))) { Show-Balloon $title $text }
-    else { $shown = $true }
-  }
+  Register-Protocol
+  Register-AppId $appId $agentName
+  $shown = Show-Toast $title $text $hostHwnd $appId
+  # Fallback: PowerShell's registered AppID always exists, then a tray balloon.
+  if (-not $shown) { $shown = Show-Toast $title $text $hostHwnd $psAppId }
+  if (-not $shown) { Show-Balloon $title $text }
   # Spawn the detached watcher so the toast clears when the host regains focus
   # (mirrors the flash auto-stop). Skip under -Test so the toast stays visible.
   if ($shown -and -not $Test -and $hostHwnd -ne [IntPtr]::Zero) {
