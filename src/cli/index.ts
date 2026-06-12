@@ -40,13 +40,10 @@ function resetClaudeResidue(keepScope: "global" | "project" | null, cwd: string)
 
 /** Run the generated notifier once (used by doctor/preview). */
 function runNotifier(scriptPath: string, platform: Platform, test: boolean): Promise<number> {
-  const args =
-    platform === "win32"
-      ? ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath, "-Event", "stop", ...(test ? ["-Test"] : [])]
-      : [scriptPath, "stop"];
-  const cmd = platform === "win32" ? "powershell" : "bash";
+  void platform;
+  const args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath, "-Event", "stop", ...(test ? ["-Test"] : [])];
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, { stdio: "ignore" });
+    const child = spawn("powershell", args, { stdio: "ignore" });
     child.on("error", () => resolve(1));
     child.on("exit", (code) => resolve(code ?? 0));
   });

@@ -9,14 +9,14 @@ import { z } from "zod";
 export const NOTIFY_MODES = ["os", "flash"] as const;
 export type NotifyMode = (typeof NOTIFY_MODES)[number];
 
-/** Max taskbar/dock flashing duration. "infinite" flashes until refocused. */
+/** Max taskbar flashing duration. "infinite" flashes until refocused. */
 export const FLASH_TIMEOUTS = ["30s", "5m", "10m", "infinite"] as const;
 export type FlashTimeout = (typeof FLASH_TIMEOUTS)[number];
 
 export const AGENTS = ["claude", "codex"] as const;
 export type Agent = (typeof AGENTS)[number];
 
-export const PLATFORMS = ["win32", "darwin", "linux"] as const;
+export const PLATFORMS = ["win32"] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
 export const SoundConfigSchema = z.object({
@@ -36,10 +36,7 @@ export const ConfigSchema = z.object({
    * launched the agent, e.g. VSCode) is currently focused.
    */
   suppressWhenFocused: z.boolean().default(true),
-  /**
-   * Hint for focus detection on macOS/Linux where parent-process walking is
-   * unreliable. "" = auto-detect. Example: "Code" / "com.microsoft.VSCode".
-   */
+  /** Reserved focus hint. "" = auto-detect. */
   watchApp: z.string().default(""),
 });
 

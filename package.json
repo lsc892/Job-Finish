@@ -1,7 +1,7 @@
 {
   "name": "job-finish",
   "version": "0.1.0",
-  "description": "Focus-aware completion notifications for Claude Code & Codex — toast, OS notification, and taskbar flashing when your agent finishes. Cross-platform, npx-installable.",
+  "description": "Windows toast notifications for Claude Code & Codex with taskbar flashing and VS Code focus on click.",
   "type": "module",
   "bin": {
     "job-finish": "dist/index.js"
@@ -32,7 +32,8 @@
     "notification",
     "toast",
     "cli",
-    "vscode"
+    "vscode",
+    "windows"
   ],
   "author": "",
   "license": "MIT",
@@ -49,5 +50,8 @@
     "@types/node": "^20.14.0",
     "tsup": "^8.1.0",
     "typescript": "^5.5.0"
-  }
+  },
+  "os": [
+    "win32"
+  ]
 }

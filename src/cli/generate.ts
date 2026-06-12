@@ -1,31 +1,17 @@
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Config, Platform } from "../shared/config-schema.js";
 import { notifierScriptPath } from "./command.js";
-import { writeJson, writeText } from "./settings-merge.js";
+import { writeJson } from "./settings-merge.js";
 
 /**
  * Serialize config for the notifier to read. Windows/PowerShell parses JSON
- * natively, so we keep the canonical config.json there. POSIX shells have no
- * built-in JSON parser, so on mac/linux we emit a `source`-able key=value file
- * to keep the notifier dependency-free (no jq/python required).
+ * natively, so we keep the canonical config.json next to the generated script.
  */
-function shellConfig(config: Config): string {
-  const sound = config.sound;
-  return [
-    "# job-finish config - edit values then save; no re-install needed.",
-    `JF_MODES="${config.modes.join(" ")}"`,
-    `JF_FLASH_TIMEOUT="${config.flashTimeout}"`,
-    `JF_SOUND_ENABLED="${sound.enabled ? 1 : 0}"`,
-    `JF_SUPPRESS_FOCUSED="${config.suppressWhenFocused ? 1 : 0}"`,
-    `JF_WATCH_APP=${JSON.stringify(config.watchApp)}`,
-    "",
-  ].join("\n");
-}
-
 function configFileName(platform: Platform): string {
-  return platform === "win32" ? "job-finish.config.json" : "job-finish.config.sh";
+  void platform;
+  return "job-finish.config.json";
 }
 
 /** Resolve the bundled templates directory (ships at <pkg>/templates). */
@@ -38,19 +24,12 @@ function templatesDir(): string {
 }
 
 function templateFor(platform: Platform): string {
-  const dir = templatesDir();
-  switch (platform) {
-    case "win32":
-      return path.join(dir, "notify.win.ps1");
-    case "darwin":
-      return path.join(dir, "notify.mac.sh");
-    case "linux":
-      return path.join(dir, "notify.linux.sh");
-  }
+  void platform;
+  return path.join(templatesDir(), "notify.win.ps1");
 }
 
-function focusHelperFor(platform: Platform): string | null {
-  if (platform !== "win32") return null;
+function focusHelperFor(platform: Platform): string {
+  void platform;
   return path.join(templatesDir(), "jf-focus-vscode.exe");
 }
 
@@ -68,30 +47,19 @@ export function generate(installDir: string, platform: Platform, config: Config)
   mkdirSync(installDir, { recursive: true });
 
   const scriptPath = notifierScriptPath(installDir, platform);
-  if (platform === "win32") {
-    // Windows PowerShell 5.1 reads BOM-less scripts as the ANSI codepage, which
-    // corrupts the (UTF-8) Korean strings. Install with a UTF-8 BOM so both
-    // Windows PowerShell and PowerShell 7 decode it correctly.
-    const src = readFileSync(templateFor(platform), "utf8").replace(/^\uFEFF/, "");
-    writeFileSync(scriptPath, `\uFEFF${src}`, "utf8");
+  // Windows PowerShell 5.1 reads BOM-less scripts as the ANSI codepage, which
+  // corrupts the (UTF-8) Korean strings. Install with a UTF-8 BOM so both
+  // Windows PowerShell and PowerShell 7 decode it correctly.
+  const src = readFileSync(templateFor(platform), "utf8").replace(/^\uFEFF/, "");
+  writeFileSync(scriptPath, `\uFEFF${src}`, "utf8");
 
-    const focusHelper = focusHelperFor(platform);
-    if (focusHelper && existsSync(focusHelper)) {
-      copyFileSync(focusHelper, path.join(installDir, "jf-focus-vscode.exe"));
-    }
-  } else {
-    // POSIX: copy verbatim (a BOM would break the #! shebang).
-    copyFileSync(templateFor(platform), scriptPath);
-    try {
-      chmodSync(scriptPath, 0o755);
-    } catch {
-      /* best-effort on filesystems without exec bits */
-    }
+  const focusHelper = focusHelperFor(platform);
+  if (existsSync(focusHelper)) {
+    copyFileSync(focusHelper, path.join(installDir, "jf-focus-vscode.exe"));
   }
 
   const configPath = path.join(installDir, configFileName(platform));
-  if (platform === "win32") writeJson(configPath, config);
-  else writeText(configPath, shellConfig(config));
+  writeJson(configPath, config);
 
   return { scriptPath, configPath };
 }
