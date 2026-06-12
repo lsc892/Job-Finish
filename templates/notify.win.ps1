@@ -74,7 +74,7 @@ public static class JF {
     return len > 0 ? sb.ToString() : "";
   }
 
-  public static IntPtr FindWindowForPids(int[] pids, string titleHint) {
+  public static IntPtr FindWindowForPids(int[] pids, string titleHint, bool requireTitleHint) {
     if (pids == null || pids.Length == 0) return IntPtr.Zero;
     var wanted = new HashSet<int>(pids);
     string hint = (titleHint ?? "").ToLowerInvariant();
@@ -96,7 +96,8 @@ public static class JF {
       return true;
     }, IntPtr.Zero);
 
-    return best != IntPtr.Zero ? best : first;
+    if (best != IntPtr.Zero) return best;
+    return requireTitleHint && hint.Length > 0 ? IntPtr.Zero : first;
   }
 }
 "@
@@ -145,7 +146,7 @@ function Get-ProcessTree {
 
 function Get-HostWindow {
   $tree = Get-ProcessTree
-  $fromTree = [JF]::FindWindowForPids($tree, [string]$project)
+  $fromTree = [JF]::FindWindowForPids($tree, [string]$project, $false)
   if ($fromTree -ne [IntPtr]::Zero) { return $fromTree }
 
   foreach ($id in $tree) {
@@ -159,21 +160,36 @@ function Get-HostWindow {
 }
 
 function Get-VSCodeWindow {
+  if ($env:VSCODE_PID -match '^\d+$') {
+    $p = Get-Process -Id ([int]$env:VSCODE_PID) -ErrorAction SilentlyContinue
+    if ($p -and $p.ProcessName -eq 'Code') {
+      $fromPid = [JF]::FindWindowForPids(@([int]$p.Id), [string]$project, $true)
+      if ($fromPid -ne [IntPtr]::Zero) { return $fromPid }
+    }
+  }
+
   $code = @(Get-Process Code -ErrorAction SilentlyContinue)
   if ($code.Count -eq 0) { return [IntPtr]::Zero }
 
   $main = @($code | Where-Object { $_.MainWindowHandle -ne 0 })
-  $mainMatch = $main | Where-Object { $_.MainWindowTitle -like "*$project*" } | Select-Object -First 1
+  $mainMatch = $main | Where-Object { [string]$_.MainWindowTitle -and [string]$project -and $_.MainWindowTitle.IndexOf([string]$project, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 } | Select-Object -First 1
   if ($mainMatch) { return [IntPtr]$mainMatch.MainWindowHandle }
-  if ($main.Count -gt 0) { return [IntPtr]$main[0].MainWindowHandle }
 
   $ids = @($code | ForEach-Object { [int]$_.Id })
-  return [JF]::FindWindowForPids($ids, [string]$project)
+  $titleMatch = [JF]::FindWindowForPids($ids, [string]$project, $true)
+  if ($titleMatch -ne [IntPtr]::Zero) { return $titleMatch }
+
+  if ($main.Count -eq 1) { return [IntPtr]$main[0].MainWindowHandle }
+  return [IntPtr]::Zero
 }
 
 $hostHwnd = Get-HostWindow
 $vscodeHwnd = Get-VSCodeWindow
 $focusTarget = if ($vscodeHwnd -ne [IntPtr]::Zero) { $vscodeHwnd } else { $hostHwnd }
+$focusTargetPid = [uint32]0
+if ($focusTarget -ne [IntPtr]::Zero) {
+  [JF]::GetWindowThreadProcessId($focusTarget, [ref]$focusTargetPid) | Out-Null
+}
 
 if (-not $Test -and $cfg.suppressWhenFocused -and $focusTarget -ne [IntPtr]::Zero) {
   if ([JF]::GetForegroundWindow() -eq $focusTarget) { exit 0 }
@@ -211,7 +227,7 @@ public static class FocusVSCode {
     return len > 0 ? sb.ToString() : "";
   }
 
-  public static IntPtr FindCodeWindow(int[] pids, string titleHint) {
+  public static IntPtr FindCodeWindow(int[] pids, string titleHint, bool requireTitleHint) {
     if (pids == null || pids.Length == 0) return IntPtr.Zero;
     var wanted = new HashSet<int>(pids);
     string hint = (titleHint ?? "").ToLowerInvariant();
@@ -233,7 +249,8 @@ public static class FocusVSCode {
       return true;
     }, IntPtr.Zero);
 
-    return best != IntPtr.Zero ? best : first;
+    if (best != IntPtr.Zero) return best;
+    return requireTitleHint && hint.Length > 0 ? IntPtr.Zero : first;
   }
 }
 "@
@@ -247,16 +264,28 @@ function Get-QueryValue([string]$uri, [string]$name) {
 
 function Get-VSCodeWindow([string]$cwd) {
   $project = if ($cwd) { Split-Path -Leaf $cwd } else { '' }
+  $pidValue = Get-QueryValue $Uri 'pid'
+  if ($pidValue -match '^\d+$') {
+    $p = Get-Process -Id ([int]$pidValue) -ErrorAction SilentlyContinue
+    if ($p -and $p.ProcessName -eq 'Code') {
+      $fromPid = [FocusVSCode]::FindCodeWindow(@([int]$p.Id), $project, $true)
+      if ($fromPid -ne [IntPtr]::Zero) { return $fromPid }
+    }
+  }
+
   $code = @(Get-Process Code -ErrorAction SilentlyContinue)
   if ($code.Count -eq 0) { return [IntPtr]::Zero }
 
   $main = @($code | Where-Object { $_.MainWindowHandle -ne 0 })
-  $mainMatch = $main | Where-Object { $_.MainWindowTitle -like "*$project*" } | Select-Object -First 1
+  $mainMatch = $main | Where-Object { [string]$_.MainWindowTitle -and [string]$project -and $_.MainWindowTitle.IndexOf([string]$project, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 } | Select-Object -First 1
   if ($mainMatch) { return [IntPtr]$mainMatch.MainWindowHandle }
-  if ($main.Count -gt 0) { return [IntPtr]$main[0].MainWindowHandle }
 
   $ids = @($code | ForEach-Object { [int]$_.Id })
-  return [FocusVSCode]::FindCodeWindow($ids, $project)
+  $titleMatch = [FocusVSCode]::FindCodeWindow($ids, $project, $true)
+  if ($titleMatch -ne [IntPtr]::Zero) { return $titleMatch }
+
+  if ($main.Count -eq 1) { return [IntPtr]$main[0].MainWindowHandle }
+  return [IntPtr]::Zero
 }
 
 function Focus-Window([IntPtr]$h) {
@@ -272,7 +301,11 @@ function Focus-Window([IntPtr]$h) {
 }
 
 $cwd = Get-QueryValue $Uri 'cwd'
-$h = Get-VSCodeWindow $cwd
+$hwndValue = Get-QueryValue $Uri 'hwnd'
+$h = if ($hwndValue -match '^\d+$') { [IntPtr]([int64]$hwndValue) } else { [IntPtr]::Zero }
+if ($h -eq [IntPtr]::Zero -or -not [FocusVSCode]::IsWindow($h)) {
+  $h = Get-VSCodeWindow $cwd
+}
 Focus-Window $h
 '@
   try {
@@ -311,13 +344,18 @@ function Clear-Toast {
   } catch {}
 }
 
-function Show-Toast($title, $text, $cwd) {
+function Show-Toast($title, $text, $cwd, $hwnd, $pid) {
   try {
     Register-FocusProtocol
     $null = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
     $null = [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom, ContentType = WindowsRuntime]
     $encodedCwd = [Uri]::EscapeDataString([string]$cwd)
-    $launch = "${protocolName}://open?cwd=$encodedCwd"
+    $query = New-Object 'System.Collections.Generic.List[string]'
+    $query.Add("cwd=$encodedCwd")
+    if ($hwnd -and $hwnd -ne [IntPtr]::Zero) { $query.Add("hwnd=$($hwnd.ToInt64())") }
+    if ($pid -and [uint32]$pid -gt 0) { $query.Add("pid=$pid") }
+    if ($project) { $query.Add("title=$([Uri]::EscapeDataString([string]$project))") }
+    $launch = "${protocolName}://open?$($query -join '&')"
     $eLaunch = [Security.SecurityElement]::Escape($launch)
     $eTitle = [Security.SecurityElement]::Escape([string]$title)
     $eText  = [Security.SecurityElement]::Escape([string]$text)
@@ -334,7 +372,7 @@ function Show-Toast($title, $text, $cwd) {
     $xml = New-Object Windows.Data.Xml.Dom.XmlDocument
     $xml.LoadXml($xmlText)
     $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
-    $toast.Tag = 'jf'
+    $toast.Tag = if ($hwnd -and $hwnd -ne [IntPtr]::Zero) { "jf-$($hwnd.ToInt64())" } else { 'jf' }
     $toast.Group = $toastGroup
     [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($appId).Show($toast)
     return $true
@@ -356,7 +394,7 @@ function Show-Balloon($title, $text) {
 }
 
 if ($modes -contains 'os') {
-  if (-not (Show-Toast $title $text $focusCwd)) { Show-Balloon $title $text }
+  if (-not (Show-Toast $title $text $focusCwd $focusTarget $focusTargetPid)) { Show-Balloon $title $text }
 }
 
 # ------------------------------------------------------------------- flash

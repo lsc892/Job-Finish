@@ -34,6 +34,8 @@ npx job-finish uninstall
 | Taskbar flash | Flashes the target window until it is focused or the configured timeout ends. |
 | Sound | Plays the default Windows sound when enabled. |
 
+When multiple VS Code windows are open, Job-Finish keeps them separate by passing the target window handle and process id through the toast activation URL. The clicked toast focuses the same window that was flashed.
+
 ## How It Works
 
 ```text

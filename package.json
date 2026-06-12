@@ -8,7 +8,8 @@
   },
   "files": [
     "dist",
-    "templates"
+    "templates/notify.win.ps1",
+    "templates/jf-focus-vscode.exe"
   ],
   "scripts": {
     "build": "tsup && node scripts/build-focus-exe.mjs",

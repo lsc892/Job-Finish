@@ -25,22 +25,29 @@ internal static class Program
     {
         var uri = GetArg(args, "--uri") ?? (args.Length == 1 && args[0].Contains("://", StringComparison.Ordinal) ? args[0] : null);
         var cwd = GetQueryValue(uri, "cwd") ?? GetArg(args, "--cwd") ?? Environment.CurrentDirectory;
-        var titleHint = GetArg(args, "--title") ?? Path.GetFileName(cwd.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-        var explicitHwnd = TryParseLong(GetArg(args, "--hwnd"));
+        var titleHint =
+            GetQueryValue(uri, "title")
+            ?? GetArg(args, "--title")
+            ?? Path.GetFileName(cwd.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var explicitHwnd = TryParseLong(GetQueryValue(uri, "hwnd") ?? GetArg(args, "--hwnd"));
+        var preferredPid = TryParseInt(GetQueryValue(uri, "pid") ?? GetArg(args, "--pid"));
         var listOnly = args.Contains("--list", StringComparer.OrdinalIgnoreCase);
 
         Log($"cwd={cwd}");
         Log($"titleHint={titleHint}");
+        Log($"preferredPid={preferredPid?.ToString() ?? ""}");
+        Log($"explicitHwnd={explicitHwnd?.ToString() ?? ""}");
 
         var windows = EnumerateTopLevelWindows()
             .Where(w => string.Equals(w.ProcessName, "Code", StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(w => !string.IsNullOrEmpty(titleHint) && w.Title.Contains(titleHint, StringComparison.OrdinalIgnoreCase))
+            .Select(w => w with { Score = ScoreWindow(w, cwd, titleHint, preferredPid) })
+            .OrderByDescending(w => w.Score)
             .ThenBy(w => w.ZOrder)
             .ToList();
 
         foreach (var w in windows)
         {
-            Log($"candidate hwnd={w.Hwnd.ToInt64()} pid={w.Pid} title=\"{w.Title}\" path=\"{w.Path}\"");
+            Log($"candidate hwnd={w.Hwnd.ToInt64()} pid={w.Pid} score={w.Score} title=\"{w.Title}\" path=\"{w.Path}\"");
         }
 
         if (listOnly)
@@ -48,7 +55,7 @@ internal static class Program
             return windows.Count > 0 ? 0 : 2;
         }
 
-        var target = explicitHwnd is > 0 ? new IntPtr(explicitHwnd.Value) : windows.FirstOrDefault().Hwnd;
+        var target = ResolveTarget(explicitHwnd, windows);
         if (target == IntPtr.Zero || !IsWindow(target))
         {
             Log("target=0 or invalid");
@@ -67,6 +74,56 @@ internal static class Program
         Log($"success={ok || GetForegroundWindow() == target}");
 
         return GetForegroundWindow() == target ? 0 : 1;
+    }
+
+    private static IntPtr ResolveTarget(long? explicitHwnd, List<WindowInfo> windows)
+    {
+        if (explicitHwnd is > 0)
+        {
+            var requested = new IntPtr(explicitHwnd.Value);
+            if (IsWindow(requested))
+            {
+                return requested;
+            }
+            Log($"explicit hwnd invalid: {explicitHwnd.Value}");
+        }
+
+        var best = windows.FirstOrDefault(w => w.Score > 0);
+        if (best.Hwnd != IntPtr.Zero)
+        {
+            return best.Hwnd;
+        }
+
+        return windows.Count == 1 ? windows[0].Hwnd : IntPtr.Zero;
+    }
+
+    private static int ScoreWindow(WindowInfo window, string cwd, string? titleHint, int? preferredPid)
+    {
+        var score = 0;
+        if (preferredPid is > 0 && window.Pid == preferredPid.Value)
+        {
+            score += 1_000;
+        }
+
+        var normalizedCwd = cwd.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (!string.IsNullOrWhiteSpace(normalizedCwd) && window.Title.Contains(normalizedCwd, StringComparison.OrdinalIgnoreCase))
+        {
+            score += 200;
+        }
+
+        if (!string.IsNullOrWhiteSpace(titleHint) && window.Title.Contains(titleHint, StringComparison.OrdinalIgnoreCase))
+        {
+            score += 100;
+        }
+
+        var folder = Path.GetFileName(normalizedCwd);
+        if (!string.IsNullOrWhiteSpace(folder) && !string.Equals(folder, titleHint, StringComparison.OrdinalIgnoreCase)
+            && window.Title.Contains(folder, StringComparison.OrdinalIgnoreCase))
+        {
+            score += 90;
+        }
+
+        return score;
     }
 
     private static bool FocusWindow(IntPtr hwnd)
@@ -214,6 +271,11 @@ internal static class Program
         return long.TryParse(value, out var parsed) ? parsed : null;
     }
 
+    private static int? TryParseInt(string? value)
+    {
+        return int.TryParse(value, out var parsed) ? parsed : null;
+    }
+
     private static void Log(string message)
     {
         var line = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
@@ -221,7 +283,7 @@ internal static class Program
         try { File.AppendAllText(Path.Combine(AppContext.BaseDirectory, "jf-focus-vscode.log"), line + Environment.NewLine, Encoding.UTF8); } catch { }
     }
 
-    private readonly record struct WindowInfo(IntPtr Hwnd, int Pid, string ProcessName, string Title, string Path, int ZOrder);
+    private readonly record struct WindowInfo(IntPtr Hwnd, int Pid, string ProcessName, string Title, string Path, int ZOrder, int Score = 0);
 
     private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
 
