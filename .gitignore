@@ -1,5 +1,10 @@
 node_modules/
 dist/
 *.log
+**/Focus-VSCode.ps1
+**/jf-focus-vscode.exe
+tools/win-focus/bin/
+tools/win-focus/obj/
+tools/win-focus/publish/
 .DS_Store
 *.bak
