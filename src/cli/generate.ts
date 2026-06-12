@@ -14,7 +14,7 @@ import { writeJson, writeText } from "./settings-merge.js";
 function shellConfig(config: Config): string {
   const sound = config.sound;
   return [
-    "# job-finish config — edit values then save; no re-install needed.",
+    "# job-finish config - edit values then save; no re-install needed.",
     `JF_MODES="${config.modes.join(" ")}"`,
     `JF_FLASH_TIMEOUT="${config.flashTimeout}"`,
     `JF_SOUND_ENABLED="${sound.enabled ? 1 : 0}"`,
@@ -49,6 +49,11 @@ function templateFor(platform: Platform): string {
   }
 }
 
+function focusHelperFor(platform: Platform): string | null {
+  if (platform !== "win32") return null;
+  return path.join(templatesDir(), "jf-focus-vscode.exe");
+}
+
 export interface GenerateResult {
   scriptPath: string;
   configPath: string;
@@ -67,8 +72,13 @@ export function generate(installDir: string, platform: Platform, config: Config)
     // Windows PowerShell 5.1 reads BOM-less scripts as the ANSI codepage, which
     // corrupts the (UTF-8) Korean strings. Install with a UTF-8 BOM so both
     // Windows PowerShell and PowerShell 7 decode it correctly.
-    const src = readFileSync(templateFor(platform), "utf8").replace(/^﻿/, "");
-    writeFileSync(scriptPath, "﻿" + src, "utf8");
+    const src = readFileSync(templateFor(platform), "utf8").replace(/^\uFEFF/, "");
+    writeFileSync(scriptPath, `\uFEFF${src}`, "utf8");
+
+    const focusHelper = focusHelperFor(platform);
+    if (focusHelper && existsSync(focusHelper)) {
+      copyFileSync(focusHelper, path.join(installDir, "jf-focus-vscode.exe"));
+    }
   } else {
     // POSIX: copy verbatim (a BOM would break the #! shebang).
     copyFileSync(templateFor(platform), scriptPath);
