@@ -32,9 +32,9 @@ npx job-finish uninstall
 | Windows toast | Shows a native Windows notification. |
 | Click to focus | Toast clicks open the existing VS Code window through `jobfinish-focus://`. |
 | Taskbar flash | Flashes the target window until it is focused or the configured timeout ends. |
-| Sound | Plays the default Windows sound when enabled. |
+| Sound | Plays the default Windows sound when enabled. When toast mode is also enabled, toast sound is used as the primary notification sound. |
 
-When multiple VS Code windows are open, Job-Finish keeps them separate by passing the target window handle and process id through the toast activation URL. The clicked toast focuses the same window that was flashed.
+When multiple VS Code windows are open, Job-Finish keeps them separate by passing the target window handle and process id through the toast activation URL. The clicked toast focuses the same window that was flashed. Focus behavior is designed so each VS Code window is handled independently when multiple windows are open.
 
 ## How It Works
 
@@ -64,6 +64,19 @@ Depending on the selected scope, files are written to either `~/.job-finish/` or
 - PowerShell
 
 The bundled `jf-focus-vscode.exe` is self-contained, so a separate .NET runtime is not required on the target machine.
+
+## Debug Logging
+
+If you enable debug logging during install, Job-Finish writes:
+
+- `job-finish.log` next to `job-finish-notify.ps1`
+- `jf-focus-vscode.log` next to `jf-focus-vscode.exe`
+
+These logs are only written when debug logging is enabled, so normal releases remain quiet.
+
+## Development Notes
+
+Detailed developer documentation is available in `docs/development.md`.
 
 ## Uninstall
 

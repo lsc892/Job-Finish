@@ -32,12 +32,15 @@ internal static class Program
             ?? Path.GetFileName(cwd.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         var explicitHwnd = TryParseLong(GetQueryValue(uri, "hwnd") ?? GetArg(args, "--hwnd"));
         var preferredPid = TryParseInt(GetQueryValue(uri, "pid") ?? GetArg(args, "--pid"));
+        var debug = string.Equals(GetQueryValue(uri, "debug"), "1", StringComparison.OrdinalIgnoreCase);
         var listOnly = args.Contains("--list", StringComparer.OrdinalIgnoreCase);
 
+        _debug = debug;
         Log($"cwd={cwd}");
         Log($"titleHint={titleHint}");
         Log($"preferredPid={preferredPid?.ToString() ?? ""}");
         Log($"explicitHwnd={explicitHwnd?.ToString() ?? ""}");
+        Log($"debug={debug}");
 
         var windows = EnumerateTopLevelWindows()
             .Where(w => string.Equals(w.ProcessName, "Code", StringComparison.OrdinalIgnoreCase))
@@ -298,8 +301,11 @@ internal static class Program
         return int.TryParse(value, out var parsed) ? parsed : null;
     }
 
+    private static bool _debug = false;
+
     private static void Log(string message)
     {
+        if (!_debug) { return; }
         var line = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
         try { Console.WriteLine(line); } catch { }
         try { File.AppendAllText(Path.Combine(AppContext.BaseDirectory, "jf-focus-vscode.log"), line + Environment.NewLine, Encoding.UTF8); } catch { }

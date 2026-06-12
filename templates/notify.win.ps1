@@ -25,10 +25,19 @@ if ($null -eq $cfg) {
   $cfg = [pscustomobject]@{
     modes = @('os', 'flash'); flashTimeout = '5m';
     sound = [pscustomobject]@{ enabled = $true };
-    suppressWhenFocused = $true; watchApp = ''
+    suppressWhenFocused = $true; debug = $false; watchApp = ''
   }
 }
 $modes = @($cfg.modes)
+
+function Log-IfDebug([string]$message) {
+  if (-not $cfg.debug) { return }
+  try {
+    $logPath = Join-Path $PSScriptRoot 'job-finish.log'
+    $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff'
+    Add-Content -LiteralPath $logPath -Value "[$ts] $message"
+  } catch {}
+}
 
 switch ($cfg.flashTimeout) {
   '30s'      { $timeoutSec = 30 }
@@ -130,6 +139,8 @@ switch ($Event) {
   }
 }
 if ($text.Length -gt 180) { $text = $text.Substring(0, 177) + '...' }
+
+Log-IfDebug "notifier start event=$Event modes=$($modes -join ',') flashTimeout=$cfg.flashTimeout sound=$($cfg.sound.enabled) suppressWhenFocused=$cfg.suppressWhenFocused project=$project"
 
 # ------------------------------------------------------- source window lookup
 function Get-ProcessTree {
@@ -377,6 +388,7 @@ function Show-Toast($title, $text, $cwd, $hwnd, $pid) {
     if ($hwnd -and $hwnd -ne [IntPtr]::Zero) { $query.Add("hwnd=$($hwnd.ToInt64())") }
     if ($pid -and [uint32]$pid -gt 0) { $query.Add("pid=$pid") }
     if ($project) { $query.Add("title=$([Uri]::EscapeDataString([string]$project))") }
+    if ($cfg.debug) { $query.Add('debug=1') }
     $launch = "${protocolName}://open?$($query -join '&')"
     $eLaunch = [Security.SecurityElement]::Escape($launch)
     $eTitle = [Security.SecurityElement]::Escape([string]$title)
@@ -416,6 +428,7 @@ function Show-Balloon($title, $text) {
 }
 
 if ($modes -contains 'os') {
+  Log-IfDebug 'showing toast notification'
   if (-not (Show-Toast $title $text $focusCwd $focusTarget $focusTargetPid)) { Show-Balloon $title $text }
 }
 
@@ -434,11 +447,17 @@ if (($modes -contains 'flash') -and $focusTarget -ne [IntPtr]::Zero) {
 
 # ------------------------------------------------------------------- sound
 if ($cfg.sound.enabled) {
-  $sp = 'C:\Windows\Media\chimes.wav'
-  try {
-    if (Test-Path -LiteralPath $sp) { (New-Object Media.SoundPlayer $sp).PlaySync() }
-    else { [System.Media.SystemSounds]::Asterisk.Play() }
-  } catch { try { [System.Media.SystemSounds]::Asterisk.Play() } catch {} }
+  if ($modes -contains 'os') {
+    Log-IfDebug 'sound enabled but toast mode present, skipping explicit flash sound to let toast sound play'
+  } elseif ($modes -contains 'flash') {
+    Log-IfDebug 'playing flash sound for taskbar flash only'
+    $sp = 'C:\Windows\Media\chimes.wav'
+    try {
+      if (Test-Path -LiteralPath $sp) { (New-Object Media.SoundPlayer $sp).PlaySync() }
+      else { [System.Media.SystemSounds]::Asterisk.Play() }
+    } catch { try { [System.Media.SystemSounds]::Asterisk.Play() } catch {} }
+  }
 }
 
+Log-IfDebug 'notifier exit'
 exit 0
