@@ -20,6 +20,7 @@ internal static class Program
     private const int INPUT_KEYBOARD = 1;
     private const ushort VK_MENU = 0x12;
     private const uint KEYEVENTF_KEYUP = 0x0002;
+    private const uint FLASHW_STOP = 0;
 
     private static int Main(string[] args)
     {
@@ -67,10 +68,12 @@ internal static class Program
         Log($"foreground.before={before}");
 
         var ok = FocusWindow(target);
+        var stopped = StopFlashing(target);
         Thread.Sleep(250);
 
         var after = DescribeForeground();
         Log($"foreground.after={after}");
+        Log($"flash.stop={stopped}");
         Log($"success={ok || GetForegroundWindow() == target}");
 
         return GetForegroundWindow() == target ? 0 : 1;
@@ -160,6 +163,7 @@ internal static class Program
             SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
             SwitchToThisWindow(hwnd, true);
             SetForegroundWindow(hwnd);
+            StopFlashing(hwnd);
 
             return GetForegroundWindow() == hwnd;
         }
@@ -178,6 +182,24 @@ internal static class Program
             new INPUT { type = INPUT_KEYBOARD, u = new INPUTUNION { ki = new KEYBDINPUT { wVk = VK_MENU, dwFlags = KEYEVENTF_KEYUP } } },
         };
         SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
+    }
+
+    private static bool StopFlashing(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero || !IsWindow(hwnd))
+        {
+            return false;
+        }
+
+        var info = new FLASHWINFO
+        {
+            cbSize = (uint)Marshal.SizeOf<FLASHWINFO>(),
+            hwnd = hwnd,
+            dwFlags = FLASHW_STOP,
+            uCount = 0,
+            dwTimeout = 0,
+        };
+        return FlashWindowEx(ref info);
     }
 
     private static List<WindowInfo> EnumerateTopLevelWindows()
@@ -332,6 +354,9 @@ internal static class Program
     [DllImport("user32.dll")]
     private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
+    [DllImport("user32.dll")]
+    private static extern bool FlashWindowEx(ref FLASHWINFO pwfi);
+
     [StructLayout(LayoutKind.Sequential)]
     private struct INPUT
     {
@@ -353,5 +378,15 @@ internal static class Program
         public uint dwFlags;
         public uint time;
         public UIntPtr dwExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FLASHWINFO
+    {
+        public uint cbSize;
+        public IntPtr hwnd;
+        public uint dwFlags;
+        public uint uCount;
+        public uint dwTimeout;
     }
 }

@@ -221,6 +221,16 @@ public static class FocusVSCode {
   public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
   [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
 
+  [StructLayout(LayoutKind.Sequential)]
+  public struct FLASHWINFO {
+    public uint cbSize;
+    public IntPtr hwnd;
+    public uint dwFlags;
+    public uint uCount;
+    public uint dwTimeout;
+  }
+  [DllImport("user32.dll")] public static extern bool FlashWindowEx(ref FLASHWINFO pwfi);
+
   public static string GetTitle(IntPtr hWnd) {
     var sb = new StringBuilder(512);
     int len = GetWindowTextW(hWnd, sb, sb.Capacity);
@@ -288,6 +298,17 @@ function Get-VSCodeWindow([string]$cwd) {
   return [IntPtr]::Zero
 }
 
+function Stop-Flashing([IntPtr]$h) {
+  if ($h -eq [IntPtr]::Zero -or -not [FocusVSCode]::IsWindow($h)) { return }
+  $fw = New-Object FocusVSCode+FLASHWINFO
+  $fw.cbSize = [Runtime.InteropServices.Marshal]::SizeOf([type]'FocusVSCode+FLASHWINFO')
+  $fw.hwnd = $h
+  $fw.dwFlags = 0
+  $fw.uCount = 0
+  $fw.dwTimeout = 0
+  [FocusVSCode]::FlashWindowEx([ref]$fw) | Out-Null
+}
+
 function Focus-Window([IntPtr]$h) {
   if ($h -eq [IntPtr]::Zero -or -not [FocusVSCode]::IsWindow($h)) { return }
   if ([FocusVSCode]::IsIconic($h)) { [FocusVSCode]::ShowWindowAsync($h, 9) | Out-Null }
@@ -298,6 +319,7 @@ function Focus-Window([IntPtr]$h) {
   [FocusVSCode]::ShowWindowAsync($h, 5) | Out-Null
   [FocusVSCode]::BringWindowToTop($h) | Out-Null
   [FocusVSCode]::SetForegroundWindow($h) | Out-Null
+  Stop-Flashing $h
 }
 
 $cwd = Get-QueryValue $Uri 'cwd'
