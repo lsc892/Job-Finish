@@ -8,6 +8,7 @@ param(
   [switch]$Test,
   [switch]$WatchToast,
   [string]$ToastTag = "",
+  [string]$ToastAppId = "",
   [Int64]$WatchHwnd = 0,
   [string]$WatchTitle = "",
   [int]$WatchTimeoutSec = 600
@@ -17,7 +18,8 @@ $extraArgs = $args
 
 # Toast identity. Windows desktop toasts are most reliable with a Start Menu
 # shortcut whose AppUserModelID matches this value.
-$appId = 'JobFinish.Notifier'
+$appId = if ($ToastAppId) { $ToastAppId } else { 'JobFinish.VisualStudioCode' }
+$appDisplayName = 'Visual Studio Code'
 $toastGroup = 'job-finish'
 $protocolName = 'jobfinish-focus'
 
@@ -162,22 +164,23 @@ elseif (-not $Test -and [Console]::IsInputRedirected) {
 }
 
 # ------------------------------------------------------- compose title/text
+$agentName = if ($Event -eq 'codex') { 'Codex' } else { 'Claude Code' }
 $hasPayloadCwd = $payload -and ($payload.PSObject.Properties.Name -contains 'cwd') -and $payload.cwd
 $focusCwd = if ($hasPayloadCwd) { [string]$payload.cwd } else { (Get-Location).Path }
 $cwdIsReliable = [bool]$hasPayloadCwd -or $Event -ne 'codex'
 $project = Split-Path -Leaf $focusCwd
 switch ($Event) {
   'notify' {
-    $title = "Job-Finish - Waiting for input"
+    $title = $agentName
     $text  = if ($payload -and $payload.message) { [string]$payload.message } else { "$project - Waiting for input" }
   }
   'codex' {
-    $title = "Job-Finish - Codex done"
+    $title = $agentName
     $last  = if ($payload) { [string]$payload.'last-assistant-message' } else { '' }
     $text  = if ($last) { $last } else { "$project - Work finished" }
   }
   default {
-    $title = "Job-Finish - Work finished"
+    $title = $agentName
     $text  = "$project - Work finished"
   }
 }
@@ -514,6 +517,7 @@ function Start-ToastFocusWatcher($hwnd, [string]$tag, [string]$titleHint) {
       '-File', "`"$scriptPath`"",
       '-WatchToast',
       '-ToastTag', "`"$tag`"",
+      '-ToastAppId', "`"$appId`"",
       '-WatchHwnd', "$($hwnd.ToInt64())",
       '-WatchTitle', "`"$titleHint`"",
       '-WatchTimeoutSec', '600'
@@ -596,21 +600,173 @@ if ($WatchToast) {
   exit 0
 }
 
-function Install-ToastShortcut {
+function Ensure-ShortcutAppIdType {
+  if ('JFShortcutAppId' -as [type]) { return }
+  Add-Type -ErrorAction Stop @"
+using System;
+using System.Runtime.InteropServices;
+
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct JFPropertyKey {
+  public Guid fmtid;
+  public uint pid;
+  public JFPropertyKey(Guid fmtid, uint pid) {
+    this.fmtid = fmtid;
+    this.pid = pid;
+  }
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public struct JFPropVariant {
+  public ushort vt;
+  public ushort wReserved1;
+  public ushort wReserved2;
+  public ushort wReserved3;
+  public IntPtr p;
+  public IntPtr p2;
+
+  public static JFPropVariant FromString(string value) {
+    var variant = new JFPropVariant();
+    variant.vt = 31; // VT_LPWSTR
+    variant.p = Marshal.StringToCoTaskMemUni(value);
+    return variant;
+  }
+}
+
+[ComImport]
+[Guid("00021401-0000-0000-C000-000000000046")]
+public class JFShellLink { }
+
+[ComImport]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+[Guid("0000010b-0000-0000-C000-000000000046")]
+public interface JFIPersistFile {
+  void GetClassID(out Guid pClassID);
+  [PreserveSig] int IsDirty();
+  void Load([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, uint dwMode);
+  void Save([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, bool fRemember);
+  void SaveCompleted([MarshalAs(UnmanagedType.LPWStr)] string pszFileName);
+  void GetCurFile([MarshalAs(UnmanagedType.LPWStr)] out string ppszFileName);
+}
+
+[ComImport]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+[Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99")]
+public interface JFIPropertyStore {
+  void GetCount(out uint cProps);
+  void GetAt(uint iProp, out JFPropertyKey pkey);
+  void GetValue(ref JFPropertyKey key, out JFPropVariant pv);
+  void SetValue(ref JFPropertyKey key, ref JFPropVariant pv);
+  void Commit();
+}
+
+public static class JFShortcutAppId {
+  [DllImport("ole32.dll")]
+  private static extern int PropVariantClear(ref JFPropVariant pvar);
+
+  [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
+  private static extern int SHGetPropertyStoreFromParsingName(
+    string pszPath,
+    IntPtr pbc,
+    uint flags,
+    ref Guid riid,
+    out JFIPropertyStore propertyStore);
+
+  public static void SetAppId(string shortcutPath, string appId) {
+    JFIPropertyStore propertyStore = null;
+    JFIPersistFile persistFile = null;
+    object shellLink = null;
+    try {
+      shellLink = new JFShellLink();
+      persistFile = (JFIPersistFile)shellLink;
+      persistFile.Load(shortcutPath, 2);
+      propertyStore = (JFIPropertyStore)shellLink;
+    } catch {
+      if (shellLink != null) {
+        Marshal.FinalReleaseComObject(shellLink);
+        shellLink = null;
+      }
+
+      Guid iid = new Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99");
+      int hr = SHGetPropertyStoreFromParsingName(shortcutPath, IntPtr.Zero, 0x00000002, ref iid, out propertyStore);
+      if (hr != 0) {
+        Marshal.ThrowExceptionForHR(hr);
+      }
+    }
+
+    var key = new JFPropertyKey(new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), 5);
+    var value = JFPropVariant.FromString(appId);
+    try {
+      propertyStore.SetValue(ref key, ref value);
+      propertyStore.Commit();
+      if (persistFile != null) {
+        persistFile.Save(shortcutPath, true);
+      }
+    } finally {
+      PropVariantClear(ref value);
+      if (propertyStore != null && !Object.ReferenceEquals(propertyStore, shellLink)) {
+        Marshal.FinalReleaseComObject(propertyStore);
+      }
+      if (shellLink != null) {
+        Marshal.FinalReleaseComObject(shellLink);
+      }
+    }
+  }
+}
+"@
+}
+
+function Resolve-VSCodeIconPath {
+  try {
+    $running = @(Get-Process Code -ErrorAction SilentlyContinue)
+    foreach ($p in $running) {
+      try {
+        $path = [string]$p.MainModule.FileName
+        if ($path -and (Test-Path -LiteralPath $path) -and ([IO.Path]::GetFileName($path) -ieq 'Code.exe')) {
+          return $path
+        }
+      } catch {}
+    }
+  } catch {}
+
+  $candidates = @(
+    (Join-Path $env:LOCALAPPDATA 'Programs\Microsoft VS Code\Code.exe'),
+    (Join-Path $env:ProgramFiles 'Microsoft VS Code\Code.exe'),
+    (Join-Path ${env:ProgramFiles(x86)} 'Microsoft VS Code\Code.exe')
+  )
+  foreach ($candidate in $candidates) {
+    if ($candidate -and (Test-Path -LiteralPath $candidate)) { return $candidate }
+  }
+
+  try {
+    $cmd = Get-Command code.exe -ErrorAction SilentlyContinue
+    if ($cmd -and $cmd.Source -and (Test-Path -LiteralPath $cmd.Source)) { return [string]$cmd.Source }
+  } catch {}
+
+  return ''
+}
+
+function Install-ToastShortcut([string]$shortcutAppId, [string]$displayName) {
   try {
     $programs = [Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)
-    $shortcutPath = Join-Path $programs 'Job-Finish.lnk'
+    $shortcutDir = Join-Path $programs 'Job-Finish'
+    New-Item -ItemType Directory -Force -Path $shortcutDir | Out-Null
+    $shortcutPath = Join-Path $shortcutDir 'Visual Studio Code.lnk'
     $focusExe = Join-Path $PSScriptRoot 'jf-focus-vscode.exe'
     $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
     $target = if (Test-Path -LiteralPath $focusExe) { $focusExe } else { $ps }
+    $iconPath = Resolve-VSCodeIconPath
+    if (-not $iconPath) { $iconPath = $target }
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($shortcutPath)
     $shortcut.TargetPath = $target
     $shortcut.Arguments = ''
     $shortcut.WorkingDirectory = Split-Path -Parent $target
-    $shortcut.IconLocation = "$target,0"
+    $shortcut.IconLocation = "$iconPath,0"
     $shortcut.Save()
-    Log-IfDebug "toast shortcut installed: $shortcutPath -> $target appId=$appId"
+    Ensure-ShortcutAppIdType
+    [JFShortcutAppId]::SetAppId($shortcutPath, $shortcutAppId)
+    Log-IfDebug "toast shortcut installed: $shortcutPath -> $target appId=$shortcutAppId displayName=$displayName icon=$iconPath"
   } catch {
     Log-IfDebug "toast shortcut install failed: $($_.Exception.Message)"
   }
@@ -621,7 +777,7 @@ function Show-Toast($title, $text, $cwd, $hwnd, $targetPid, [bool]$allowOpenFall
     Log-IfDebug 'toast enter'
     Register-FocusProtocol
     Log-IfDebug 'toast after protocol'
-    Install-ToastShortcut
+    Install-ToastShortcut $appId $appDisplayName
     Log-IfDebug 'toast after shortcut'
     $null = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
     Log-IfDebug 'toast manager type loaded'
