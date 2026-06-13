@@ -16,12 +16,35 @@ param(
 $ErrorActionPreference = 'SilentlyContinue'
 $extraArgs = $args
 
-# Toast identity. Windows desktop toasts are most reliable with a Start Menu
-# shortcut whose AppUserModelID matches this value.
-$appId = if ($ToastAppId) { $ToastAppId } else { 'JobFinish.VisualStudioCode' }
+$defaultToastAppId = 'JobFinish.VisualStudioCode'
 $appDisplayName = 'Visual Studio Code'
 $toastGroup = 'job-finish'
 $protocolName = 'jobfinish-focus'
+$toastShortcutFolderName = 'Job-Finish'
+$toastShortcutFileName = 'Visual Studio Code.lnk'
+$maxToastTextLength = 180
+$recentNotificationWindowSec = 10
+$defaultFlashIntervalMs = 500
+$defaultToastWatchTimeoutSec = 600
+
+# Toast identity. Windows desktop toasts are most reliable with a Start Menu
+# shortcut whose AppUserModelID matches this value.
+$appId = if ($ToastAppId) { $ToastAppId } else { $defaultToastAppId }
+
+function Test-HasProperty($value, [string]$name) {
+  return $null -ne $value -and @($value.PSObject.Properties.Name) -contains $name
+}
+
+function Get-ObjectProperty($value, [string]$name, $default = $null) {
+  if (Test-HasProperty $value $name) { return $value.$name }
+  return $default
+}
+
+function Limit-ToastText([string]$value) {
+  if ([string]::IsNullOrWhiteSpace($value)) { return '' }
+  if ($value.Length -le $maxToastTextLength) { return $value }
+  return $value.Substring(0, $maxToastTextLength - 3) + '...'
+}
 
 # ---------------------------------------------------------------- load config
 $cfgPath = Join-Path $PSScriptRoot 'job-finish.config.json'
@@ -37,7 +60,7 @@ if ($null -eq $cfg) {
   }
 }
 $modes = @($cfg.modes)
-$clearToastOnFocus = if ($cfg.PSObject.Properties.Name -contains 'clearToastOnFocus') { [bool]$cfg.clearToastOnFocus } else { $true }
+$clearToastOnFocus = if (Test-HasProperty $cfg 'clearToastOnFocus') { [bool]$cfg.clearToastOnFocus } else { $true }
 
 function Log-IfDebug([string]$message) {
   if (-not $cfg.debug) { return }
@@ -197,8 +220,7 @@ function Format-ToastSummary([string]$value) {
   if ([string]::IsNullOrWhiteSpace($value)) { return '' }
   $clean = $value -replace '\s+', ' '
   $clean = $clean.Trim()
-  if ($clean.Length -gt 180) { return $clean.Substring(0, 177) + '...' }
-  return $clean
+  return Limit-ToastText $clean
 }
 
 function Get-ContentText($content) {
@@ -213,10 +235,9 @@ function Get-ContentText($content) {
       continue
     }
 
-    $names = @($item.PSObject.Properties.Name)
-    if ($names -contains 'text' -and -not [string]::IsNullOrWhiteSpace([string]$item.text)) {
+    if ((Test-HasProperty $item 'text') -and -not [string]::IsNullOrWhiteSpace([string]$item.text)) {
       $parts.Add([string]$item.text)
-    } elseif ($names -contains 'content') {
+    } elseif (Test-HasProperty $item 'content') {
       $nested = Get-ContentText $item.content
       if (-not [string]::IsNullOrWhiteSpace($nested)) { $parts.Add($nested) }
     }
@@ -226,8 +247,8 @@ function Get-ContentText($content) {
 }
 
 function Get-ClaudeTranscriptSummary($payload) {
-  if (-not $payload -or -not ($payload.PSObject.Properties.Name -contains 'transcript_path')) { return '' }
-  $path = [string]$payload.transcript_path
+  if (-not (Test-HasProperty $payload 'transcript_path')) { return '' }
+  $path = [string](Get-ObjectProperty $payload 'transcript_path' '')
   if ([string]::IsNullOrWhiteSpace($path) -or -not (Test-Path -LiteralPath $path)) { return '' }
 
   try {
@@ -238,18 +259,18 @@ function Get-ClaudeTranscriptSummary($payload) {
       try { $entry = $line | ConvertFrom-Json } catch { continue }
 
       $role = ''
-      if ($entry.PSObject.Properties.Name -contains 'role') { $role = [string]$entry.role }
-      if (-not $role -and ($entry.PSObject.Properties.Name -contains 'message') -and $entry.message) {
-        if ($entry.message.PSObject.Properties.Name -contains 'role') { $role = [string]$entry.message.role }
+      if (Test-HasProperty $entry 'role') { $role = [string]$entry.role }
+      if (-not $role -and (Test-HasProperty $entry 'message') -and $entry.message) {
+        if (Test-HasProperty $entry.message 'role') { $role = [string]$entry.message.role }
       }
-      $type = if ($entry.PSObject.Properties.Name -contains 'type') { [string]$entry.type } else { '' }
+      $type = if (Test-HasProperty $entry 'type') { [string]$entry.type } else { '' }
       if ($role -ne 'assistant' -and $type -ne 'assistant') { continue }
 
       $content = ''
-      if (($entry.PSObject.Properties.Name -contains 'message') -and $entry.message -and ($entry.message.PSObject.Properties.Name -contains 'content')) {
+      if ((Test-HasProperty $entry 'message') -and $entry.message -and (Test-HasProperty $entry.message 'content')) {
         $content = Get-ContentText $entry.message.content
       }
-      if (-not $content -and ($entry.PSObject.Properties.Name -contains 'content')) {
+      if (-not $content -and (Test-HasProperty $entry 'content')) {
         $content = Get-ContentText $entry.content
       }
 
@@ -262,29 +283,40 @@ function Get-ClaudeTranscriptSummary($payload) {
 }
 
 # ------------------------------------------------------- compose title/text
-$agentName = if ($Event -eq 'codex') { 'Codex' } else { 'Claude Code' }
-$hasPayloadCwd = $payload -and ($payload.PSObject.Properties.Name -contains 'cwd') -and $payload.cwd
+function Get-AgentName([string]$eventName) {
+  if ($eventName -eq 'codex') { return 'Codex' }
+  return 'Claude Code'
+}
+
+function Get-EventToastText([string]$eventName, $eventPayload, [string]$projectName) {
+  switch ($eventName) {
+    'notify' {
+      $message = Get-ObjectProperty $eventPayload 'message' ''
+      $summary = Format-ToastSummary ([string]$message)
+      if ($summary) { return $summary }
+      return "$projectName waiting for input"
+    }
+    'codex' {
+      $last = Get-ObjectProperty $eventPayload 'last-assistant-message' ''
+      $summary = Format-ToastSummary ([string]$last)
+      if ($summary) { return $summary }
+      return "$projectName work finished"
+    }
+    default {
+      $summary = Get-ClaudeTranscriptSummary $eventPayload
+      if ($summary) { return $summary }
+      return "$projectName work finished"
+    }
+  }
+}
+
+$agentName = Get-AgentName $Event
+$hasPayloadCwd = (Test-HasProperty $payload 'cwd') -and $payload.cwd
 $focusCwd = if ($hasPayloadCwd) { [string]$payload.cwd } else { (Get-Location).Path }
 $cwdIsReliable = [bool]$hasPayloadCwd -or $Event -ne 'codex'
 $project = Split-Path -Leaf $focusCwd
-switch ($Event) {
-  'notify' {
-    $title = $agentName
-    $text  = if ($payload -and $payload.message) { Format-ToastSummary ([string]$payload.message) } else { "$project waiting for input" }
-  }
-  'codex' {
-    $title = $agentName
-    $last  = if ($payload) { [string]$payload.'last-assistant-message' } else { '' }
-    $summary = Format-ToastSummary $last
-    $text  = if ($summary) { $summary } else { "$project work finished" }
-  }
-  default {
-    $title = $agentName
-    $summary = Get-ClaudeTranscriptSummary $payload
-    $text  = if ($summary) { $summary } else { "$project work finished" }
-  }
-}
-if ($text.Length -gt 180) { $text = $text.Substring(0, 177) + '...' }
+$title = $agentName
+$text = Limit-ToastText (Get-EventToastText $Event $payload $project)
 
 Log-IfDebug "notifier start event=$Event modes=$($modes -join ',') flashTimeout=$($cfg.flashTimeout) sound=$($cfg.sound.enabled) suppressWhenFocused=$($cfg.suppressWhenFocused) project=$project cwdReliable=$cwdIsReliable"
 
@@ -399,7 +431,7 @@ if ($toastTarget -ne [IntPtr]::Zero) {
 
 Log-IfDebug "window target host=$($hostHwnd.ToInt64()) vscode=$($vscodeHwnd.ToInt64()) focus=$($focusTarget.ToInt64()) focusPid=$focusTargetPid toast=$($toastTarget.ToInt64()) toastPid=$toastTargetPid"
 
-if (-not $Test -and $Event -eq 'codex' -and -not $cwdIsReliable -and (Test-RecentNotification 10)) {
+if (-not $Test -and $Event -eq 'codex' -and -not $cwdIsReliable -and (Test-RecentNotification $recentNotificationWindowSec)) {
   Log-IfDebug 'suppressing unreliable Codex notification because a recent VS Code toast was already shown'
   exit 0
 }
@@ -625,7 +657,7 @@ function Start-ToastFocusWatcher($hwnd, [string]$tag, [string]$titleHint) {
       '-ToastAppId', "`"$appId`"",
       '-WatchHwnd', "$($hwnd.ToInt64())",
       '-WatchTitle', "`"$titleHint`"",
-      '-WatchTimeoutSec', '600'
+      '-WatchTimeoutSec', "$defaultToastWatchTimeoutSec"
     )
     Start-Process -FilePath $ps -ArgumentList $argList -WindowStyle Hidden | Out-Null
     Log-IfDebug "toast focus watcher started tag=$tag hwnd=$($hwnd.ToInt64()) title=$titleHint"
@@ -854,9 +886,9 @@ function Resolve-VSCodeIconPath {
 function Install-ToastShortcut([string]$shortcutAppId, [string]$displayName) {
   try {
     $programs = [Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)
-    $shortcutDir = Join-Path $programs 'Job-Finish'
+    $shortcutDir = Join-Path $programs $toastShortcutFolderName
     New-Item -ItemType Directory -Force -Path $shortcutDir | Out-Null
-    $shortcutPath = Join-Path $shortcutDir 'Visual Studio Code.lnk'
+    $shortcutPath = Join-Path $shortcutDir $toastShortcutFileName
     $focusExe = Join-Path $PSScriptRoot 'jf-focus-vscode.exe'
     $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
     $target = if (Test-Path -LiteralPath $focusExe) { $focusExe } else { $ps }
@@ -877,6 +909,31 @@ function Install-ToastShortcut([string]$shortcutAppId, [string]$displayName) {
   }
 }
 
+function New-FocusLaunchUri([string]$cwd, $hwnd, $targetPid, [bool]$allowOpenFallback) {
+  $query = New-Object 'System.Collections.Generic.List[string]'
+  $query.Add("cwd=$([Uri]::EscapeDataString([string]$cwd))")
+
+  if ($hwnd -and $hwnd -ne [IntPtr]::Zero) {
+    $query.Add("hwnd=$($hwnd.ToInt64())")
+  }
+  if ($targetPid -and [uint32]$targetPid -gt 0) {
+    $query.Add("pid=$targetPid")
+  }
+  if ($project) {
+    $query.Add("title=$([Uri]::EscapeDataString([string]$project))")
+  }
+  if ($allowOpenFallback) {
+    $query.Add('open=1')
+    $query.Add('newWindow=1')
+    $query.Add('waitMs=6000')
+  }
+  if ($cfg.debug) {
+    $query.Add('debug=1')
+  }
+
+  return "${protocolName}://open?$($query -join '&')"
+}
+
 function Show-Toast($title, $text, $cwd, $hwnd, $targetPid, [bool]$allowOpenFallback) {
   try {
     Log-IfDebug 'toast enter'
@@ -888,19 +945,7 @@ function Show-Toast($title, $text, $cwd, $hwnd, $targetPid, [bool]$allowOpenFall
     Log-IfDebug 'toast manager type loaded'
     $null = [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom, ContentType = WindowsRuntime]
     Log-IfDebug 'toast xml type loaded'
-    $encodedCwd = [Uri]::EscapeDataString([string]$cwd)
-    $query = New-Object 'System.Collections.Generic.List[string]'
-    $query.Add("cwd=$encodedCwd")
-    if ($hwnd -and $hwnd -ne [IntPtr]::Zero) { $query.Add("hwnd=$($hwnd.ToInt64())") }
-    if ($targetPid -and [uint32]$targetPid -gt 0) { $query.Add("pid=$targetPid") }
-    if ($project) { $query.Add("title=$([Uri]::EscapeDataString([string]$project))") }
-    if ($allowOpenFallback) {
-      $query.Add('open=1')
-      $query.Add('newWindow=1')
-      $query.Add('waitMs=6000')
-    }
-    if ($cfg.debug) { $query.Add('debug=1') }
-    $launch = "${protocolName}://open?$($query -join '&')"
+    $launch = New-FocusLaunchUri $cwd $hwnd $targetPid $allowOpenFallback
     $eLaunch = [Security.SecurityElement]::Escape($launch)
     $eTitle = [Security.SecurityElement]::Escape([string]$title)
     $eText  = [Security.SecurityElement]::Escape([string]$text)
@@ -957,7 +1002,7 @@ if ($modes -contains 'os') {
 
 # ------------------------------------------------------------------- flash
 if (($modes -contains 'flash') -and $focusTarget -ne [IntPtr]::Zero) {
-  $interval = 500
+  $interval = $defaultFlashIntervalMs
   $count = if ($timeoutSec -gt 0) { [int]($timeoutSec * 1000 / $interval) } else { 0 }
   $fw = New-Object JF+FLASHWINFO
   $fw.cbSize = [Runtime.InteropServices.Marshal]::SizeOf([type]'JF+FLASHWINFO')

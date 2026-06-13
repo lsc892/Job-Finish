@@ -17,6 +17,8 @@ import { installCodex, uninstallCodex } from "./installers/codex.js";
 import { finish, runWizard, type WizardResult } from "./wizard.js";
 
 const PKG = "job-finish";
+const CLAUDE_RESET_SCOPES = ["global", "project"] as const;
+const INSTALL_LOOKUP_SCOPES = ["project", "global"] as const;
 
 /**
  * Strip job-finish hooks from every Claude scope except the one we are about to
@@ -27,7 +29,7 @@ const PKG = "job-finish";
  */
 function resetClaudeResidue(keepScope: "global" | "project" | null, cwd: string): string[] {
   const cleaned: string[] = [];
-  for (const scope of ["global", "project"] as const) {
+  for (const scope of CLAUDE_RESET_SCOPES) {
     if (scope === keepScope) continue;
     const sp = claudeSettingsPath(scope, cwd);
     if (existsSync(sp) && claudeHasJobFinish(sp)) {
@@ -41,7 +43,16 @@ function resetClaudeResidue(keepScope: "global" | "project" | null, cwd: string)
 /** Run the generated notifier once (used by doctor/preview). */
 function runNotifier(scriptPath: string, platform: Platform, test: boolean): Promise<number> {
   void platform;
-  const args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath, "-Event", "stop", ...(test ? ["-Test"] : [])];
+  const args = [
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    scriptPath,
+    "-Event",
+    "stop",
+    ...(test ? ["-Test"] : []),
+  ];
   return new Promise((resolve) => {
     const child = spawn("powershell", args, { stdio: "ignore" });
     child.on("error", () => resolve(1));
@@ -123,7 +134,7 @@ async function cmdDoctor(): Promise<void> {
   }
 
   // Find an installed notifier (project first, then global) and fire a test.
-  for (const scope of ["project", "global"] as const) {
+  for (const scope of INSTALL_LOOKUP_SCOPES) {
     const dir = resolveInstallDir(scope, cwd);
     const script = notifierScriptPath(dir, platform);
     if (existsSync(script)) {
@@ -140,7 +151,7 @@ async function cmdDoctor(): Promise<void> {
 async function cmdPreview(): Promise<void> {
   const platform = currentPlatform();
   const cwd = process.cwd();
-  for (const scope of ["project", "global"] as const) {
+  for (const scope of INSTALL_LOOKUP_SCOPES) {
     const script = notifierScriptPath(resolveInstallDir(scope, cwd), platform);
     if (existsSync(script)) {
       // No -Test: respects focus suppression so you see real behavior.
@@ -154,7 +165,7 @@ async function cmdPreview(): Promise<void> {
 
 function cmdUninstall(): void {
   const cwd = process.cwd();
-  for (const scope of ["project", "global"] as const) {
+  for (const scope of INSTALL_LOOKUP_SCOPES) {
     const sp = claudeSettingsPath(scope, cwd);
     if (existsSync(sp)) {
       const r = uninstallClaude(sp);
