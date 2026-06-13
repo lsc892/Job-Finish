@@ -128,7 +128,9 @@ elseif (-not $Test -and [Console]::IsInputRedirected) {
 }
 
 # ------------------------------------------------------- compose title/text
-$focusCwd = if ($payload -and $payload.cwd) { [string]$payload.cwd } else { (Get-Location).Path }
+$hasPayloadCwd = $payload -and ($payload.PSObject.Properties.Name -contains 'cwd') -and $payload.cwd
+$focusCwd = if ($hasPayloadCwd) { [string]$payload.cwd } else { (Get-Location).Path }
+$cwdIsReliable = [bool]$hasPayloadCwd -or $Event -ne 'codex'
 $project = Split-Path -Leaf $focusCwd
 switch ($Event) {
   'notify' {
@@ -147,7 +149,7 @@ switch ($Event) {
 }
 if ($text.Length -gt 180) { $text = $text.Substring(0, 177) + '...' }
 
-Log-IfDebug "notifier start event=$Event modes=$($modes -join ',') flashTimeout=$($cfg.flashTimeout) sound=$($cfg.sound.enabled) suppressWhenFocused=$($cfg.suppressWhenFocused) project=$project"
+Log-IfDebug "notifier start event=$Event modes=$($modes -join ',') flashTimeout=$($cfg.flashTimeout) sound=$($cfg.sound.enabled) suppressWhenFocused=$($cfg.suppressWhenFocused) project=$project cwdReliable=$cwdIsReliable"
 
 # ------------------------------------------------------- source window lookup
 function Get-ProcessTree {
@@ -201,15 +203,48 @@ function Get-VSCodeWindow {
   return [IntPtr]::Zero
 }
 
+function Get-WindowProcessName([IntPtr]$hwnd) {
+  if ($hwnd -eq [IntPtr]::Zero) { return '' }
+  $pidValue = [uint32]0
+  [JF]::GetWindowThreadProcessId($hwnd, [ref]$pidValue) | Out-Null
+  if ($pidValue -le 0) { return '' }
+  try {
+    $p = Get-Process -Id ([int]$pidValue) -ErrorAction SilentlyContinue
+    if ($p) { return [string]$p.ProcessName }
+  } catch {}
+  return ''
+}
+
+function Test-WindowLooksLikeProject([IntPtr]$hwnd) {
+  if ($hwnd -eq [IntPtr]::Zero) { return $false }
+  $title = [JF]::GetTitle($hwnd)
+  if ([string]::IsNullOrWhiteSpace($title) -or [string]::IsNullOrWhiteSpace([string]$project)) { return $false }
+  return $title.IndexOf([string]$project, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+}
+
 $hostHwnd = Get-HostWindow
 $vscodeHwnd = Get-VSCodeWindow
+if ($cwdIsReliable -and $vscodeHwnd -ne [IntPtr]::Zero -and (Get-WindowProcessName $vscodeHwnd) -eq 'Code' -and -not (Test-WindowLooksLikeProject $vscodeHwnd)) {
+  Log-IfDebug "discarding vscode target hwnd=$($vscodeHwnd.ToInt64()) because title does not match project=$project"
+  $vscodeHwnd = [IntPtr]::Zero
+}
+if ($cwdIsReliable -and $vscodeHwnd -eq [IntPtr]::Zero -and $hostHwnd -ne [IntPtr]::Zero -and (Get-WindowProcessName $hostHwnd) -eq 'Code' -and -not (Test-WindowLooksLikeProject $hostHwnd)) {
+  Log-IfDebug "discarding host fallback hwnd=$($hostHwnd.ToInt64()) because it is a different VS Code project"
+  $hostHwnd = [IntPtr]::Zero
+}
 $hasVSCodeTarget = $vscodeHwnd -ne [IntPtr]::Zero
 $focusTarget = if ($vscodeHwnd -ne [IntPtr]::Zero) { $vscodeHwnd } else { $hostHwnd }
 $focusTargetPid = [uint32]0
 if ($focusTarget -ne [IntPtr]::Zero) {
   [JF]::GetWindowThreadProcessId($focusTarget, [ref]$focusTargetPid) | Out-Null
 }
-$toastTarget = if ($hasVSCodeTarget) { $vscodeHwnd } else { [IntPtr]::Zero }
+$toastTarget = if ($hasVSCodeTarget) {
+  $vscodeHwnd
+} elseif (-not $cwdIsReliable -and $hostHwnd -ne [IntPtr]::Zero -and (Get-WindowProcessName $hostHwnd) -eq 'Code') {
+  $hostHwnd
+} else {
+  [IntPtr]::Zero
+}
 $toastTargetPid = [uint32]0
 if ($toastTarget -ne [IntPtr]::Zero) {
   [JF]::GetWindowThreadProcessId($toastTarget, [ref]$toastTargetPid) | Out-Null
@@ -217,8 +252,29 @@ if ($toastTarget -ne [IntPtr]::Zero) {
 
 Log-IfDebug "window target host=$($hostHwnd.ToInt64()) vscode=$($vscodeHwnd.ToInt64()) focus=$($focusTarget.ToInt64()) focusPid=$focusTargetPid toast=$($toastTarget.ToInt64()) toastPid=$toastTargetPid"
 
+function Should-SuppressForFocusedTarget([IntPtr]$target) {
+  if ($target -eq [IntPtr]::Zero) { return $false }
+  $foreground = [JF]::GetForegroundWindow()
+  if ($foreground -ne $target) { return $false }
+
+  $processName = Get-WindowProcessName $target
+  if (-not $cwdIsReliable) {
+    Log-IfDebug "suppress check foreground=$($foreground.ToInt64()) process=$processName exactTarget=true cwdReliable=false"
+    return $true
+  }
+
+  if ($processName -eq 'Code') {
+    $matchesProject = Test-WindowLooksLikeProject $target
+    Log-IfDebug "suppress check foreground=$($foreground.ToInt64()) process=$processName titleMatchesProject=$matchesProject"
+    return $matchesProject
+  }
+
+  Log-IfDebug "suppress check foreground=$($foreground.ToInt64()) process=$processName exactTarget=true"
+  return $true
+}
+
 if (-not $Test -and $cfg.suppressWhenFocused -and $focusTarget -ne [IntPtr]::Zero) {
-  if ([JF]::GetForegroundWindow() -eq $focusTarget) { exit 0 }
+  if (Should-SuppressForFocusedTarget $focusTarget) { exit 0 }
 }
 
 # ---------------------------------------------------------------- focus protocol
@@ -516,7 +572,7 @@ function Install-ToastShortcut {
   }
 }
 
-function Show-Toast($title, $text, $cwd, $hwnd, $targetPid) {
+function Show-Toast($title, $text, $cwd, $hwnd, $targetPid, [bool]$allowOpenFallback) {
   try {
     Log-IfDebug 'toast enter'
     Register-FocusProtocol
@@ -533,9 +589,11 @@ function Show-Toast($title, $text, $cwd, $hwnd, $targetPid) {
     if ($hwnd -and $hwnd -ne [IntPtr]::Zero) { $query.Add("hwnd=$($hwnd.ToInt64())") }
     if ($targetPid -and [uint32]$targetPid -gt 0) { $query.Add("pid=$targetPid") }
     if ($project) { $query.Add("title=$([Uri]::EscapeDataString([string]$project))") }
-    $query.Add('open=1')
-    $query.Add('newWindow=1')
-    $query.Add('waitMs=6000')
+    if ($allowOpenFallback) {
+      $query.Add('open=1')
+      $query.Add('newWindow=1')
+      $query.Add('waitMs=6000')
+    }
     if ($cfg.debug) { $query.Add('debug=1') }
     $launch = "${protocolName}://open?$($query -join '&')"
     $eLaunch = [Security.SecurityElement]::Escape($launch)
@@ -584,7 +642,7 @@ function Show-Balloon($title, $text) {
 
 if ($modes -contains 'os') {
   Log-IfDebug 'showing toast notification'
-  $toastShown = Show-Toast $title $text $focusCwd $toastTarget $toastTargetPid
+  $toastShown = Show-Toast $title $text $focusCwd $toastTarget $toastTargetPid $cwdIsReliable
   if (-not $toastShown) {
     Show-Balloon $title $text
   } else {
