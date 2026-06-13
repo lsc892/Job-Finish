@@ -76,10 +76,6 @@ If you enable debug logging during install, Job-Finish writes:
 
 These logs are only written when debug logging is enabled, so normal releases remain quiet.
 
-## Development Notes
-
-Detailed developer documentation is available in `docs/development.md`.
-
 ## Uninstall
 
 Remove hooks:

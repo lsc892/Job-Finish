@@ -26,6 +26,8 @@ $maxToastTextLength = 180
 $recentNotificationWindowSec = 10
 $defaultFlashIntervalMs = 500
 $defaultToastWatchTimeoutSec = 600
+$toastRetryDelayMs = 300
+$balloonFallbackWaitSec = 12
 
 # Toast identity. Windows desktop toasts are most reliable with a Start Menu
 # shortcut whose AppUserModelID matches this value.
@@ -93,7 +95,7 @@ function Save-RecentNotification {
     $path = Get-RecentNotificationPath
     $recent = [pscustomobject]@{
       appId = $appId
-      event = $Event
+      event = $effectiveEvent
       project = $project
       whenUtc = [DateTime]::UtcNow.ToString('o')
     }
@@ -207,9 +209,22 @@ public static class JF {
 }
 "@
 
+function Test-CodexEnvironment {
+  if ($env:CODEX_THREAD_ID) { return $true }
+  if ($env:CODEX_INTERNAL_ORIGINATOR_OVERRIDE -like 'codex*') { return $true }
+  return $false
+}
+
+function Get-EffectiveEvent([string]$eventName) {
+  if ($eventName -eq 'stop' -and (Test-CodexEnvironment)) { return 'codex' }
+  return $eventName
+}
+
+$effectiveEvent = Get-EffectiveEvent $Event
+
 # ------------------------------------------------------- read event payload
 $payload = $null
-if ($Event -eq 'codex') {
+if ($effectiveEvent -eq 'codex') {
   if ($extraArgs.Count -gt 0) { try { $payload = $extraArgs[-1] | ConvertFrom-Json } catch {} }
 }
 elseif (-not $Test -and [Console]::IsInputRedirected) {
@@ -310,15 +325,15 @@ function Get-EventToastText([string]$eventName, $eventPayload, [string]$projectN
   }
 }
 
-$agentName = Get-AgentName $Event
+$agentName = Get-AgentName $effectiveEvent
 $hasPayloadCwd = (Test-HasProperty $payload 'cwd') -and $payload.cwd
 $focusCwd = if ($hasPayloadCwd) { [string]$payload.cwd } else { (Get-Location).Path }
-$cwdIsReliable = [bool]$hasPayloadCwd -or $Event -ne 'codex'
+$cwdIsReliable = [bool]$hasPayloadCwd -or $effectiveEvent -ne 'codex'
 $project = Split-Path -Leaf $focusCwd
 $title = $agentName
-$text = Limit-ToastText (Get-EventToastText $Event $payload $project)
+$text = Limit-ToastText (Get-EventToastText $effectiveEvent $payload $project)
 
-Log-IfDebug "notifier start event=$Event modes=$($modes -join ',') flashTimeout=$($cfg.flashTimeout) sound=$($cfg.sound.enabled) suppressWhenFocused=$($cfg.suppressWhenFocused) project=$project cwdReliable=$cwdIsReliable"
+Log-IfDebug "notifier start event=$effectiveEvent rawEvent=$Event modes=$($modes -join ',') flashTimeout=$($cfg.flashTimeout) sound=$($cfg.sound.enabled) suppressWhenFocused=$($cfg.suppressWhenFocused) project=$project cwdReliable=$cwdIsReliable"
 
 # ------------------------------------------------------- source window lookup
 function Get-ProcessTree {
@@ -431,7 +446,7 @@ if ($toastTarget -ne [IntPtr]::Zero) {
 
 Log-IfDebug "window target host=$($hostHwnd.ToInt64()) vscode=$($vscodeHwnd.ToInt64()) focus=$($focusTarget.ToInt64()) focusPid=$focusTargetPid toast=$($toastTarget.ToInt64()) toastPid=$toastTargetPid"
 
-if (-not $Test -and $Event -eq 'codex' -and -not $cwdIsReliable -and (Test-RecentNotification $recentNotificationWindowSec)) {
+if (-not $Test -and $effectiveEvent -eq 'codex' -and -not $cwdIsReliable -and (Test-RecentNotification $recentNotificationWindowSec)) {
   Log-IfDebug 'suppressing unreliable Codex notification because a recent VS Code toast was already shown'
   exit 0
 }
@@ -972,29 +987,59 @@ function Show-Toast($title, $text, $cwd, $hwnd, $targetPid, [bool]$allowOpenFall
     return $true
   } catch {
     Log-IfDebug "toast failed: $($_.Exception.Message)"
+    if (-not $script:toastRetryInProgress) {
+      try {
+        $script:toastRetryInProgress = $true
+        Start-Sleep -Milliseconds $toastRetryDelayMs
+        Log-IfDebug 'toast retrying once after failure'
+        return Show-Toast $title $text $cwd $hwnd $targetPid $allowOpenFallback
+      } finally {
+        $script:toastRetryInProgress = $false
+      }
+    }
     return $false
   }
 }
 
-function Show-Balloon($title, $text) {
+function Show-Balloon($title, $text, [string]$launch) {
   try {
     Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    $state = @{ clicked = $false }
+    $activate = {
+      try {
+        if ($launch) { Start-Process $launch | Out-Null }
+      } catch {}
+      $state.clicked = $true
+    }
+
     $ni = New-Object System.Windows.Forms.NotifyIcon
     $ni.Icon = [System.Drawing.SystemIcons]::Information
     $ni.Visible = $true
     $ni.BalloonTipTitle = $title
     $ni.BalloonTipText = $text
+    $ni.add_BalloonTipClicked($activate)
+    $ni.add_Click($activate)
     $ni.ShowBalloonTip(5000)
-    Start-Sleep -Milliseconds 200
+
+    $deadline = (Get-Date).AddSeconds($balloonFallbackWaitSec)
+    while (-not $state.clicked -and (Get-Date) -lt $deadline) {
+      [System.Windows.Forms.Application]::DoEvents()
+      Start-Sleep -Milliseconds 100
+    }
+
     $ni.Dispose()
-  } catch {}
+  } catch {
+    Log-IfDebug "balloon fallback failed: $($_.Exception.Message)"
+  }
 }
 
 if ($modes -contains 'os') {
   Log-IfDebug 'showing toast notification'
   $toastShown = Show-Toast $title $text $focusCwd $toastTarget $toastTargetPid $cwdIsReliable
   if (-not $toastShown) {
-    Show-Balloon $title $text
+    $fallbackLaunch = New-FocusLaunchUri $focusCwd $toastTarget $toastTargetPid $cwdIsReliable
+    Show-Balloon $title $text $fallbackLaunch
   } else {
     Start-ToastFocusWatcher $toastTarget (Get-ToastTag $toastTarget) $project
   }
