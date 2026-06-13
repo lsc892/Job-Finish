@@ -58,6 +58,7 @@ switch ($cfg.flashTimeout) {
 Add-Type -ErrorAction SilentlyContinue @"
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -67,7 +68,7 @@ public static class JF {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern int GetWindowTextW(IntPtr hWnd, StringBuilder text, int maxCount);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr hWnd, StringBuilder text, int maxCount);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
   [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
   [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
@@ -114,6 +115,39 @@ public static class JF {
 
     if (best != IntPtr.Zero) return best;
     return requireTitleHint && hint.Length > 0 ? IntPtr.Zero : first;
+  }
+
+  public static IntPtr FindCodeWindow(string titleHint, bool allowSingleFallback) {
+    string hint = (titleHint ?? "").ToLowerInvariant();
+    IntPtr first = IntPtr.Zero;
+    IntPtr best = IntPtr.Zero;
+    int count = 0;
+
+    EnumWindows((hWnd, lParam) => {
+      if (!IsWindowVisible(hWnd)) return true;
+      uint pid;
+      GetWindowThreadProcessId(hWnd, out pid);
+
+      try {
+        var process = Process.GetProcessById((int)pid);
+        if (!String.Equals(process.ProcessName, "Code", StringComparison.OrdinalIgnoreCase)) return true;
+      } catch {
+        return true;
+      }
+
+      string title = GetTitle(hWnd);
+      if (String.IsNullOrWhiteSpace(title)) return true;
+
+      count++;
+      if (first == IntPtr.Zero) first = hWnd;
+      if (best == IntPtr.Zero && hint.Length > 0 && title.ToLowerInvariant().Contains(hint)) {
+        best = hWnd;
+      }
+      return true;
+    }, IntPtr.Zero);
+
+    if (best != IntPtr.Zero) return best;
+    return allowSingleFallback && count == 1 ? first : IntPtr.Zero;
   }
 }
 "@
@@ -166,12 +200,18 @@ function Get-ProcessTree {
 
 function Get-HostWindow {
   $tree = Get-ProcessTree
-  $fromTree = [JF]::FindWindowForPids($tree, [string]$project, $false)
+  $fromTree = if ($cwdIsReliable) { [JF]::FindWindowForPids($tree, [string]$project, $true) } else { [IntPtr]::Zero }
   if ($fromTree -ne [IntPtr]::Zero) { return $fromTree }
 
   foreach ($id in $tree) {
     $p = Get-Process -Id $id -ErrorAction SilentlyContinue
-    if ($p -and $p.MainWindowHandle -ne [IntPtr]::Zero) { return $p.MainWindowHandle }
+    if (-not $p) { continue }
+    if ($p.ProcessName -eq 'Code') {
+      $singleCodeWindow = [JF]::FindCodeWindow('', $true)
+      if ($singleCodeWindow -ne [IntPtr]::Zero) { return $singleCodeWindow }
+      continue
+    }
+    if ($p.MainWindowHandle -ne [IntPtr]::Zero) { return $p.MainWindowHandle }
   }
 
   $con = [JF]::GetConsoleWindow()
@@ -180,6 +220,15 @@ function Get-HostWindow {
 }
 
 function Get-VSCodeWindow {
+  if ($cwdIsReliable) {
+    $fromTitle = [JF]::FindCodeWindow([string]$project, $true)
+    if ($fromTitle -ne [IntPtr]::Zero) { return $fromTitle }
+  } else {
+    $singleCodeWindow = [JF]::FindCodeWindow('', $true)
+    if ($singleCodeWindow -ne [IntPtr]::Zero) { return $singleCodeWindow }
+    return [IntPtr]::Zero
+  }
+
   if ($env:VSCODE_PID -match '^\d+$') {
     $p = Get-Process -Id ([int]$env:VSCODE_PID) -ErrorAction SilentlyContinue
     if ($p -and $p.ProcessName -eq 'Code') {
@@ -191,15 +240,10 @@ function Get-VSCodeWindow {
   $code = @(Get-Process Code -ErrorAction SilentlyContinue)
   if ($code.Count -eq 0) { return [IntPtr]::Zero }
 
-  $main = @($code | Where-Object { $_.MainWindowHandle -ne 0 })
-  $mainMatch = $main | Where-Object { [string]$_.MainWindowTitle -and [string]$project -and $_.MainWindowTitle.IndexOf([string]$project, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 } | Select-Object -First 1
-  if ($mainMatch) { return [IntPtr]$mainMatch.MainWindowHandle }
-
   $ids = @($code | ForEach-Object { [int]$_.Id })
   $titleMatch = [JF]::FindWindowForPids($ids, [string]$project, $true)
   if ($titleMatch -ne [IntPtr]::Zero) { return $titleMatch }
 
-  if ($main.Count -eq 1) { return [IntPtr]$main[0].MainWindowHandle }
   return [IntPtr]::Zero
 }
 
@@ -298,7 +342,7 @@ public static class FocusVSCode {
   [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
-  [DllImport("user32.dll")] public static extern int GetWindowTextW(IntPtr hWnd, StringBuilder text, int maxCount);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr hWnd, StringBuilder text, int maxCount);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
   public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
   [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
