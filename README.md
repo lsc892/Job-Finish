@@ -31,6 +31,7 @@ npx job-finish uninstall
 | --- | --- |
 | Windows toast | Shows a native Windows notification. |
 | Click to focus | Toast clicks open the existing VS Code window through `jobfinish-focus://`. |
+| Open missing window | If the clicked toast no longer has a valid VS Code target, the helper opens the project with `code -n`. |
 | Taskbar flash | Flashes the target window until it is focused or the configured timeout ends. |
 | Sound | Plays the default Windows sound when enabled. When toast mode is also enabled, toast sound is used as the primary notification sound. |
 
@@ -44,7 +45,7 @@ Claude Code Stop / AskUserQuestion, or Codex notify
   -> Windows toast / taskbar flash / sound
   -> toast click runs jobfinish-focus://open
   -> HKCU protocol handler runs jf-focus-vscode.exe
-  -> existing VS Code window is brought to foreground
+  -> existing VS Code window is brought to foreground, or a new project window is opened
 ```
 
 ## Installed Files

@@ -1,5 +1,50 @@
 # Debug Log: Windows Toast Click Focus
 
+## 2026-06-13 추가 일지: 다중 VS Code 창에서 알림 클릭 대상 오인 수정
+
+### 문제
+
+- Windows toast 알림 자체는 표시되지만, 사용자가 다른 VS Code 창을 보고 있을 때 알림을 클릭하면 `Job-Finish` 창이 아니라 방금 보고 있던 다른 VS Code 창으로 포커스가 이동했다.
+- 재현 당시 실제 창은 다음처럼 분리되어 있었다.
+  - `Job-Finish`: `hwnd=1573752`, title=`Debug notification system - Job-Finish - Visual Studio Code`
+  - 다른 창: `hwnd=4327068`, title=`... - DsTurn_Temp - Visual Studio Code`
+  - 두 창 모두 같은 `Code.exe` PID `20916`을 공유했다.
+
+### 원인
+
+- VS Code는 여러 창을 띄워도 같은 `Code.exe` 프로세스/PID를 공유할 수 있다.
+- 기존 helper는 toast URL에 포함된 `pid`를 강한 식별자로 점수화했다.
+- 그래서 `pid=20916`만 맞는 다른 VS Code 창도 높은 점수를 받아, 명시적 `hwnd` 또는 현재 foreground 창이 잘못 전달되면 잘못된 창으로 포커스가 이동했다.
+
+### 해결
+
+- `tools/win-focus/Program.cs`의 창 선택 점수에서 `pid` 가중치를 `1000`에서 `10`으로 낮췄다.
+- `cwd`, `titleHint`, 프로젝트 폴더명처럼 실제 작업 창을 식별할 수 있는 title 기반 점수만 유효한 강한 신호로 사용한다.
+- 명시적 `hwnd`가 넘어와도 해당 창 점수가 기준치(`>= 90`)에 못 미치면 무조건 믿지 않고, 점수가 충분한 후보 창으로 교정한다.
+- 새 로그를 추가해 교정 여부를 확인할 수 있게 했다.
+  - `explicit hwnd did not match cwd/title; using scored target hwnd=...`
+
+### 검증
+
+- 일부러 다른 VS Code 창의 `hwnd=4327068`을 넣어 helper를 실행했다.
+- 새 helper는 `Job-Finish` 창을 더 높은 점수로 선택했다.
+
+```text
+candidate hwnd=1573752 pid=20916 score=110 title="Debug notification system - Job-Finish - Visual Studio Code"
+candidate hwnd=4327068 pid=20916 score=10 title="... - DsTurn_Temp - Visual Studio Code"
+explicit hwnd did not match cwd/title; using scored target hwnd=1573752 score=110
+foreground.after=hwnd=1573752 pid=20916 process=Code title="Debug notification system - Job-Finish - Visual Studio Code"
+success=True
+```
+
+### 같이 처리한 기반 작업
+
+- `.claude/settings.json`의 Claude hook이 비어 있던 상태를 복구했다.
+- `templates/notify.win.ps1`와 설치본 `.claude/job-finish/job-finish-notify.ps1`에 toast 생성 단계별 debug log를 추가했다.
+- PowerShell 함수 인자명이 자동 변수 `$PID`와 충돌하던 문제를 `$targetPid`로 변경해 `Show-Toast`가 조용히 실패하지 않게 했다.
+- `JobFinish.Notifier` AppID와 Start Menu shortcut 생성 흐름을 정리했다.
+- `templates/jf-focus-vscode.exe`, `.claude/job-finish/jf-focus-vscode.exe`, `C:\Users\safi2\.job-finish\jf-focus-vscode.exe`를 새 helper로 갱신했다.
+
 ## Goal
 
 Windows 알림을 클릭하면 기존 VS Code 창이 맨 앞으로 올라와야 한다.

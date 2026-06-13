@@ -32,6 +32,9 @@ internal static class Program
             ?? Path.GetFileName(cwd.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         var explicitHwnd = TryParseLong(GetQueryValue(uri, "hwnd") ?? GetArg(args, "--hwnd"));
         var preferredPid = TryParseInt(GetQueryValue(uri, "pid") ?? GetArg(args, "--pid"));
+        var openWhenMissing = HasFlag(args, "--open") || IsTruthy(GetQueryValue(uri, "open"));
+        var openInNewWindow = HasFlag(args, "--new-window") || IsTruthy(GetQueryValue(uri, "newWindow"));
+        var waitMs = TryParseInt(GetQueryValue(uri, "waitMs") ?? GetArg(args, "--wait-ms")) ?? 6_000;
         var debug = string.Equals(GetQueryValue(uri, "debug"), "1", StringComparison.OrdinalIgnoreCase);
         var listOnly = args.Contains("--list", StringComparer.OrdinalIgnoreCase);
 
@@ -40,19 +43,13 @@ internal static class Program
         Log($"titleHint={titleHint}");
         Log($"preferredPid={preferredPid?.ToString() ?? ""}");
         Log($"explicitHwnd={explicitHwnd?.ToString() ?? ""}");
+        Log($"openWhenMissing={openWhenMissing}");
+        Log($"openInNewWindow={openInNewWindow}");
+        Log($"waitMs={waitMs}");
         Log($"debug={debug}");
 
-        var windows = EnumerateTopLevelWindows()
-            .Where(w => string.Equals(w.ProcessName, "Code", StringComparison.OrdinalIgnoreCase))
-            .Select(w => w with { Score = ScoreWindow(w, cwd, titleHint, preferredPid) })
-            .OrderByDescending(w => w.Score)
-            .ThenBy(w => w.ZOrder)
-            .ToList();
-
-        foreach (var w in windows)
-        {
-            Log($"candidate hwnd={w.Hwnd.ToInt64()} pid={w.Pid} score={w.Score} title=\"{w.Title}\" path=\"{w.Path}\"");
-        }
+        var windows = GetScoredCodeWindows(cwd, titleHint, preferredPid);
+        LogCandidates(windows);
 
         if (listOnly)
         {
@@ -60,6 +57,15 @@ internal static class Program
         }
 
         var target = ResolveTarget(explicitHwnd, windows);
+        if ((target == IntPtr.Zero || !IsWindow(target)) && openWhenMissing)
+        {
+            var knownHwnds = windows.Select(w => w.Hwnd).ToHashSet();
+            if (TryLaunchVSCode(cwd, openInNewWindow, windows))
+            {
+                target = WaitForCodeWindow(cwd, titleHint, preferredPid, knownHwnds, waitMs);
+            }
+        }
+
         if (target == IntPtr.Zero || !IsWindow(target))
         {
             Log("target=0 or invalid");
@@ -82,19 +88,50 @@ internal static class Program
         return GetForegroundWindow() == target ? 0 : 1;
     }
 
+    private static List<WindowInfo> GetScoredCodeWindows(string cwd, string? titleHint, int? preferredPid)
+    {
+        return EnumerateTopLevelWindows()
+            .Where(w => string.Equals(w.ProcessName, "Code", StringComparison.OrdinalIgnoreCase))
+            .Select(w => w with { Score = ScoreWindow(w, cwd, titleHint, preferredPid) })
+            .OrderByDescending(w => w.Score)
+            .ThenBy(w => w.ZOrder)
+            .ToList();
+    }
+
+    private static void LogCandidates(List<WindowInfo> windows)
+    {
+        foreach (var w in windows)
+        {
+            Log($"candidate hwnd={w.Hwnd.ToInt64()} pid={w.Pid} score={w.Score} title=\"{w.Title}\" path=\"{w.Path}\"");
+        }
+    }
+
     private static IntPtr ResolveTarget(long? explicitHwnd, List<WindowInfo> windows)
     {
+        var best = windows.FirstOrDefault(w => w.Score >= 90);
+
         if (explicitHwnd is > 0)
         {
             var requested = new IntPtr(explicitHwnd.Value);
             if (IsWindow(requested))
             {
+                var explicitWindow = windows.FirstOrDefault(w => w.Hwnd == requested);
+                if (explicitWindow.Hwnd != IntPtr.Zero && explicitWindow.Score >= 90)
+                {
+                    return requested;
+                }
+
+                if (best.Hwnd != IntPtr.Zero && best.Score >= 90)
+                {
+                    Log($"explicit hwnd did not match cwd/title; using scored target hwnd={best.Hwnd.ToInt64()} score={best.Score}");
+                    return best.Hwnd;
+                }
+
                 return requested;
             }
             Log($"explicit hwnd invalid: {explicitHwnd.Value}");
         }
 
-        var best = windows.FirstOrDefault(w => w.Score > 0);
         if (best.Hwnd != IntPtr.Zero)
         {
             return best.Hwnd;
@@ -103,12 +140,159 @@ internal static class Program
         return windows.Count == 1 ? windows[0].Hwnd : IntPtr.Zero;
     }
 
+    private static IntPtr WaitForCodeWindow(
+        string cwd,
+        string? titleHint,
+        int? preferredPid,
+        HashSet<IntPtr> knownHwnds,
+        int waitMs)
+    {
+        var boundedWaitMs = Math.Clamp(waitMs, 0, 30_000);
+        var watch = Stopwatch.StartNew();
+
+        do
+        {
+            var windows = GetScoredCodeWindows(cwd, titleHint, preferredPid);
+            var best = windows.FirstOrDefault(w => w.Score >= 90);
+            if (best.Hwnd != IntPtr.Zero)
+            {
+                Log($"opened.match hwnd={best.Hwnd.ToInt64()} score={best.Score} title=\"{best.Title}\"");
+                return best.Hwnd;
+            }
+
+            var newWindow = windows.FirstOrDefault(w => !knownHwnds.Contains(w.Hwnd));
+            if (newWindow.Hwnd != IntPtr.Zero)
+            {
+                Log($"opened.new hwnd={newWindow.Hwnd.ToInt64()} title=\"{newWindow.Title}\"");
+                return newWindow.Hwnd;
+            }
+
+            if (knownHwnds.Count == 0 && windows.Count == 1)
+            {
+                Log($"opened.single hwnd={windows[0].Hwnd.ToInt64()} title=\"{windows[0].Title}\"");
+                return windows[0].Hwnd;
+            }
+
+            Thread.Sleep(250);
+        } while (watch.ElapsedMilliseconds < boundedWaitMs);
+
+        Log("opened.wait.timeout");
+        return IntPtr.Zero;
+    }
+
+    private static bool TryLaunchVSCode(string cwd, bool newWindow, List<WindowInfo> knownWindows)
+    {
+        var command = ResolveVSCodeCommand(knownWindows);
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            Log("open.failed=no-code-command");
+            return false;
+        }
+
+        try
+        {
+            var workingDirectory = Directory.Exists(cwd) ? cwd : Environment.CurrentDirectory;
+            var extension = Path.GetExtension(command);
+
+            if (string.Equals(extension, ".cmd", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(extension, ".bat", StringComparison.OrdinalIgnoreCase))
+            {
+                var comSpec = Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe";
+                var batchArgs = new List<string>();
+                if (newWindow) batchArgs.Add("-n");
+                batchArgs.Add(cwd);
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = comSpec,
+                    WorkingDirectory = workingDirectory,
+                    CreateNoWindow = true,
+                    WindowStyle = ProcessWindowStyle.Hidden,
+                    UseShellExecute = false,
+                    Arguments = $"/d /c \"{QuoteForCommandLine(command)} {string.Join(" ", batchArgs.Select(QuoteForCommandLine))}\"",
+                };
+                Process.Start(psi);
+            }
+            else
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = command,
+                    WorkingDirectory = workingDirectory,
+                    UseShellExecute = false,
+                };
+                if (newWindow) psi.ArgumentList.Add("-n");
+                psi.ArgumentList.Add(cwd);
+                Process.Start(psi);
+            }
+
+            Log($"open.started command=\"{command}\" newWindow={newWindow} cwd=\"{cwd}\"");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log($"open.failed={ex.GetType().Name}: {ex.Message}");
+            return false;
+        }
+    }
+
+    private static string? ResolveVSCodeCommand(List<WindowInfo> knownWindows)
+    {
+        var fromRunningWindow = knownWindows
+            .Select(w => w.Path)
+            .FirstOrDefault(p => !string.IsNullOrWhiteSpace(p)
+                && string.Equals(Path.GetFileName(p), "Code.exe", StringComparison.OrdinalIgnoreCase)
+                && File.Exists(p));
+        if (!string.IsNullOrWhiteSpace(fromRunningWindow))
+        {
+            return fromRunningWindow;
+        }
+
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var candidates = new[]
+        {
+            Path.Combine(localAppData, "Programs", "Microsoft VS Code", "Code.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Microsoft VS Code", "Code.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Microsoft VS Code", "Code.exe"),
+            FindOnPath("code.exe"),
+            FindOnPath("code.cmd"),
+        };
+
+        return candidates.FirstOrDefault(p => !string.IsNullOrWhiteSpace(p) && File.Exists(p));
+    }
+
+    private static string? FindOnPath(string fileName)
+    {
+        var path = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(path)) return null;
+
+        foreach (var dir in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            try
+            {
+                var candidate = Path.Combine(dir.Trim('"'), fileName);
+                if (File.Exists(candidate)) return candidate;
+            }
+            catch
+            {
+                // Ignore malformed PATH entries.
+            }
+        }
+
+        return null;
+    }
+
+    private static string QuoteForCommandLine(string value)
+    {
+        return "\"" + value.Replace("\"", "\\\"") + "\"";
+    }
+
     private static int ScoreWindow(WindowInfo window, string cwd, string? titleHint, int? preferredPid)
     {
         var score = 0;
         if (preferredPid is > 0 && window.Pid == preferredPid.Value)
         {
-            score += 1_000;
+            score += 10;
         }
 
         var normalizedCwd = cwd.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
@@ -259,6 +443,20 @@ internal static class Program
             }
         }
         return null;
+    }
+
+    private static bool HasFlag(string[] args, string name)
+    {
+        return args.Any(arg => string.Equals(arg, name, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsTruthy(string? value)
+    {
+        if (value is null) return false;
+        return value.Length == 0
+            || string.Equals(value, "1", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value, "true", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? GetQueryValue(string? uri, string name)

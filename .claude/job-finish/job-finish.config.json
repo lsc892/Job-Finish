@@ -9,6 +9,7 @@
   "sound": {
     "enabled": true
   },
-  "suppressWhenFocused": true,
+  "suppressWhenFocused": false,
+  "debug": true,
   "watchApp": ""
 }
