@@ -5,7 +5,12 @@
 # Claude passes a JSON payload on stdin; Codex appends its JSON as the final arg.
 param(
   [string]$Event = "stop",
-  [switch]$Test
+  [switch]$Test,
+  [switch]$WatchToast,
+  [string]$ToastTag = "",
+  [Int64]$WatchHwnd = 0,
+  [string]$WatchTitle = "",
+  [int]$WatchTimeoutSec = 600
 )
 $ErrorActionPreference = 'SilentlyContinue'
 $extraArgs = $args
@@ -26,10 +31,11 @@ if ($null -eq $cfg) {
   $cfg = [pscustomobject]@{
     modes = @('os', 'flash'); flashTimeout = '5m';
     sound = [pscustomobject]@{ enabled = $true };
-    suppressWhenFocused = $true; debug = $false; watchApp = ''
+    suppressWhenFocused = $true; clearToastOnFocus = $true; debug = $false; watchApp = ''
   }
 }
 $modes = @($cfg.modes)
+$clearToastOnFocus = if ($cfg.PSObject.Properties.Name -contains 'clearToastOnFocus') { [bool]$cfg.clearToastOnFocus } else { $true }
 
 function Log-IfDebug([string]$message) {
   if (-not $cfg.debug) { return }
@@ -386,6 +392,112 @@ function Clear-Toast {
   } catch {}
 }
 
+function Get-ToastTag($hwnd) {
+  if ($hwnd -and $hwnd -ne [IntPtr]::Zero) { return "jf-$($hwnd.ToInt64())" }
+  return 'jf'
+}
+
+function Start-ToastFocusWatcher($hwnd, [string]$tag, [string]$titleHint) {
+  if (-not $clearToastOnFocus) {
+    Log-IfDebug 'toast focus watcher disabled by config'
+    return
+  }
+  if (-not $tag -or -not $hwnd -or $hwnd -eq [IntPtr]::Zero) { return }
+
+  try {
+    $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $scriptPath = if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }
+    $argList = @(
+      '-NoProfile',
+      '-ExecutionPolicy', 'Bypass',
+      '-WindowStyle', 'Hidden',
+      '-File', "`"$scriptPath`"",
+      '-WatchToast',
+      '-ToastTag', "`"$tag`"",
+      '-WatchHwnd', "$($hwnd.ToInt64())",
+      '-WatchTitle', "`"$titleHint`"",
+      '-WatchTimeoutSec', '600'
+    )
+    Start-Process -FilePath $ps -ArgumentList $argList -WindowStyle Hidden | Out-Null
+    Log-IfDebug "toast focus watcher started tag=$tag hwnd=$($hwnd.ToInt64()) title=$titleHint"
+  } catch {
+    Log-IfDebug "toast focus watcher start failed tag=$tag error=$($_.Exception.Message)"
+  }
+}
+
+function Remove-ToastTag([string]$tag) {
+  if (-not $tag) { return }
+  try {
+    $null = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
+    [Windows.UI.Notifications.ToastNotificationManager]::History.Remove($tag, $toastGroup, $appId)
+    Log-IfDebug "toast removed tag=$tag"
+  } catch {
+    Log-IfDebug "toast remove failed tag=$tag error=$($_.Exception.Message)"
+  }
+}
+
+function Watch-ToastFocus {
+  if (-not $ToastTag -or $WatchHwnd -le 0) { return }
+  try {
+    if (-not ('JFToastFocusWatch' -as [type])) {
+      Add-Type -ErrorAction Stop @"
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class JFToastFocusWatch {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern int GetWindowTextW(IntPtr hWnd, StringBuilder text, int maxCount);
+
+  public static string GetTitle(IntPtr hWnd) {
+    var sb = new StringBuilder(512);
+    int len = GetWindowTextW(hWnd, sb, sb.Capacity);
+    return len > 0 ? sb.ToString() : "";
+  }
+}
+"@
+    }
+
+    $target = [IntPtr]$WatchHwnd
+    $titleHint = ([string]$WatchTitle).ToLowerInvariant()
+    $deadline = (Get-Date).AddSeconds([Math]::Max(1, $WatchTimeoutSec))
+    $seenAway = $false
+
+    while ((Get-Date) -lt $deadline) {
+      if (-not [JFToastFocusWatch]::IsWindow($target)) {
+        Log-IfDebug "toast watch target closed hwnd=$WatchHwnd tag=$ToastTag"
+        return
+      }
+
+      $fg = [JFToastFocusWatch]::GetForegroundWindow()
+      $fgTitle = [JFToastFocusWatch]::GetTitle($fg)
+      $matchesHwnd = $fg -eq $target
+      $matchesTitle = $titleHint.Length -gt 0 -and $fgTitle.ToLowerInvariant().Contains($titleHint)
+      $isTargetFocus = $matchesHwnd -or $matchesTitle
+
+      if ($isTargetFocus -and $seenAway) {
+        Remove-ToastTag $ToastTag
+        return
+      }
+      if (-not $isTargetFocus) {
+        $seenAway = $true
+      }
+
+      Start-Sleep -Milliseconds 500
+    }
+
+    Log-IfDebug "toast watch timeout hwnd=$WatchHwnd tag=$ToastTag"
+  } catch {
+    Log-IfDebug "toast watch failed tag=$ToastTag error=$($_.Exception.Message)"
+  }
+}
+
+if ($WatchToast) {
+  Watch-ToastFocus
+  exit 0
+}
+
 function Install-ToastShortcut {
   try {
     if ($false -and -not ('JFToastShortcut' -as [type])) {
@@ -565,7 +677,7 @@ function Show-Toast($title, $text, $cwd, $hwnd, $targetPid) {
     Log-IfDebug 'toast xml loaded'
     $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
     Log-IfDebug 'toast object created'
-    $toast.Tag = if ($hwnd -and $hwnd -ne [IntPtr]::Zero) { "jf-$($hwnd.ToInt64())" } else { 'jf' }
+    $toast.Tag = Get-ToastTag $hwnd
     $toast.Group = $toastGroup
     [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($appId).Show($toast)
     Log-IfDebug "toast shown: appId=$appId launch=$launch"
@@ -592,7 +704,12 @@ function Show-Balloon($title, $text) {
 
 if ($modes -contains 'os') {
   Log-IfDebug 'showing toast notification'
-  if (-not (Show-Toast $title $text $focusCwd $toastTarget $toastTargetPid)) { Show-Balloon $title $text }
+  $toastShown = Show-Toast $title $text $focusCwd $toastTarget $toastTargetPid
+  if (-not $toastShown) {
+    Show-Balloon $title $text
+  } else {
+    Start-ToastFocusWatcher $toastTarget (Get-ToastTag $toastTarget) $project
+  }
 }
 
 # ------------------------------------------------------------------- flash

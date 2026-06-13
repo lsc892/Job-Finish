@@ -36,6 +36,8 @@ export const ConfigSchema = z.object({
    * launched the agent, e.g. VSCode) is currently focused.
    */
   suppressWhenFocused: z.boolean().default(true),
+  /** Remove the matching toast after its target VS Code window is focused. */
+  clearToastOnFocus: z.boolean().default(true),
   /** Enable extra debug logging for the notifier and focus helper. */
   debug: z.boolean().default(false),
   /** Reserved focus hint. "" = auto-detect. */

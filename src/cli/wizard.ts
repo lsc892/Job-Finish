@@ -122,6 +122,7 @@ export async function runWizard(platform: Platform): Promise<WizardResult> {
     flashTimeout,
     sound: { enabled: soundOn },
     suppressWhenFocused,
+    clearToastOnFocus: true,
     debug,
     watchApp: "",
   };
