@@ -48,6 +48,36 @@ function Log-IfDebug([string]$message) {
   } catch {}
 }
 
+function Get-RecentNotificationPath {
+  return Join-Path ([IO.Path]::GetTempPath()) 'job-finish-recent-notification.json'
+}
+
+function Test-RecentNotification([int]$withinSeconds) {
+  try {
+    $path = Get-RecentNotificationPath
+    if (-not (Test-Path -LiteralPath $path)) { return $false }
+    $recent = Get-Content -Raw -Encoding UTF8 -LiteralPath $path | ConvertFrom-Json
+    if (-not $recent -or -not $recent.whenUtc -or $recent.appId -ne $appId) { return $false }
+    $when = [DateTime]::Parse([string]$recent.whenUtc, $null, [Globalization.DateTimeStyles]::RoundtripKind)
+    return (([DateTime]::UtcNow - $when).TotalSeconds -lt $withinSeconds)
+  } catch {
+    return $false
+  }
+}
+
+function Save-RecentNotification {
+  try {
+    $path = Get-RecentNotificationPath
+    $recent = [pscustomobject]@{
+      appId = $appId
+      event = $Event
+      project = $project
+      whenUtc = [DateTime]::UtcNow.ToString('o')
+    }
+    $recent | ConvertTo-Json -Compress | Set-Content -Encoding UTF8 -LiteralPath $path
+  } catch {}
+}
+
 switch ($cfg.flashTimeout) {
   '30s'      { $timeoutSec = 30 }
   '5m'       { $timeoutSec = 300 }
@@ -163,6 +193,74 @@ elseif (-not $Test -and [Console]::IsInputRedirected) {
   try { $stdin = [Console]::In.ReadToEnd(); if ($stdin) { $payload = $stdin | ConvertFrom-Json } } catch {}
 }
 
+function Format-ToastSummary([string]$value) {
+  if ([string]::IsNullOrWhiteSpace($value)) { return '' }
+  $clean = $value -replace '\s+', ' '
+  $clean = $clean.Trim()
+  if ($clean.Length -gt 180) { return $clean.Substring(0, 177) + '...' }
+  return $clean
+}
+
+function Get-ContentText($content) {
+  if ($null -eq $content) { return '' }
+  if ($content -is [string]) { return [string]$content }
+
+  $parts = New-Object 'System.Collections.Generic.List[string]'
+  foreach ($item in @($content)) {
+    if ($null -eq $item) { continue }
+    if ($item -is [string]) {
+      if (-not [string]::IsNullOrWhiteSpace($item)) { $parts.Add([string]$item) }
+      continue
+    }
+
+    $names = @($item.PSObject.Properties.Name)
+    if ($names -contains 'text' -and -not [string]::IsNullOrWhiteSpace([string]$item.text)) {
+      $parts.Add([string]$item.text)
+    } elseif ($names -contains 'content') {
+      $nested = Get-ContentText $item.content
+      if (-not [string]::IsNullOrWhiteSpace($nested)) { $parts.Add($nested) }
+    }
+  }
+
+  return ($parts -join ' ')
+}
+
+function Get-ClaudeTranscriptSummary($payload) {
+  if (-not $payload -or -not ($payload.PSObject.Properties.Name -contains 'transcript_path')) { return '' }
+  $path = [string]$payload.transcript_path
+  if ([string]::IsNullOrWhiteSpace($path) -or -not (Test-Path -LiteralPath $path)) { return '' }
+
+  try {
+    $lines = @(Get-Content -LiteralPath $path -Encoding UTF8 -Tail 200)
+    for ($i = $lines.Count - 1; $i -ge 0; $i--) {
+      $line = [string]$lines[$i]
+      if ([string]::IsNullOrWhiteSpace($line)) { continue }
+      try { $entry = $line | ConvertFrom-Json } catch { continue }
+
+      $role = ''
+      if ($entry.PSObject.Properties.Name -contains 'role') { $role = [string]$entry.role }
+      if (-not $role -and ($entry.PSObject.Properties.Name -contains 'message') -and $entry.message) {
+        if ($entry.message.PSObject.Properties.Name -contains 'role') { $role = [string]$entry.message.role }
+      }
+      $type = if ($entry.PSObject.Properties.Name -contains 'type') { [string]$entry.type } else { '' }
+      if ($role -ne 'assistant' -and $type -ne 'assistant') { continue }
+
+      $content = ''
+      if (($entry.PSObject.Properties.Name -contains 'message') -and $entry.message -and ($entry.message.PSObject.Properties.Name -contains 'content')) {
+        $content = Get-ContentText $entry.message.content
+      }
+      if (-not $content -and ($entry.PSObject.Properties.Name -contains 'content')) {
+        $content = Get-ContentText $entry.content
+      }
+
+      $summary = Format-ToastSummary $content
+      if ($summary) { return $summary }
+    }
+  } catch {}
+
+  return ''
+}
+
 # ------------------------------------------------------- compose title/text
 $agentName = if ($Event -eq 'codex') { 'Codex' } else { 'Claude Code' }
 $hasPayloadCwd = $payload -and ($payload.PSObject.Properties.Name -contains 'cwd') -and $payload.cwd
@@ -172,16 +270,18 @@ $project = Split-Path -Leaf $focusCwd
 switch ($Event) {
   'notify' {
     $title = $agentName
-    $text  = if ($payload -and $payload.message) { [string]$payload.message } else { "$project - Waiting for input" }
+    $text  = if ($payload -and $payload.message) { Format-ToastSummary ([string]$payload.message) } else { "$project waiting for input" }
   }
   'codex' {
     $title = $agentName
     $last  = if ($payload) { [string]$payload.'last-assistant-message' } else { '' }
-    $text  = if ($last) { $last } else { "$project - Work finished" }
+    $summary = Format-ToastSummary $last
+    $text  = if ($summary) { $summary } else { "$project work finished" }
   }
   default {
     $title = $agentName
-    $text  = "$project - Work finished"
+    $summary = Get-ClaudeTranscriptSummary $payload
+    $text  = if ($summary) { $summary } else { "$project work finished" }
   }
 }
 if ($text.Length -gt 180) { $text = $text.Substring(0, 177) + '...' }
@@ -298,6 +398,11 @@ if ($toastTarget -ne [IntPtr]::Zero) {
 }
 
 Log-IfDebug "window target host=$($hostHwnd.ToInt64()) vscode=$($vscodeHwnd.ToInt64()) focus=$($focusTarget.ToInt64()) focusPid=$focusTargetPid toast=$($toastTarget.ToInt64()) toastPid=$toastTargetPid"
+
+if (-not $Test -and $Event -eq 'codex' -and -not $cwdIsReliable -and (Test-RecentNotification 10)) {
+  Log-IfDebug 'suppressing unreliable Codex notification because a recent VS Code toast was already shown'
+  exit 0
+}
 
 function Should-SuppressForFocusedTarget([IntPtr]$target) {
   if ($target -eq [IntPtr]::Zero) { return $false }
@@ -878,4 +983,5 @@ if ($cfg.sound.enabled) {
 }
 
 Log-IfDebug 'notifier exit'
+Save-RecentNotification
 exit 0
