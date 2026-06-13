@@ -429,7 +429,10 @@ function Remove-ToastTag([string]$tag) {
   if (-not $tag) { return }
   try {
     $null = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
-    [Windows.UI.Notifications.ToastNotificationManager]::History.Remove($tag, $toastGroup, $appId)
+    $history = [Windows.UI.Notifications.ToastNotificationManager]::History
+    try { $history.Remove($tag, $toastGroup, $appId) } catch {}
+    try { $history.Remove($tag, $toastGroup) } catch {}
+    try { $history.Remove($tag) } catch {}
     Log-IfDebug "toast removed tag=$tag"
   } catch {
     Log-IfDebug "toast remove failed tag=$tag error=$($_.Exception.Message)"
@@ -437,7 +440,7 @@ function Remove-ToastTag([string]$tag) {
 }
 
 function Watch-ToastFocus {
-  if (-not $ToastTag -or $WatchHwnd -le 0) { return }
+  if (-not $ToastTag) { return }
   try {
     if (-not ('JFToastFocusWatch' -as [type])) {
       Add-Type -ErrorAction Stop @"
@@ -448,7 +451,7 @@ using System.Text;
 public static class JFToastFocusWatch {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern int GetWindowTextW(IntPtr hWnd, StringBuilder text, int maxCount);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr hWnd, StringBuilder text, int maxCount);
 
   public static string GetTitle(IntPtr hWnd) {
     var sb = new StringBuilder(512);
@@ -459,29 +462,24 @@ public static class JFToastFocusWatch {
 "@
     }
 
-    $target = [IntPtr]$WatchHwnd
+    $target = if ($WatchHwnd -gt 0) { [IntPtr]$WatchHwnd } else { [IntPtr]::Zero }
     $titleHint = ([string]$WatchTitle).ToLowerInvariant()
     $deadline = (Get-Date).AddSeconds([Math]::Max(1, $WatchTimeoutSec))
-    $seenAway = $false
 
     while ((Get-Date) -lt $deadline) {
-      if (-not [JFToastFocusWatch]::IsWindow($target)) {
+      if ($target -ne [IntPtr]::Zero -and $titleHint.Length -eq 0 -and -not [JFToastFocusWatch]::IsWindow($target)) {
         Log-IfDebug "toast watch target closed hwnd=$WatchHwnd tag=$ToastTag"
         return
       }
 
       $fg = [JFToastFocusWatch]::GetForegroundWindow()
       $fgTitle = [JFToastFocusWatch]::GetTitle($fg)
-      $matchesHwnd = $fg -eq $target
       $matchesTitle = $titleHint.Length -gt 0 -and $fgTitle.ToLowerInvariant().Contains($titleHint)
-      $isTargetFocus = $matchesHwnd -or $matchesTitle
+      $matchesHwnd = $titleHint.Length -eq 0 -and $target -ne [IntPtr]::Zero -and $fg -eq $target
 
-      if ($isTargetFocus -and $seenAway) {
+      if ($matchesTitle -or $matchesHwnd) {
         Remove-ToastTag $ToastTag
         return
-      }
-      if (-not $isTargetFocus) {
-        $seenAway = $true
       }
 
       Start-Sleep -Milliseconds 500
@@ -500,121 +498,6 @@ if ($WatchToast) {
 
 function Install-ToastShortcut {
   try {
-    if ($false -and -not ('JFToastShortcut' -as [type])) {
-      Add-Type -ErrorAction Stop @"
-using System;
-using System.IO;
-using System.Runtime.InteropServices;
-using System.Text;
-
-[ComImport, Guid("00021401-0000-0000-C000-000000000046")]
-internal class CShellLink { }
-
-[ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("000214F9-0000-0000-C000-000000000046")]
-internal interface IShellLinkW {
-  void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszFile, int cchMaxPath, IntPtr pfd, uint fFlags);
-  void GetIDList(out IntPtr ppidl);
-  void SetIDList(IntPtr pidl);
-  void GetDescription([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszName, int cchMaxName);
-  void SetDescription([MarshalAs(UnmanagedType.LPWStr)] string pszName);
-  void GetWorkingDirectory([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszDir, int cchMaxPath);
-  void SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string pszDir);
-  void GetArguments([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszArgs, int cchMaxPath);
-  void SetArguments([MarshalAs(UnmanagedType.LPWStr)] string pszArgs);
-  void GetHotkey(out short pwHotkey);
-  void SetHotkey(short wHotkey);
-  void GetShowCmd(out int piShowCmd);
-  void SetShowCmd(int iShowCmd);
-  void GetIconLocation([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszIconPath, int cchIconPath, out int piIcon);
-  void SetIconLocation([MarshalAs(UnmanagedType.LPWStr)] string pszIconPath, int iIcon);
-  void SetRelativePath([MarshalAs(UnmanagedType.LPWStr)] string pszPathRel, uint dwReserved);
-  void Resolve(IntPtr hwnd, uint fFlags);
-  void SetPath([MarshalAs(UnmanagedType.LPWStr)] string pszFile);
-}
-
-[ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("0000010b-0000-0000-C000-000000000046")]
-internal interface IPersistFile {
-  void GetClassID(out Guid pClassID);
-  void IsDirty();
-  void Load([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, uint dwMode);
-  void Save([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, bool fRemember);
-  void SaveCompleted([MarshalAs(UnmanagedType.LPWStr)] string pszFileName);
-  void GetCurFile([MarshalAs(UnmanagedType.LPWStr)] out string ppszFileName);
-}
-
-[ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("00000138-0000-0000-C000-000000000046")]
-internal interface IPropertyStore {
-  void GetCount(out uint cProps);
-  void GetAt(uint iProp, out PROPERTYKEY pkey);
-  void GetValue(ref PROPERTYKEY key, out PROPVARIANT pv);
-  void SetValue(ref PROPERTYKEY key, ref PROPVARIANT pv);
-  void Commit();
-}
-
-[StructLayout(LayoutKind.Sequential, Pack = 4)]
-internal struct PROPERTYKEY {
-  public Guid fmtid;
-  public uint pid;
-  public PROPERTYKEY(Guid fmtid, uint pid) {
-    this.fmtid = fmtid;
-    this.pid = pid;
-  }
-}
-
-[StructLayout(LayoutKind.Sequential)]
-internal struct PROPVARIANT {
-  public ushort vt;
-  public ushort wReserved1;
-  public ushort wReserved2;
-  public ushort wReserved3;
-  public IntPtr p;
-
-  public static PROPVARIANT FromString(string value) {
-    var pv = new PROPVARIANT();
-    pv.vt = 31;
-    pv.p = Marshal.StringToCoTaskMemUni(value);
-    return pv;
-  }
-}
-
-public static class JFToastShortcut {
-  [DllImport("ole32.dll")]
-  private static extern int PropVariantClear(ref PROPVARIANT pvar);
-
-  [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = false)]
-  private static extern int SHGetPropertyStoreFromParsingName(
-    string pszPath,
-    IntPtr pbc,
-    uint flags,
-    ref Guid riid,
-    out IPropertyStore ppv);
-
-  public static void Install(string shortcutPath, string targetPath, string arguments, string appId, string iconPath) {
-    if (!File.Exists(shortcutPath)) {
-      throw new FileNotFoundException("Shortcut not found.", shortcutPath);
-    }
-
-    IPropertyStore store;
-    var iid = new Guid("00000138-0000-0000-C000-000000000046");
-    var hr = SHGetPropertyStoreFromParsingName(shortcutPath, IntPtr.Zero, 0, ref iid, out store);
-    if (hr != 0) {
-      Marshal.ThrowExceptionForHR(hr);
-    }
-
-    var key = new PROPERTYKEY(new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), 5);
-    var pv = PROPVARIANT.FromString(appId);
-    try {
-      store.SetValue(ref key, ref pv);
-      store.Commit();
-    }
-    finally {
-      PropVariantClear(ref pv);
-    }
-  }
-}
-"@
-    }
-
     $programs = [Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)
     $shortcutPath = Join-Path $programs 'Job-Finish.lnk'
     $focusExe = Join-Path $PSScriptRoot 'jf-focus-vscode.exe'
@@ -627,9 +510,6 @@ public static class JFToastShortcut {
     $shortcut.WorkingDirectory = Split-Path -Parent $target
     $shortcut.IconLocation = "$target,0"
     $shortcut.Save()
-    if ('JFToastShortcut' -as [type]) {
-      [JFToastShortcut]::Install($shortcutPath, $target, '', $appId, $target)
-    }
     Log-IfDebug "toast shortcut installed: $shortcutPath -> $target appId=$appId"
   } catch {
     Log-IfDebug "toast shortcut install failed: $($_.Exception.Message)"
