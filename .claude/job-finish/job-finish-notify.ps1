@@ -7,10 +7,13 @@ param(
   [string]$Event = "stop",
   [switch]$Test,
   [switch]$WatchToast,
+  [switch]$WatchFlash,
   [string]$ToastTag = "",
   [string]$ToastAppId = "",
   [Int64]$WatchHwnd = 0,
   [string]$WatchTitle = "",
+  [Int64]$WatchFlashHwnd = 0,
+  [int]$WatchFlashTimeoutSec = 0,
   [int]$WatchTimeoutSec = 600
 )
 $ErrorActionPreference = 'SilentlyContinue'
@@ -209,6 +212,47 @@ public static class JF {
 }
 "@
 
+function Stop-FlashWindow([IntPtr]$hwnd) {
+  if ($hwnd -eq [IntPtr]::Zero -or -not [JF]::IsWindow($hwnd)) { return $false }
+  $fw = New-Object JF+FLASHWINFO
+  $fw.cbSize = [Runtime.InteropServices.Marshal]::SizeOf([type]'JF+FLASHWINFO')
+  $fw.hwnd = $hwnd
+  $fw.dwFlags = 0
+  $fw.uCount = 0
+  $fw.dwTimeout = 0
+  return [JF]::FlashWindowEx([ref]$fw)
+}
+
+function Watch-FlashWindow {
+  $hwnd = if ($WatchFlashHwnd -gt 0) { [IntPtr]$WatchFlashHwnd } else { [IntPtr]::Zero }
+  if ($hwnd -eq [IntPtr]::Zero -or -not [JF]::IsWindow($hwnd)) { return }
+
+  $interval = $defaultFlashIntervalMs
+  $fw = New-Object JF+FLASHWINFO
+  $fw.cbSize = [Runtime.InteropServices.Marshal]::SizeOf([type]'JF+FLASHWINFO')
+  $fw.hwnd = $hwnd
+  $fw.dwFlags = 7
+  $fw.uCount = 0
+  $fw.dwTimeout = $interval
+  $started = [JF]::FlashWindowEx([ref]$fw)
+  Log-IfDebug "flash worker started hwnd=$($hwnd.ToInt64()) flags=$($fw.dwFlags) timeoutSec=$WatchFlashTimeoutSec result=$started"
+
+  $deadline = if ($WatchFlashTimeoutSec -gt 0) { (Get-Date).AddSeconds($WatchFlashTimeoutSec) } else { [DateTime]::MaxValue }
+  while ((Get-Date) -lt $deadline) {
+    if (-not [JF]::IsWindow($hwnd)) { break }
+    if ([JF]::GetForegroundWindow() -eq $hwnd) { break }
+    Start-Sleep -Milliseconds 500
+  }
+
+  $stopped = Stop-FlashWindow $hwnd
+  Log-IfDebug "flash worker stopped hwnd=$($hwnd.ToInt64()) result=$stopped foreground=$([JF]::GetForegroundWindow().ToInt64())"
+}
+
+if ($WatchFlash) {
+  Watch-FlashWindow
+  exit 0
+}
+
 function Test-CodexEnvironment {
   if ($env:CODEX_THREAD_ID) { return $true }
   if ($env:CODEX_INTERNAL_ORIGINATOR_OVERRIDE -like 'codex*') { return $true }
@@ -221,6 +265,46 @@ function Get-EffectiveEvent([string]$eventName) {
 }
 
 $effectiveEvent = Get-EffectiveEvent $Event
+
+function Get-CodexSessionCwd {
+  try {
+    if (-not $env:CODEX_THREAD_ID) { return '' }
+    $sessionRoot = Join-Path $env:USERPROFILE '.codex\sessions'
+    if (-not (Test-Path -LiteralPath $sessionRoot)) { return '' }
+
+    $session = Get-ChildItem -LiteralPath $sessionRoot -Recurse -File -Filter "*$($env:CODEX_THREAD_ID)*.jsonl" -ErrorAction SilentlyContinue |
+      Sort-Object LastWriteTime -Descending |
+      Select-Object -First 1
+    if (-not $session) { return '' }
+
+    foreach ($line in @(Get-Content -LiteralPath $session.FullName -Encoding UTF8 -TotalCount 20)) {
+      if ([string]::IsNullOrWhiteSpace($line)) { continue }
+      try { $entry = $line | ConvertFrom-Json } catch { continue }
+      $cwd = Get-ObjectProperty (Get-ObjectProperty $entry 'payload' $null) 'cwd' ''
+      if ($cwd -and (Test-Path -LiteralPath ([string]$cwd) -PathType Container)) {
+        return [string]$cwd
+      }
+    }
+
+    $recent = @(Get-Content -LiteralPath $session.FullName -Encoding UTF8 -Tail 500)
+    for ($i = $recent.Count - 1; $i -ge 0; $i--) {
+      $line = [string]$recent[$i]
+      if ($line.IndexOf('"workdir"', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+      try { $entry = $line | ConvertFrom-Json } catch { continue }
+      $payload = Get-ObjectProperty $entry 'payload' $null
+      if (-not $payload -or (Get-ObjectProperty $payload 'type' '') -ne 'function_call') { continue }
+      $arguments = Get-ObjectProperty $payload 'arguments' ''
+      if (-not $arguments) { continue }
+      try { $argsObj = ([string]$arguments) | ConvertFrom-Json } catch { continue }
+      $workdir = Get-ObjectProperty $argsObj 'workdir' ''
+      if ($workdir -and (Test-Path -LiteralPath ([string]$workdir) -PathType Container)) {
+        return [string]$workdir
+      }
+    }
+  } catch {}
+
+  return ''
+}
 
 # ------------------------------------------------------- read event payload
 $payload = $null
@@ -327,13 +411,15 @@ function Get-EventToastText([string]$eventName, $eventPayload, [string]$projectN
 
 $agentName = Get-AgentName $effectiveEvent
 $hasPayloadCwd = (Test-HasProperty $payload 'cwd') -and $payload.cwd
-$focusCwd = if ($hasPayloadCwd) { [string]$payload.cwd } else { (Get-Location).Path }
-$cwdIsReliable = [bool]$hasPayloadCwd -or $effectiveEvent -ne 'codex'
+$sessionCwd = if ($hasPayloadCwd) { '' } elseif ($effectiveEvent -eq 'codex') { Get-CodexSessionCwd } else { '' }
+$hasSessionCwd = -not [string]::IsNullOrWhiteSpace($sessionCwd)
+$focusCwd = if ($hasPayloadCwd) { [string]$payload.cwd } elseif ($hasSessionCwd) { [string]$sessionCwd } else { (Get-Location).Path }
+$cwdIsReliable = [bool]$hasPayloadCwd -or $hasSessionCwd -or $effectiveEvent -ne 'codex'
 $project = Split-Path -Leaf $focusCwd
 $title = $agentName
 $text = Limit-ToastText (Get-EventToastText $effectiveEvent $payload $project)
 
-Log-IfDebug "notifier start event=$effectiveEvent rawEvent=$Event modes=$($modes -join ',') flashTimeout=$($cfg.flashTimeout) sound=$($cfg.sound.enabled) suppressWhenFocused=$($cfg.suppressWhenFocused) project=$project cwdReliable=$cwdIsReliable"
+Log-IfDebug "notifier start event=$effectiveEvent rawEvent=$Event modes=$($modes -join ',') flashTimeout=$($cfg.flashTimeout) sound=$($cfg.sound.enabled) suppressWhenFocused=$($cfg.suppressWhenFocused) project=$project cwdReliable=$cwdIsReliable sessionCwd=$hasSessionCwd"
 
 # ------------------------------------------------------- source window lookup
 function Get-ProcessTree {
@@ -370,6 +456,25 @@ function Get-HostWindow {
 }
 
 function Get-VSCodeWindow {
+  if ($env:VSCODE_PID -match '^\d+$') {
+    $p = Get-Process -Id ([int]$env:VSCODE_PID) -ErrorAction SilentlyContinue
+    if ($p -and $p.ProcessName -eq 'Code') {
+      $fromPid = [JF]::FindWindowForPids(@([int]$p.Id), [string]$project, $true)
+      if ($fromPid -ne [IntPtr]::Zero) { return $fromPid }
+
+      $fromPidFallback = [JF]::FindWindowForPids(@([int]$p.Id), '', $false)
+      if ($fromPidFallback -ne [IntPtr]::Zero) {
+        Log-IfDebug "using VSCODE_PID fallback hwnd=$($fromPidFallback.ToInt64()) pid=$($p.Id)"
+        return $fromPidFallback
+      }
+
+      if ($p.MainWindowHandle -ne [IntPtr]::Zero) {
+        Log-IfDebug "using VSCODE_PID MainWindowHandle hwnd=$($p.MainWindowHandle.ToInt64()) pid=$($p.Id)"
+        return $p.MainWindowHandle
+      }
+    }
+  }
+
   if ($cwdIsReliable) {
     $fromTitle = [JF]::FindCodeWindow([string]$project, $true)
     if ($fromTitle -ne [IntPtr]::Zero) { return $fromTitle }
@@ -377,14 +482,6 @@ function Get-VSCodeWindow {
     $singleCodeWindow = [JF]::FindCodeWindow('', $true)
     if ($singleCodeWindow -ne [IntPtr]::Zero) { return $singleCodeWindow }
     return [IntPtr]::Zero
-  }
-
-  if ($env:VSCODE_PID -match '^\d+$') {
-    $p = Get-Process -Id ([int]$env:VSCODE_PID) -ErrorAction SilentlyContinue
-    if ($p -and $p.ProcessName -eq 'Code') {
-      $fromPid = [JF]::FindWindowForPids(@([int]$p.Id), [string]$project, $true)
-      if ($fromPid -ne [IntPtr]::Zero) { return $fromPid }
-    }
   }
 
   $code = @(Get-Process Code -ErrorAction SilentlyContinue)
@@ -416,13 +513,24 @@ function Test-WindowLooksLikeProject([IntPtr]$hwnd) {
   return $title.IndexOf([string]$project, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
 }
 
+function Test-WindowMatchesVSCodePid([IntPtr]$hwnd) {
+  if ($hwnd -eq [IntPtr]::Zero -or -not ($env:VSCODE_PID -match '^\d+$')) { return $false }
+  $pidValue = [uint32]0
+  [JF]::GetWindowThreadProcessId($hwnd, [ref]$pidValue) | Out-Null
+  return $pidValue -eq [uint32]([int]$env:VSCODE_PID)
+}
+
+function Test-WindowIsTrustedVSCodeTarget([IntPtr]$hwnd) {
+  return (Test-WindowLooksLikeProject $hwnd) -or (Test-WindowMatchesVSCodePid $hwnd)
+}
+
 $hostHwnd = Get-HostWindow
 $vscodeHwnd = Get-VSCodeWindow
-if ($cwdIsReliable -and $vscodeHwnd -ne [IntPtr]::Zero -and (Get-WindowProcessName $vscodeHwnd) -eq 'Code' -and -not (Test-WindowLooksLikeProject $vscodeHwnd)) {
+if ($cwdIsReliable -and $vscodeHwnd -ne [IntPtr]::Zero -and (Get-WindowProcessName $vscodeHwnd) -eq 'Code' -and -not (Test-WindowIsTrustedVSCodeTarget $vscodeHwnd)) {
   Log-IfDebug "discarding vscode target hwnd=$($vscodeHwnd.ToInt64()) because title does not match project=$project"
   $vscodeHwnd = [IntPtr]::Zero
 }
-if ($cwdIsReliable -and $vscodeHwnd -eq [IntPtr]::Zero -and $hostHwnd -ne [IntPtr]::Zero -and (Get-WindowProcessName $hostHwnd) -eq 'Code' -and -not (Test-WindowLooksLikeProject $hostHwnd)) {
+if ($cwdIsReliable -and $vscodeHwnd -eq [IntPtr]::Zero -and $hostHwnd -ne [IntPtr]::Zero -and (Get-WindowProcessName $hostHwnd) -eq 'Code' -and -not (Test-WindowIsTrustedVSCodeTarget $hostHwnd)) {
   Log-IfDebug "discarding host fallback hwnd=$($hostHwnd.ToInt64()) because it is a different VS Code project"
   $hostHwnd = [IntPtr]::Zero
 }
@@ -463,9 +571,9 @@ function Should-SuppressForFocusedTarget([IntPtr]$target) {
   }
 
   if ($processName -eq 'Code') {
-    $matchesProject = Test-WindowLooksLikeProject $target
-    Log-IfDebug "suppress check foreground=$($foreground.ToInt64()) process=$processName titleMatchesProject=$matchesProject"
-    return $matchesProject
+    $trustedTarget = Test-WindowIsTrustedVSCodeTarget $target
+    Log-IfDebug "suppress check foreground=$($foreground.ToInt64()) process=$processName trustedTarget=$trustedTarget"
+    return $trustedTarget
   }
 
   Log-IfDebug "suppress check foreground=$($foreground.ToInt64()) process=$processName exactTarget=true"
@@ -898,7 +1006,7 @@ function Resolve-VSCodeIconPath {
   return ''
 }
 
-function Install-ToastShortcut([string]$shortcutAppId, [string]$displayName) {
+function Install-ToastShortcut([string]$shortcutAppId, [string]$displayName, [string]$fallbackLaunch) {
   try {
     $programs = [Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)
     $shortcutDir = Join-Path $programs $toastShortcutFolderName
@@ -906,19 +1014,29 @@ function Install-ToastShortcut([string]$shortcutAppId, [string]$displayName) {
     $shortcutPath = Join-Path $shortcutDir $toastShortcutFileName
     $focusExe = Join-Path $PSScriptRoot 'jf-focus-vscode.exe'
     $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $target = if (Test-Path -LiteralPath $focusExe) { $focusExe } else { $ps }
+    $hasFocusExe = Test-Path -LiteralPath $focusExe
+    $target = if ($hasFocusExe) { $focusExe } else { $ps }
+    $shortcutArgs = ''
+    if ($fallbackLaunch) {
+      if ($hasFocusExe) {
+        $shortcutArgs = "--uri `"$fallbackLaunch`""
+      } else {
+        $scriptPath = Install-FocusScript
+        $shortcutArgs = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`" `"$fallbackLaunch`""
+      }
+    }
     $iconPath = Resolve-VSCodeIconPath
     if (-not $iconPath) { $iconPath = $target }
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($shortcutPath)
     $shortcut.TargetPath = $target
-    $shortcut.Arguments = ''
+    $shortcut.Arguments = $shortcutArgs
     $shortcut.WorkingDirectory = Split-Path -Parent $target
     $shortcut.IconLocation = "$iconPath,0"
     $shortcut.Save()
     Ensure-ShortcutAppIdType
     [JFShortcutAppId]::SetAppId($shortcutPath, $shortcutAppId)
-    Log-IfDebug "toast shortcut installed: $shortcutPath -> $target appId=$shortcutAppId displayName=$displayName icon=$iconPath"
+    Log-IfDebug "toast shortcut installed: $shortcutPath -> $target args=$shortcutArgs appId=$shortcutAppId displayName=$displayName icon=$iconPath"
   } catch {
     Log-IfDebug "toast shortcut install failed: $($_.Exception.Message)"
   }
@@ -952,15 +1070,15 @@ function New-FocusLaunchUri([string]$cwd, $hwnd, $targetPid, [bool]$allowOpenFal
 function Show-Toast($title, $text, $cwd, $hwnd, $targetPid, [bool]$allowOpenFallback) {
   try {
     Log-IfDebug 'toast enter'
+    $launch = New-FocusLaunchUri $cwd $hwnd $targetPid $allowOpenFallback
     Register-FocusProtocol
     Log-IfDebug 'toast after protocol'
-    Install-ToastShortcut $appId $appDisplayName
+    Install-ToastShortcut $appId $appDisplayName $launch
     Log-IfDebug 'toast after shortcut'
     $null = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
     Log-IfDebug 'toast manager type loaded'
     $null = [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom, ContentType = WindowsRuntime]
     Log-IfDebug 'toast xml type loaded'
-    $launch = New-FocusLaunchUri $cwd $hwnd $targetPid $allowOpenFallback
     $eLaunch = [Security.SecurityElement]::Escape($launch)
     $eTitle = [Security.SecurityElement]::Escape([string]$title)
     $eText  = [Security.SecurityElement]::Escape([string]$text)
@@ -1049,13 +1167,42 @@ if ($modes -contains 'os') {
 if (($modes -contains 'flash') -and $focusTarget -ne [IntPtr]::Zero) {
   $interval = $defaultFlashIntervalMs
   $count = if ($timeoutSec -gt 0) { [int]($timeoutSec * 1000 / $interval) } else { 0 }
-  $fw = New-Object JF+FLASHWINFO
-  $fw.cbSize = [Runtime.InteropServices.Marshal]::SizeOf([type]'JF+FLASHWINFO')
-  $fw.hwnd = $focusTarget
-  $fw.dwFlags = 15
-  $fw.uCount = $count
-  $fw.dwTimeout = $interval
-  [JF]::FlashWindowEx([ref]$fw) | Out-Null
+  $foreground = [JF]::GetForegroundWindow()
+  $foregroundPid = [uint32]0
+  if ($foreground -ne [IntPtr]::Zero) {
+    [JF]::GetWindowThreadProcessId($foreground, [ref]$foregroundPid) | Out-Null
+  }
+  $workerStarted = $false
+
+  try {
+    $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $scriptPath = if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }
+    $argList = @(
+      '-NoProfile',
+      '-ExecutionPolicy', 'Bypass',
+      '-WindowStyle', 'Hidden',
+      '-File', "`"$scriptPath`"",
+      '-WatchFlash',
+      '-WatchFlashHwnd', "$($focusTarget.ToInt64())",
+      '-WatchFlashTimeoutSec', "$timeoutSec"
+    )
+    Start-Process -FilePath $ps -ArgumentList $argList -WindowStyle Hidden | Out-Null
+    $workerStarted = $true
+    Log-IfDebug "flash worker requested hwnd=$($focusTarget.ToInt64()) pid=$focusTargetPid foreground=$($foreground.ToInt64()) foregroundPid=$foregroundPid timeoutSec=$timeoutSec"
+  } catch {
+    Log-IfDebug "flash worker start failed hwnd=$($focusTarget.ToInt64()) error=$($_.Exception.Message)"
+  }
+
+  if (-not $workerStarted) {
+    $fw = New-Object JF+FLASHWINFO
+    $fw.cbSize = [Runtime.InteropServices.Marshal]::SizeOf([type]'JF+FLASHWINFO')
+    $fw.hwnd = $focusTarget
+    $fw.dwFlags = 15
+    $fw.uCount = $count
+    $fw.dwTimeout = $interval
+    $flashResult = [JF]::FlashWindowEx([ref]$fw)
+    Log-IfDebug "flash requested hwnd=$($focusTarget.ToInt64()) pid=$focusTargetPid flags=$($fw.dwFlags) count=$count timeoutMs=$interval result=$flashResult foreground=$($foreground.ToInt64()) foregroundPid=$foregroundPid"
+  }
 }
 
 # ------------------------------------------------------------------- sound

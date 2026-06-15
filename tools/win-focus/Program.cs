@@ -21,6 +21,7 @@ internal static class Program
     private const ushort VK_MENU = 0x12;
     private const uint KEYEVENTF_KEYUP = 0x0002;
     private const uint FLASHW_STOP = 0;
+    private const int FOCUS_RETRY_MS = 2_500;
 
     private static int Main(string[] args)
     {
@@ -76,7 +77,7 @@ internal static class Program
         var before = DescribeForeground();
         Log($"foreground.before={before}");
 
-        var ok = FocusWindow(target);
+        var ok = FocusWindowWithRetry(target);
         var stopped = StopFlashing(target);
         Thread.Sleep(250);
 
@@ -316,7 +317,29 @@ internal static class Program
         return score;
     }
 
-    private static bool FocusWindow(IntPtr hwnd)
+    private static bool FocusWindowWithRetry(IntPtr hwnd)
+    {
+        var watch = Stopwatch.StartNew();
+        var attempt = 0;
+
+        do
+        {
+            attempt++;
+            var ok = FocusWindowOnce(hwnd);
+            var foreground = GetForegroundWindow();
+            Log($"focus.attempt={attempt} ok={ok} foreground={DescribeForeground()}");
+            if (ok || foreground == hwnd)
+            {
+                return true;
+            }
+
+            Thread.Sleep(attempt == 1 ? 300 : 150);
+        } while (watch.ElapsedMilliseconds < FOCUS_RETRY_MS);
+
+        return GetForegroundWindow() == hwnd;
+    }
+
+    private static bool FocusWindowOnce(IntPtr hwnd)
     {
         if (hwnd == IntPtr.Zero || !IsWindow(hwnd))
         {
