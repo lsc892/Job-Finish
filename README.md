@@ -59,6 +59,14 @@ Depending on the selected scope, files are written to either `~/.job-finish/` or
 
 `init` removes old Job-Finish hooks from the other scope before installing the selected scope, so Claude does not run duplicate hooks from global and project settings at the same time.
 
+## Scope Rules
+
+Global installs take priority over project installs. If a global Claude hook or a Job-Finish Codex notify that does not point at the current project is already active, choosing a project install keeps that setup, skips the project install, and reports what it found.
+
+Choosing a global install cleans the current project's Job-Finish hook and `./.claude/job-finish/` install folder first, so only the global setup remains active.
+
+Codex only supports one global `notify` array in `~/.codex/config.toml`. A project-scoped Codex install still changes that global file, so Job-Finish treats an existing Codex notify as a global setting and will not silently replace an unrelated notify command.
+
 ## Requirements
 
 - Windows

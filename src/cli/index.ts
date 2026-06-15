@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
+import path from "node:path";
 import { confirm, isCancel, log, note, spinner } from "@clack/prompts";
 import pc from "picocolors";
 import type { Platform } from "../shared/config-schema.js";
@@ -13,12 +14,102 @@ import {
 } from "./detect.js";
 import { generate } from "./generate.js";
 import { claudeHasJobFinish, installClaude, uninstallClaude } from "./installers/claude.js";
-import { installCodex, uninstallCodex } from "./installers/codex.js";
+import { codexJobFinishTarget, codexUsesInstallDir, installCodex, uninstallCodex } from "./installers/codex.js";
 import { finish, runWizard, type WizardResult } from "./wizard.js";
 
 const PKG = "job-finish";
 const CLAUDE_RESET_SCOPES = ["global", "project"] as const;
-const INSTALL_LOOKUP_SCOPES = ["project", "global"] as const;
+const INSTALL_LOOKUP_SCOPES = ["global", "project"] as const;
+type InstallScope = (typeof CLAUDE_RESET_SCOPES)[number];
+
+interface CleanupResult {
+  claudeSettings: string[];
+  codexConfig: string | null;
+  installDirs: string[];
+}
+
+interface GlobalInstallStatus {
+  claude: boolean;
+  codexTarget: string | null;
+}
+
+function emptyCleanup(): CleanupResult {
+  return { claudeSettings: [], codexConfig: null, installDirs: [] };
+}
+
+function installDirHasJobFinish(dir: string, platform: Platform): boolean {
+  return (
+    existsSync(notifierScriptPath(dir, platform)) ||
+    existsSync(path.join(dir, "job-finish.config.json")) ||
+    existsSync(path.join(dir, "jf-focus-vscode.exe"))
+  );
+}
+
+function getGlobalInstallStatus(cwd: string, platform: Platform): GlobalInstallStatus {
+  const globalClaudeSettings = claudeSettingsPath("global", cwd);
+  const codexTarget = codexJobFinishTarget(codexConfigPath());
+  const projectScript = notifierScriptPath(resolveInstallDir("project", cwd), platform);
+  return {
+    claude: existsSync(globalClaudeSettings) && claudeHasJobFinish(globalClaudeSettings),
+    codexTarget: codexTarget && path.resolve(codexTarget) !== path.resolve(projectScript) ? codexTarget : null,
+  };
+}
+
+function hasGlobalInstall(status: GlobalInstallStatus): boolean {
+  return status.claude || status.codexTarget !== null;
+}
+
+function describeGlobalInstall(status: GlobalInstallStatus, cwd: string, platform: Platform): string[] {
+  const lines: string[] = [];
+  if (status.claude) {
+    lines.push(`Claude:   ${claudeSettingsPath("global", cwd)}`);
+  }
+  if (status.codexTarget) {
+    const globalScript = notifierScriptPath(resolveInstallDir("global", cwd), platform);
+    const targetKind =
+      path.resolve(status.codexTarget) === path.resolve(globalScript)
+        ? "global install"
+        : "global Codex notify";
+    lines.push(`Codex:    ${codexConfigPath()} -> ${status.codexTarget} (${targetKind})`);
+  }
+  return lines;
+}
+
+function cleanupProjectInstall(cwd: string, platform: Platform): CleanupResult {
+  const cleaned = emptyCleanup();
+  const projectClaudeSettings = claudeSettingsPath("project", cwd);
+  if (existsSync(projectClaudeSettings) && claudeHasJobFinish(projectClaudeSettings)) {
+    uninstallClaude(projectClaudeSettings);
+    cleaned.claudeSettings.push(projectClaudeSettings);
+  }
+
+  if (codexUsesInstallDir(codexConfigPath(), resolveInstallDir("project", cwd), platform)) {
+    uninstallCodex(codexConfigPath());
+    cleaned.codexConfig = codexConfigPath();
+  }
+
+  const projectDir = resolveInstallDir("project", cwd);
+  if (installDirHasJobFinish(projectDir, platform)) {
+    rmSync(projectDir, { recursive: true, force: true });
+    cleaned.installDirs.push(projectDir);
+  }
+
+  return cleaned;
+}
+
+function cleanupLines(cleaned: CleanupResult): string[] {
+  const lines: string[] = [];
+  if (cleaned.claudeSettings.length) {
+    lines.push(`정리:     프로젝트 Claude hook 제거 (${cleaned.claudeSettings.join(", ")})`);
+  }
+  if (cleaned.codexConfig) {
+    lines.push(`정리:     프로젝트 설치본을 가리키던 Codex notify 제거 (${cleaned.codexConfig})`);
+  }
+  if (cleaned.installDirs.length) {
+    lines.push(`정리:     프로젝트 설치 폴더 삭제 (${cleaned.installDirs.join(", ")})`);
+  }
+  return lines;
+}
 
 /**
  * Strip job-finish hooks from every Claude scope except the one we are about to
@@ -27,7 +118,7 @@ const INSTALL_LOOKUP_SCOPES = ["project", "global"] as const;
  * (the "두 번 알림" bug that survives reboots because it lives in two files).
  * Pass `keepScope: null` to clean every scope. Returns the paths actually cleaned.
  */
-function resetClaudeResidue(keepScope: "global" | "project" | null, cwd: string): string[] {
+function resetClaudeResidue(keepScope: InstallScope | null, cwd: string): string[] {
   const cleaned: string[] = [];
   for (const scope of CLAUDE_RESET_SCOPES) {
     if (scope === keepScope) continue;
@@ -77,6 +168,23 @@ async function cmdInit(): Promise<void> {
   const result: WizardResult = await runWizard(platform);
   const { scope, agents, config } = result;
 
+  const globalStatus = getGlobalInstallStatus(cwd, platform);
+  if (scope === "project" && hasGlobalInstall(globalStatus)) {
+    const cleanedProject = cleanupProjectInstall(cwd, platform);
+    note(
+      [
+        pc.yellow("전역 Job-Finish가 이미 활성이라 프로젝트 설치를 건너뜁니다."),
+        ...describeGlobalInstall(globalStatus, cwd, platform),
+        ...cleanupLines(cleanedProject),
+        "Codex notify는 전역 설정이 하나뿐이라 프로젝트 설치도 전역 Codex 설정을 바꿀 수 있어요.",
+      ].join("\n"),
+      "전역 설치 유지",
+    );
+    finish("전역 설치만 남도록 처리했어요.");
+    return;
+  }
+
+  const projectCleaned = scope === "global" ? cleanupProjectInstall(cwd, platform) : emptyCleanup();
   const dir = resolveInstallDir(scope, cwd);
 
   // Reset first: purge any previous job-finish hooks from the *other* scope so
@@ -91,6 +199,7 @@ async function cmdInit(): Promise<void> {
   s.stop("notifier 생성 완료");
 
   const lines: string[] = [`스크립트: ${scriptPath}`, `설정:     ${configPath}`];
+  lines.push(...cleanupLines(projectCleaned));
   if (cleaned.length) {
     lines.push(`리셋:     이전 설치 잔재 정리 (${cleaned.length}곳) — ${cleaned.join(", ")}`);
   }
@@ -133,7 +242,7 @@ async function cmdDoctor(): Promise<void> {
     if (!d.ok && d.hint) console.log(`      ${pc.dim(d.hint)}`);
   }
 
-  // Find an installed notifier (project first, then global) and fire a test.
+  // Find an installed notifier (global first, then project) and fire a test.
   for (const scope of INSTALL_LOOKUP_SCOPES) {
     const dir = resolveInstallDir(scope, cwd);
     const script = notifierScriptPath(dir, platform);
