@@ -21,7 +21,7 @@ internal static class Program
     private const ushort VK_MENU = 0x12;
     private const uint KEYEVENTF_KEYUP = 0x0002;
     private const uint FLASHW_STOP = 0;
-    private const int FOCUS_RETRY_MS = 2_500;
+    private const int FOCUS_RETRY_MS = 6_000;
 
     private static int Main(string[] args)
     {
@@ -117,8 +117,9 @@ internal static class Program
             if (IsWindow(requested))
             {
                 var explicitWindow = windows.FirstOrDefault(w => w.Hwnd == requested);
-                if (explicitWindow.Hwnd != IntPtr.Zero && explicitWindow.Score >= 90)
+                if (explicitWindow.Hwnd != IntPtr.Zero)
                 {
+                    Log($"using explicit hwnd={requested.ToInt64()} score={explicitWindow.Score}");
                     return requested;
                 }
 

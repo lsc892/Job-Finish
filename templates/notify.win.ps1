@@ -265,6 +265,10 @@ $effectiveEvent = Get-EffectiveEvent $Event
 
 function Get-CodexSessionCwd {
   try {
+    if ($env:VSCODE_CWD -and (Test-Path -LiteralPath ([string]$env:VSCODE_CWD) -PathType Container)) {
+      return [string]$env:VSCODE_CWD
+    }
+
     if (-not $env:CODEX_THREAD_ID) { return '' }
     $sessionRoot = Join-Path $env:USERPROFILE '.codex\sessions'
     if (-not (Test-Path -LiteralPath $sessionRoot)) { return '' }
@@ -456,18 +460,20 @@ function Get-VSCodeWindow {
   if ($env:VSCODE_PID -match '^\d+$') {
     $p = Get-Process -Id ([int]$env:VSCODE_PID) -ErrorAction SilentlyContinue
     if ($p -and $p.ProcessName -eq 'Code') {
-      $fromPid = [JF]::FindWindowForPids(@([int]$p.Id), [string]$project, $true)
-      if ($fromPid -ne [IntPtr]::Zero) { return $fromPid }
+      if ($cwdIsReliable) {
+        $fromPid = [JF]::FindWindowForPids(@([int]$p.Id), [string]$project, $true)
+        if ($fromPid -ne [IntPtr]::Zero) { return $fromPid }
 
-      $fromPidFallback = [JF]::FindWindowForPids(@([int]$p.Id), '', $false)
-      if ($fromPidFallback -ne [IntPtr]::Zero) {
-        Log-IfDebug "using VSCODE_PID fallback hwnd=$($fromPidFallback.ToInt64()) pid=$($p.Id)"
-        return $fromPidFallback
-      }
+        $fromPidFallback = [JF]::FindWindowForPids(@([int]$p.Id), '', $false)
+        if ($fromPidFallback -ne [IntPtr]::Zero) {
+          Log-IfDebug "using VSCODE_PID fallback hwnd=$($fromPidFallback.ToInt64()) pid=$($p.Id)"
+          return $fromPidFallback
+        }
 
-      if ($p.MainWindowHandle -ne [IntPtr]::Zero) {
-        Log-IfDebug "using VSCODE_PID MainWindowHandle hwnd=$($p.MainWindowHandle.ToInt64()) pid=$($p.Id)"
-        return $p.MainWindowHandle
+        if ($p.MainWindowHandle -ne [IntPtr]::Zero) {
+          Log-IfDebug "using VSCODE_PID MainWindowHandle hwnd=$($p.MainWindowHandle.ToInt64()) pid=$($p.Id)"
+          return $p.MainWindowHandle
+        }
       }
     }
   }
