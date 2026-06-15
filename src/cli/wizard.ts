@@ -55,7 +55,7 @@ export async function runWizard(platform: Platform): Promise<WizardResult> {
   ) as "global" | "project";
 
   const agentOptions: Opt<Agent>[] = [
-    { value: "claude", label: "Claude Code", hint: "Stop / Notification 훅" },
+    { value: "claude", label: "Claude Code", hint: "Stop / AskUserQuestion hook" },
     { value: "codex", label: "Codex", hint: "~/.codex/config.toml notify" },
   ];
   const agents = unwrap(
@@ -69,7 +69,7 @@ export async function runWizard(platform: Platform): Promise<WizardResult> {
 
   const modeOptions: Opt<NotifyMode>[] = [
     { value: "os", label: "OS 알림창", hint: "알림 센터에 기록" },
-    { value: "flash", label: "작업표시줄 깜빡임", hint: "창 안 볼 때만 / 다시 보면 멈춤" },
+    { value: "flash", label: "작업표시줄 깜빡임", hint: "창을 안 볼 때만 / 다시 보면 멈춤" },
   ];
   const modes = unwrap(
     await multiselect({
@@ -86,7 +86,7 @@ export async function runWizard(platform: Platform): Promise<WizardResult> {
       { value: "30s", label: "30초" },
       { value: "5m", label: "5분" },
       { value: "10m", label: "10분" },
-      { value: "infinite", label: "무한 (창 다시 볼 때까지)" },
+      { value: "infinite", label: "무한 (창을 다시 볼 때까지)" },
     ];
     flashTimeout = unwrap(
       await select({
@@ -98,12 +98,12 @@ export async function runWizard(platform: Platform): Promise<WizardResult> {
   }
 
   const soundOn = unwrap(
-    await confirm({ message: "작업 완료 시 소리를 켤까요? (OS 기본음)", initialValue: true }),
+    await confirm({ message: "작업 완료 때 소리를 켤까요? (OS 기본음)", initialValue: true }),
   ) as boolean;
 
   const suppressWhenFocused = unwrap(
     await confirm({
-      message: "에이전트 창(VSCode 등)을 보고 있을 땐 알림을 생략할까요?",
+      message: "에이전트 창(VS Code)을 보고 있을 때 알림을 생략할까요?",
       initialValue: true,
     }),
   ) as boolean;
@@ -133,9 +133,9 @@ export async function runWizard(platform: Platform): Promise<WizardResult> {
       `에이전트: ${agents.join(", ")}`,
       `모드:   ${modes.join(", ")}`,
       modes.includes("flash") ? `깜빡임:  최대 ${flashTimeout}` : null,
-      `소리:   ${soundOn ? "켜짐 (OS 기본음)" : "꺼짐"}`,
+      `소리:   ${soundOn ? "켬 (OS 기본음)" : "끔"}`,
       `포커스: ${suppressWhenFocused ? "보고 있으면 생략" : "항상 알림"}`,
-      `디버그: ${debug ? "켜짐 (job-finish.log, jf-focus-vscode.log)" : "꺼짐"}`,
+      `디버그: ${debug ? "켬 (job-finish.log, jf-focus-vscode.log)" : "끔"}`,
     ]
       .filter(Boolean)
       .join("\n"),

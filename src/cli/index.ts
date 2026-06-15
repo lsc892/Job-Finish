@@ -18,9 +18,8 @@ import { codexJobFinishTarget, codexUsesInstallDir, installCodex, uninstallCodex
 import { finish, runWizard, type WizardResult } from "./wizard.js";
 
 const PKG = "job-finish";
-const CLAUDE_RESET_SCOPES = ["global", "project"] as const;
-const INSTALL_LOOKUP_SCOPES = ["global", "project"] as const;
-type InstallScope = (typeof CLAUDE_RESET_SCOPES)[number];
+const INSTALL_SCOPES = ["global", "project"] as const;
+type InstallScope = (typeof INSTALL_SCOPES)[number];
 
 interface CleanupResult {
   claudeSettings: string[];
@@ -49,6 +48,7 @@ function getGlobalInstallStatus(cwd: string, platform: Platform): GlobalInstallS
   const globalClaudeSettings = claudeSettingsPath("global", cwd);
   const codexTarget = codexJobFinishTarget(codexConfigPath());
   const projectScript = notifierScriptPath(resolveInstallDir("project", cwd), platform);
+
   return {
     claude: existsSync(globalClaudeSettings) && claudeHasJobFinish(globalClaudeSettings),
     codexTarget: codexTarget && path.resolve(codexTarget) !== path.resolve(projectScript) ? codexTarget : null,
@@ -113,14 +113,13 @@ function cleanupLines(cleaned: CleanupResult): string[] {
 
 /**
  * Strip job-finish hooks from every Claude scope except the one we are about to
- * install into. Claude merges user + project settings and runs *both* sets of
- * hooks, so a leftover entry in the other scope double-fires on every event
- * (the "두 번 알림" bug that survives reboots because it lives in two files).
+ * install into. Claude merges user + project settings and runs both sets of
+ * hooks, so a leftover entry in the other scope double-fires on every event.
  * Pass `keepScope: null` to clean every scope. Returns the paths actually cleaned.
  */
 function resetClaudeResidue(keepScope: InstallScope | null, cwd: string): string[] {
   const cleaned: string[] = [];
-  for (const scope of CLAUDE_RESET_SCOPES) {
+  for (const scope of INSTALL_SCOPES) {
     if (scope === keepScope) continue;
     const sp = claudeSettingsPath(scope, cwd);
     if (existsSync(sp) && claudeHasJobFinish(sp)) {
@@ -155,13 +154,12 @@ async function cmdInit(): Promise<void> {
   const platform = currentPlatform();
   const cwd = process.cwd();
 
-  // Surface dependency warnings up front.
   const deps = checkDependencies(platform);
   const missing = deps.filter((d) => !d.ok);
   if (missing.length) {
     note(
       missing.map((d) => `${pc.yellow("!")} ${d.name}: ${d.detail}${d.hint ? `\n  ${pc.dim(d.hint)}` : ""}`).join("\n"),
-      "확인 필요한 의존성",
+      "확인 필요",
     );
   }
 
@@ -187,9 +185,6 @@ async function cmdInit(): Promise<void> {
   const projectCleaned = scope === "global" ? cleanupProjectInstall(cwd, platform) : emptyCleanup();
   const dir = resolveInstallDir(scope, cwd);
 
-  // Reset first: purge any previous job-finish hooks from the *other* scope so
-  // exactly one install stays active (avoids the double-fire bug). If Claude
-  // isn't being (re)installed this round, clean every scope.
   const keepScope = agents.includes("claude") ? scope : null;
   const cleaned = resetClaudeResidue(keepScope, cwd);
 
@@ -201,49 +196,50 @@ async function cmdInit(): Promise<void> {
   const lines: string[] = [`스크립트: ${scriptPath}`, `설정:     ${configPath}`];
   lines.push(...cleanupLines(projectCleaned));
   if (cleaned.length) {
-    lines.push(`리셋:     이전 설치 잔재 정리 (${cleaned.length}곳) — ${cleaned.join(", ")}`);
+    lines.push(`리셋:     이전 설치 잔여 정리 (${cleaned.length}곳) ${cleaned.join(", ")}`);
   }
 
   if (agents.includes("claude")) {
     const sp = claudeSettingsPath(scope, cwd);
     const r = installClaude(sp, dir, platform);
-    lines.push(`Claude:   ${r.settingsPath}${r.backupPath ? pc.dim(` (백업 ✓)`) : ""}`);
+    lines.push(`Claude:   ${r.settingsPath}${r.backupPath ? pc.dim(" (백업 ✓)") : ""}`);
   }
+
   if (agents.includes("codex")) {
     const r = installCodex(codexConfigPath(), dir, platform);
     if (r.conflict) {
-      lines.push(pc.yellow(`Codex:    기존 notify 설정이 있어 건너뜀 — 수동 설정 필요`));
+      lines.push(pc.yellow("Codex:    기존 notify 설정이 있어 건너뜀 - 수동 설정 필요"));
       log.warn(
         `Codex의 notify는 하나만 가능해요. 기존 설정을 유지했습니다.\n` +
           `  직접 추가하려면 ${codexConfigPath()} 에:\n` +
           `  notify = ${JSON.stringify(buildCodexNotifyArgv(scriptPath, platform))}`,
       );
     } else {
-      lines.push(`Codex:    ${r.settingsPath}${r.backupPath ? pc.dim(` (백업 ✓)`) : ""}`);
+      lines.push(`Codex:    ${r.settingsPath}${r.backupPath ? pc.dim(" (백업 ✓)") : ""}`);
     }
   }
+
   note(lines.join("\n"), "설치 완료");
 
-  const wantTest = await confirm({ message: "지금 테스트 알림을 보낼까요?", initialValue: true });
+  const wantTest = await confirm({ message: "지금 테스트 알림을 보내볼까요?", initialValue: true });
   if (!isCancel(wantTest) && wantTest) {
     await runNotifier(scriptPath, platform, true);
     log.success("테스트 알림을 보냈어요. 알림/소리를 확인하세요.");
   }
 
-  finish("끝났어요! 에이전트를 다시 시작하면 작업 완료 시 알림이 옵니다.");
+  finish("끝났어요! 에이전트를 다시 시작하면 작업 완료 때 알림이 뜹니다.");
 }
 
 async function cmdDoctor(): Promise<void> {
   const platform = currentPlatform();
   const cwd = process.cwd();
-  console.log(pc.bold(`\n${PKG} doctor — ${platform}\n`));
+  console.log(pc.bold(`\n${PKG} doctor - ${platform}\n`));
   for (const d of checkDependencies(platform)) {
     console.log(`  ${d.ok ? pc.green("✓") : pc.red("✗")} ${d.name.padEnd(20)} ${pc.dim(d.detail)}`);
     if (!d.ok && d.hint) console.log(`      ${pc.dim(d.hint)}`);
   }
 
-  // Find an installed notifier (global first, then project) and fire a test.
-  for (const scope of INSTALL_LOOKUP_SCOPES) {
+  for (const scope of INSTALL_SCOPES) {
     const dir = resolveInstallDir(scope, cwd);
     const script = notifierScriptPath(dir, platform);
     if (existsSync(script)) {
@@ -260,10 +256,9 @@ async function cmdDoctor(): Promise<void> {
 async function cmdPreview(): Promise<void> {
   const platform = currentPlatform();
   const cwd = process.cwd();
-  for (const scope of INSTALL_LOOKUP_SCOPES) {
+  for (const scope of INSTALL_SCOPES) {
     const script = notifierScriptPath(resolveInstallDir(scope, cwd), platform);
     if (existsSync(script)) {
-      // No -Test: respects focus suppression so you see real behavior.
       const code = await runNotifier(script, platform, false);
       console.log(code === 0 ? "preview 완료 (포커스 상태에 따라 생략될 수 있어요)" : `종료 코드 ${code}`);
       return;
@@ -274,7 +269,7 @@ async function cmdPreview(): Promise<void> {
 
 function cmdUninstall(): void {
   const cwd = process.cwd();
-  for (const scope of INSTALL_LOOKUP_SCOPES) {
+  for (const scope of INSTALL_SCOPES) {
     const sp = claudeSettingsPath(scope, cwd);
     if (existsSync(sp)) {
       const r = uninstallClaude(sp);
@@ -285,7 +280,7 @@ function cmdUninstall(): void {
     const r = uninstallCodex(codexConfigPath());
     if (r.backupPath) console.log(`Codex 정리: ${r.settingsPath} (백업 ✓)`);
   }
-  console.log("hook 항목을 제거했어요. (생성된 스크립트 폴더는 수동 삭제 가능)");
+  console.log("hook 항목을 제거했어요. 생성된 스크립트 폴더는 수동 삭제할 수 있어요.");
 }
 
 async function main(): Promise<void> {
@@ -307,9 +302,9 @@ async function main(): Promise<void> {
     case "--help":
     case "help":
       console.log(
-        `\n${PKG} — 에이전트 작업 완료 알림\n\n` +
+        `\n${PKG} - 에이전트 작업 완료 알림\n\n` +
           `  npx ${PKG} init        대화형 설치\n` +
-          `  npx ${PKG} doctor      의존성 점검 + 테스트 알림\n` +
+          `  npx ${PKG} doctor      의존성 검사 + 테스트 알림\n` +
           `  npx ${PKG} preview     현재 설정으로 미리보기\n` +
           `  npx ${PKG} uninstall   hook 제거\n`,
       );
