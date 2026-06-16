@@ -13,6 +13,7 @@ param(
   [Int64]$WatchHwnd = 0,
   [string]$WatchTitle = "",
   [Int64]$WatchFlashHwnd = 0,
+  [string]$WatchFlashId = "",
   [int]$WatchFlashTimeoutSec = 0,
   [int]$WatchTimeoutSec = 600
 )
@@ -224,6 +225,23 @@ function Stop-FlashWindow([IntPtr]$hwnd) {
   return [JF]::FlashWindowEx([ref]$fw)
 }
 
+function Get-FlashStopSignalPath([string]$id) {
+  if ([string]::IsNullOrWhiteSpace($id)) { return '' }
+  $safeId = $id -replace '[^A-Za-z0-9_-]', ''
+  if ([string]::IsNullOrWhiteSpace($safeId)) { return '' }
+  return Join-Path ([IO.Path]::GetTempPath()) "job-finish-flash-stop-$safeId.signal"
+}
+
+function Test-FlashStopSignal([string]$id) {
+  $path = Get-FlashStopSignalPath $id
+  return $path -and (Test-Path -LiteralPath $path)
+}
+
+function Remove-FlashStopSignal([string]$id) {
+  $path = Get-FlashStopSignalPath $id
+  if ($path) { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
+}
+
 function Watch-FlashWindow {
   $hwnd = if ($WatchFlashHwnd -gt 0) { [IntPtr]$WatchFlashHwnd } else { [IntPtr]::Zero }
   if ($hwnd -eq [IntPtr]::Zero -or -not [JF]::IsWindow($hwnd)) { return }
@@ -235,6 +253,10 @@ function Watch-FlashWindow {
   $deadline = if ($WatchFlashTimeoutSec -gt 0) { (Get-Date).AddSeconds($WatchFlashTimeoutSec) } else { [DateTime]::MaxValue }
   while ((Get-Date) -lt $deadline) {
     if (-not [JF]::IsWindow($hwnd)) { break }
+    if (Test-FlashStopSignal $WatchFlashId) {
+      Log-IfDebug "flash worker stop signal received id=$WatchFlashId hwnd=$($hwnd.ToInt64())"
+      break
+    }
     if ([JF]::GetForegroundWindow() -eq $hwnd) { break }
     [JF]::FlashWindow($hwnd, $true) | Out-Null
     Start-Sleep -Milliseconds $interval
@@ -242,6 +264,7 @@ function Watch-FlashWindow {
 
   [JF]::FlashWindow($hwnd, $false) | Out-Null
   $stopped = Stop-FlashWindow $hwnd
+  Remove-FlashStopSignal $WatchFlashId
   Log-IfDebug "flash worker stopped hwnd=$($hwnd.ToInt64()) result=$stopped foreground=$([JF]::GetForegroundWindow().ToInt64())"
 }
 
@@ -467,6 +490,7 @@ $hasProcessCwd = Test-UsableProjectCwd $processCwd
 $focusCwd = if ($hasPayloadCwd) { $payloadCwd } elseif ($hasSessionCwd) { [string]$sessionCwd } elseif ($hasProcessCwd) { $processCwd } else { '' }
 $cwdIsReliable = [bool]$hasPayloadCwd -or $hasSessionCwd -or $hasProcessCwd
 $project = if ($focusCwd) { Split-Path -Leaf $focusCwd } else { 'workspace' }
+$activationId = [Guid]::NewGuid().ToString('N')
 $title = $agentName
 $text = Limit-ToastText (Get-EventToastText $effectiveEvent $payload $project)
 
@@ -721,6 +745,14 @@ function Get-QueryValue([string]$uri, [string]$name) {
   return ''
 }
 
+function Set-FlashStopSignal([string]$id) {
+  if ([string]::IsNullOrWhiteSpace($id)) { return }
+  $safeId = $id -replace '[^A-Za-z0-9_-]', ''
+  if ([string]::IsNullOrWhiteSpace($safeId)) { return }
+  $path = Join-Path ([IO.Path]::GetTempPath()) "job-finish-flash-stop-$safeId.signal"
+  try { Set-Content -LiteralPath $path -Value ([DateTime]::UtcNow.ToString('o')) -Encoding UTF8 } catch {}
+}
+
 function Get-VSCodeWindow([string]$cwd) {
   $project = if ($cwd) { Split-Path -Leaf $cwd } else { '' }
   $pidValue = Get-QueryValue $Uri 'pid'
@@ -772,6 +804,8 @@ function Focus-Window([IntPtr]$h) {
 }
 
 $cwd = Get-QueryValue $Uri 'cwd'
+$activationId = Get-QueryValue $Uri 'id'
+Set-FlashStopSignal $activationId
 $hwndValue = Get-QueryValue $Uri 'hwnd'
 $h = if ($hwndValue -match '^\d+$') { [IntPtr]([int64]$hwndValue) } else { [IntPtr]::Zero }
 if ($h -eq [IntPtr]::Zero -or -not [FocusVSCode]::IsWindow($h)) {
@@ -1102,10 +1136,13 @@ function Install-ToastShortcut([string]$shortcutAppId, [string]$displayName, [st
   }
 }
 
-function New-FocusLaunchUri([string]$cwd, $hwnd, $targetPid, [bool]$allowOpenFallback) {
+function New-FocusLaunchUri([string]$cwd, $hwnd, $targetPid, [bool]$allowOpenFallback, [string]$focusActivationId) {
   $query = New-Object 'System.Collections.Generic.List[string]'
   $query.Add("cwd=$([Uri]::EscapeDataString([string]$cwd))")
 
+  if ($focusActivationId) {
+    $query.Add("id=$([Uri]::EscapeDataString([string]$focusActivationId))")
+  }
   if ($hwnd -and $hwnd -ne [IntPtr]::Zero) {
     $query.Add("hwnd=$($hwnd.ToInt64())")
   }
@@ -1127,10 +1164,10 @@ function New-FocusLaunchUri([string]$cwd, $hwnd, $targetPid, [bool]$allowOpenFal
   return "${protocolName}://open?$($query -join '&')"
 }
 
-function Show-Toast($title, $text, $cwd, $hwnd, $targetPid, [bool]$allowOpenFallback) {
+function Show-Toast($title, $text, $cwd, $hwnd, $targetPid, [bool]$allowOpenFallback, [string]$focusActivationId) {
   try {
     Log-IfDebug 'toast enter'
-    $launch = New-FocusLaunchUri $cwd $hwnd $targetPid $allowOpenFallback
+    $launch = New-FocusLaunchUri $cwd $hwnd $targetPid $allowOpenFallback $focusActivationId
     Register-FocusProtocol
     Log-IfDebug 'toast after protocol'
     Install-ToastShortcut $appId $appDisplayName $launch
@@ -1170,7 +1207,7 @@ function Show-Toast($title, $text, $cwd, $hwnd, $targetPid, [bool]$allowOpenFall
         $script:toastRetryInProgress = $true
         Start-Sleep -Milliseconds $toastRetryDelayMs
         Log-IfDebug 'toast retrying once after failure'
-        return Show-Toast $title $text $cwd $hwnd $targetPid $allowOpenFallback
+        return Show-Toast $title $text $cwd $hwnd $targetPid $allowOpenFallback $focusActivationId
       } finally {
         $script:toastRetryInProgress = $false
       }
@@ -1214,9 +1251,9 @@ function Show-Balloon($title, $text, [string]$launch) {
 
 if ($modes -contains 'os') {
   Log-IfDebug 'showing toast notification'
-  $toastShown = Show-Toast $title $text $focusCwd $toastTarget $toastTargetPid $cwdIsReliable
+  $toastShown = Show-Toast $title $text $focusCwd $toastTarget $toastTargetPid $cwdIsReliable $activationId
   if (-not $toastShown) {
-    $fallbackLaunch = New-FocusLaunchUri $focusCwd $toastTarget $toastTargetPid $cwdIsReliable
+    $fallbackLaunch = New-FocusLaunchUri $focusCwd $toastTarget $toastTargetPid $cwdIsReliable $activationId
     Show-Balloon $title $text $fallbackLaunch
   } else {
     Start-ToastFocusWatcher $toastTarget (Get-ToastTag $toastTarget) $project
@@ -1244,6 +1281,7 @@ if (($modes -contains 'flash') -and $focusTarget -ne [IntPtr]::Zero) {
       '-File', "`"$scriptPath`"",
       '-WatchFlash',
       '-WatchFlashHwnd', "$($focusTarget.ToInt64())",
+      '-WatchFlashId', "$activationId",
       '-WatchFlashTimeoutSec', "$timeoutSec"
     )
     Start-Process -FilePath $ps -ArgumentList $argList -WindowStyle Hidden | Out-Null

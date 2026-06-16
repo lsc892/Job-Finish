@@ -33,6 +33,7 @@ internal static class Program
             ?? Path.GetFileName(cwd.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         var explicitHwnd = TryParseLong(GetQueryValue(uri, "hwnd") ?? GetArg(args, "--hwnd"));
         var preferredPid = TryParseInt(GetQueryValue(uri, "pid") ?? GetArg(args, "--pid"));
+        var activationId = GetQueryValue(uri, "id") ?? GetArg(args, "--id");
         var openWhenMissing = HasFlag(args, "--open") || IsTruthy(GetQueryValue(uri, "open"));
         var openInNewWindow = HasFlag(args, "--new-window") || IsTruthy(GetQueryValue(uri, "newWindow"));
         var waitMs = TryParseInt(GetQueryValue(uri, "waitMs") ?? GetArg(args, "--wait-ms")) ?? 6_000;
@@ -44,6 +45,7 @@ internal static class Program
         Log($"titleHint={titleHint}");
         Log($"preferredPid={preferredPid?.ToString() ?? ""}");
         Log($"explicitHwnd={explicitHwnd?.ToString() ?? ""}");
+        Log($"activationId={activationId ?? ""}");
         Log($"openWhenMissing={openWhenMissing}");
         Log($"openInNewWindow={openInNewWindow}");
         Log($"waitMs={waitMs}");
@@ -56,6 +58,8 @@ internal static class Program
         {
             return windows.Count > 0 ? 0 : 2;
         }
+
+        WriteFlashStopSignal(activationId);
 
         var target = ResolveTarget(explicitHwnd, windows);
         if ((target == IntPtr.Zero || !IsWindow(target)) && openWhenMissing)
@@ -293,6 +297,31 @@ internal static class Program
     private static string QuoteForCommandLine(string value)
     {
         return "\"" + value.Replace("\"", "\\\"") + "\"";
+    }
+
+    private static void WriteFlashStopSignal(string? activationId)
+    {
+        if (string.IsNullOrWhiteSpace(activationId))
+        {
+            return;
+        }
+
+        var safeId = new string(activationId.Where(c => char.IsLetterOrDigit(c) || c is '-' or '_').ToArray());
+        if (string.IsNullOrWhiteSpace(safeId))
+        {
+            return;
+        }
+
+        try
+        {
+            var path = Path.Combine(Path.GetTempPath(), $"job-finish-flash-stop-{safeId}.signal");
+            File.WriteAllText(path, DateTime.UtcNow.ToString("O"), Encoding.UTF8);
+            Log($"flash.stop.signal={path}");
+        }
+        catch (Exception ex)
+        {
+            Log($"flash.stop.signal.failed={ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     private static int ScoreWindow(WindowInfo window, string cwd, string? titleHint, int? preferredPid)
