@@ -19,6 +19,7 @@ internal static class Program
 
     private const int INPUT_KEYBOARD = 1;
     private const ushort VK_MENU = 0x12;
+    private const ushort VK_TAB = 0x09;
     private const uint KEYEVENTF_KEYUP = 0x0002;
     private const uint FLASHW_STOP = 0;
     private const int FOCUS_RETRY_MS = 6_000;
@@ -407,6 +408,7 @@ internal static class Program
             BringWindowToTop(hwnd);
             SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
             SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+            SendAltTabKey(hwnd);
             SwitchToThisWindow(hwnd, true);
             SetForegroundWindow(hwnd);
             StopFlashing(hwnd);
@@ -428,6 +430,20 @@ internal static class Program
             new INPUT { type = INPUT_KEYBOARD, u = new INPUTUNION { ki = new KEYBDINPUT { wVk = VK_MENU, dwFlags = KEYEVENTF_KEYUP } } },
         };
         SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
+    }
+
+    private static void SendAltTabKey(IntPtr hwnd)
+    {
+        var inputs = new[]
+        {
+            new INPUT { type = INPUT_KEYBOARD, u = new INPUTUNION { ki = new KEYBDINPUT { wVk = VK_MENU } } },
+            new INPUT { type = INPUT_KEYBOARD, u = new INPUTUNION { ki = new KEYBDINPUT { wVk = VK_TAB } } },
+            new INPUT { type = INPUT_KEYBOARD, u = new INPUTUNION { ki = new KEYBDINPUT { wVk = VK_TAB, dwFlags = KEYEVENTF_KEYUP } } },
+            new INPUT { type = INPUT_KEYBOARD, u = new INPUTUNION { ki = new KEYBDINPUT { wVk = VK_MENU, dwFlags = KEYEVENTF_KEYUP } } },
+        };
+        var sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
+        Thread.Sleep(180);
+        Log($"activation.altTab sent={sent}/{inputs.Length} focused={GetForegroundWindow() == hwnd} foreground={DescribeForeground()}");
     }
 
     private static bool StopFlashing(IntPtr hwnd)
@@ -614,7 +630,7 @@ internal static class Program
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetWindowTextW(IntPtr hwnd, StringBuilder text, int maxCount);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
     [DllImport("user32.dll")]
@@ -631,6 +647,7 @@ internal static class Program
     private struct INPUTUNION
     {
         [FieldOffset(0)] public KEYBDINPUT ki;
+        [FieldOffset(0)] public MOUSEINPUT mi;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -638,6 +655,17 @@ internal static class Program
     {
         public ushort wVk;
         public ushort wScan;
+        public uint dwFlags;
+        public uint time;
+        public UIntPtr dwExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MOUSEINPUT
+    {
+        public int dx;
+        public int dy;
+        public uint mouseData;
         public uint dwFlags;
         public uint time;
         public UIntPtr dwExtraInfo;
