@@ -347,26 +347,34 @@ function Get-CodexCwdFromSessionFile($session) {
   return ''
 }
 
-function Get-CodexSessionCwd {
+function Get-CodexSessionFiles {
   try {
     $sessionRoot = Join-Path $env:USERPROFILE '.codex\sessions'
-    if (Test-Path -LiteralPath $sessionRoot) {
-      $sessions = @()
-      if ($env:CODEX_THREAD_ID) {
-        $sessions = @(Get-ChildItem -LiteralPath $sessionRoot -Recurse -File -Filter "*$($env:CODEX_THREAD_ID)*.jsonl" -ErrorAction SilentlyContinue |
-          Sort-Object LastWriteTime -Descending)
-      }
+    if (-not (Test-Path -LiteralPath $sessionRoot)) { return @() }
 
-      if ($sessions.Count -eq 0) {
-        $sessions = @(Get-ChildItem -LiteralPath $sessionRoot -Recurse -File -Filter '*.jsonl' -ErrorAction SilentlyContinue |
-          Sort-Object LastWriteTime -Descending |
-          Select-Object -First 5)
-      }
+    $sessions = @()
+    if ($env:CODEX_THREAD_ID) {
+      $sessions = @(Get-ChildItem -LiteralPath $sessionRoot -Recurse -File -Filter "*$($env:CODEX_THREAD_ID)*.jsonl" -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending)
+    }
 
-      foreach ($session in $sessions) {
-        $cwd = Get-CodexCwdFromSessionFile $session
-        if ($cwd) { return $cwd }
-      }
+    if ($sessions.Count -eq 0) {
+      $sessions = @(Get-ChildItem -LiteralPath $sessionRoot -Recurse -File -Filter '*.jsonl' -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 5)
+    }
+
+    return @($sessions)
+  } catch {
+    return @()
+  }
+}
+
+function Get-CodexSessionCwd {
+  try {
+    foreach ($session in @(Get-CodexSessionFiles)) {
+      $cwd = Get-CodexCwdFromSessionFile $session
+      if ($cwd) { return $cwd }
     }
 
     if (Test-UsableProjectCwd ([string]$env:VSCODE_CWD)) {
@@ -452,6 +460,49 @@ function Get-ClaudeTranscriptSummary($payload) {
   return ''
 }
 
+function Get-CodexSessionSummary {
+  try {
+    foreach ($session in @(Get-CodexSessionFiles)) {
+      if (-not $session -or -not (Test-Path -LiteralPath $session.FullName)) { continue }
+
+      $fallback = ''
+      $lines = @(Get-Content -LiteralPath $session.FullName -Encoding UTF8 -Tail 500)
+      for ($i = $lines.Count - 1; $i -ge 0; $i--) {
+        $line = [string]$lines[$i]
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        if ($line.IndexOf('"role"', [System.StringComparison]::OrdinalIgnoreCase) -lt 0 -and
+            $line.IndexOf('"assistant"', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+
+        try { $entry = $line | ConvertFrom-Json } catch { continue }
+        $payload = Get-ObjectProperty $entry 'payload' $null
+        if (-not $payload) { continue }
+        if ((Get-ObjectProperty $payload 'type' '') -ne 'message') { continue }
+        if ((Get-ObjectProperty $payload 'role' '') -ne 'assistant') { continue }
+
+        $content = ''
+        if (Test-HasProperty $payload 'content') {
+          $content = Get-ContentText $payload.content
+        }
+
+        $summary = Format-ToastSummary $content
+        if (-not $summary) { continue }
+
+        if ((Get-ObjectProperty $payload 'phase' '') -eq 'final_answer') {
+          return $summary
+        }
+
+        if (-not $fallback) {
+          $fallback = $summary
+        }
+      }
+
+      if ($fallback) { return $fallback }
+    }
+  } catch {}
+
+  return ''
+}
+
 # ------------------------------------------------------- compose title/text
 function Get-AgentName([string]$eventName) {
   if ($eventName -eq 'codex') { return 'Codex' }
@@ -469,6 +520,8 @@ function Get-EventToastText([string]$eventName, $eventPayload, [string]$projectN
     'codex' {
       $last = Get-ObjectProperty $eventPayload 'last-assistant-message' ''
       $summary = Format-ToastSummary ([string]$last)
+      if ($summary) { return $summary }
+      $summary = Get-CodexSessionSummary
       if ($summary) { return $summary }
       return "$projectName work finished"
     }
