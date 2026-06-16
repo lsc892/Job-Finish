@@ -263,44 +263,91 @@ function Get-EffectiveEvent([string]$eventName) {
 
 $effectiveEvent = Get-EffectiveEvent $Event
 
+function Test-VSCodeInstallDirectory([string]$path) {
+  if ([string]::IsNullOrWhiteSpace($path)) { return $false }
+
+  try {
+    $fullPath = [IO.Path]::GetFullPath($path).TrimEnd('\', '/')
+    $candidates = @(
+      (Join-Path $env:LOCALAPPDATA 'Programs\Microsoft VS Code'),
+      (Join-Path $env:ProgramFiles 'Microsoft VS Code'),
+      (Join-Path ${env:ProgramFiles(x86)} 'Microsoft VS Code')
+    )
+
+    foreach ($candidate in $candidates) {
+      if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+      $candidatePath = [IO.Path]::GetFullPath($candidate).TrimEnd('\', '/')
+      if ($fullPath.Equals($candidatePath, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+      }
+    }
+  } catch {}
+
+  return $false
+}
+
+function Test-UsableProjectCwd([string]$path) {
+  if ([string]::IsNullOrWhiteSpace($path)) { return $false }
+  if (-not (Test-Path -LiteralPath $path -PathType Container)) { return $false }
+  if (Test-VSCodeInstallDirectory $path) { return $false }
+  return $true
+}
+
+function Get-CodexCwdFromSessionFile($session) {
+  if (-not $session -or -not (Test-Path -LiteralPath $session.FullName)) { return '' }
+
+  foreach ($line in @(Get-Content -LiteralPath $session.FullName -Encoding UTF8 -TotalCount 20)) {
+    if ([string]::IsNullOrWhiteSpace($line)) { continue }
+    try { $entry = $line | ConvertFrom-Json } catch { continue }
+    $cwd = Get-ObjectProperty (Get-ObjectProperty $entry 'payload' $null) 'cwd' ''
+    if (Test-UsableProjectCwd ([string]$cwd)) {
+      return [string]$cwd
+    }
+  }
+
+  $recent = @(Get-Content -LiteralPath $session.FullName -Encoding UTF8 -Tail 500)
+  for ($i = $recent.Count - 1; $i -ge 0; $i--) {
+    $line = [string]$recent[$i]
+    if ($line.IndexOf('"workdir"', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+    try { $entry = $line | ConvertFrom-Json } catch { continue }
+    $payload = Get-ObjectProperty $entry 'payload' $null
+    if (-not $payload -or (Get-ObjectProperty $payload 'type' '') -ne 'function_call') { continue }
+    $arguments = Get-ObjectProperty $payload 'arguments' ''
+    if (-not $arguments) { continue }
+    try { $argsObj = ([string]$arguments) | ConvertFrom-Json } catch { continue }
+    $workdir = Get-ObjectProperty $argsObj 'workdir' ''
+    if (Test-UsableProjectCwd ([string]$workdir)) {
+      return [string]$workdir
+    }
+  }
+
+  return ''
+}
+
 function Get-CodexSessionCwd {
   try {
-    if ($env:VSCODE_CWD -and (Test-Path -LiteralPath ([string]$env:VSCODE_CWD) -PathType Container)) {
-      return [string]$env:VSCODE_CWD
-    }
-
-    if (-not $env:CODEX_THREAD_ID) { return '' }
     $sessionRoot = Join-Path $env:USERPROFILE '.codex\sessions'
-    if (-not (Test-Path -LiteralPath $sessionRoot)) { return '' }
+    if (Test-Path -LiteralPath $sessionRoot) {
+      $sessions = @()
+      if ($env:CODEX_THREAD_ID) {
+        $sessions = @(Get-ChildItem -LiteralPath $sessionRoot -Recurse -File -Filter "*$($env:CODEX_THREAD_ID)*.jsonl" -ErrorAction SilentlyContinue |
+          Sort-Object LastWriteTime -Descending)
+      }
 
-    $session = Get-ChildItem -LiteralPath $sessionRoot -Recurse -File -Filter "*$($env:CODEX_THREAD_ID)*.jsonl" -ErrorAction SilentlyContinue |
-      Sort-Object LastWriteTime -Descending |
-      Select-Object -First 1
-    if (-not $session) { return '' }
+      if ($sessions.Count -eq 0) {
+        $sessions = @(Get-ChildItem -LiteralPath $sessionRoot -Recurse -File -Filter '*.jsonl' -ErrorAction SilentlyContinue |
+          Sort-Object LastWriteTime -Descending |
+          Select-Object -First 5)
+      }
 
-    foreach ($line in @(Get-Content -LiteralPath $session.FullName -Encoding UTF8 -TotalCount 20)) {
-      if ([string]::IsNullOrWhiteSpace($line)) { continue }
-      try { $entry = $line | ConvertFrom-Json } catch { continue }
-      $cwd = Get-ObjectProperty (Get-ObjectProperty $entry 'payload' $null) 'cwd' ''
-      if ($cwd -and (Test-Path -LiteralPath ([string]$cwd) -PathType Container)) {
-        return [string]$cwd
+      foreach ($session in $sessions) {
+        $cwd = Get-CodexCwdFromSessionFile $session
+        if ($cwd) { return $cwd }
       }
     }
 
-    $recent = @(Get-Content -LiteralPath $session.FullName -Encoding UTF8 -Tail 500)
-    for ($i = $recent.Count - 1; $i -ge 0; $i--) {
-      $line = [string]$recent[$i]
-      if ($line.IndexOf('"workdir"', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
-      try { $entry = $line | ConvertFrom-Json } catch { continue }
-      $payload = Get-ObjectProperty $entry 'payload' $null
-      if (-not $payload -or (Get-ObjectProperty $payload 'type' '') -ne 'function_call') { continue }
-      $arguments = Get-ObjectProperty $payload 'arguments' ''
-      if (-not $arguments) { continue }
-      try { $argsObj = ([string]$arguments) | ConvertFrom-Json } catch { continue }
-      $workdir = Get-ObjectProperty $argsObj 'workdir' ''
-      if ($workdir -and (Test-Path -LiteralPath ([string]$workdir) -PathType Container)) {
-        return [string]$workdir
-      }
+    if (Test-UsableProjectCwd ([string]$env:VSCODE_CWD)) {
+      return [string]$env:VSCODE_CWD
     }
   } catch {}
 
@@ -411,12 +458,15 @@ function Get-EventToastText([string]$eventName, $eventPayload, [string]$projectN
 }
 
 $agentName = Get-AgentName $effectiveEvent
-$hasPayloadCwd = (Test-HasProperty $payload 'cwd') -and $payload.cwd
+$payloadCwd = if ((Test-HasProperty $payload 'cwd') -and $payload.cwd) { [string]$payload.cwd } else { '' }
+$hasPayloadCwd = Test-UsableProjectCwd $payloadCwd
 $sessionCwd = if ($hasPayloadCwd) { '' } elseif ($effectiveEvent -eq 'codex') { Get-CodexSessionCwd } else { '' }
 $hasSessionCwd = -not [string]::IsNullOrWhiteSpace($sessionCwd)
-$focusCwd = if ($hasPayloadCwd) { [string]$payload.cwd } elseif ($hasSessionCwd) { [string]$sessionCwd } else { (Get-Location).Path }
-$cwdIsReliable = [bool]$hasPayloadCwd -or $hasSessionCwd -or $effectiveEvent -ne 'codex'
-$project = Split-Path -Leaf $focusCwd
+$processCwd = (Get-Location).Path
+$hasProcessCwd = Test-UsableProjectCwd $processCwd
+$focusCwd = if ($hasPayloadCwd) { $payloadCwd } elseif ($hasSessionCwd) { [string]$sessionCwd } elseif ($hasProcessCwd) { $processCwd } else { '' }
+$cwdIsReliable = [bool]$hasPayloadCwd -or $hasSessionCwd -or $hasProcessCwd
+$project = if ($focusCwd) { Split-Path -Leaf $focusCwd } else { 'workspace' }
 $title = $agentName
 $text = Limit-ToastText (Get-EventToastText $effectiveEvent $payload $project)
 
@@ -457,27 +507,6 @@ function Get-HostWindow {
 }
 
 function Get-VSCodeWindow {
-  if ($env:VSCODE_PID -match '^\d+$') {
-    $p = Get-Process -Id ([int]$env:VSCODE_PID) -ErrorAction SilentlyContinue
-    if ($p -and $p.ProcessName -eq 'Code') {
-      if ($cwdIsReliable) {
-        $fromPid = [JF]::FindWindowForPids(@([int]$p.Id), [string]$project, $true)
-        if ($fromPid -ne [IntPtr]::Zero) { return $fromPid }
-
-        $fromPidFallback = [JF]::FindWindowForPids(@([int]$p.Id), '', $false)
-        if ($fromPidFallback -ne [IntPtr]::Zero) {
-          Log-IfDebug "using VSCODE_PID fallback hwnd=$($fromPidFallback.ToInt64()) pid=$($p.Id)"
-          return $fromPidFallback
-        }
-
-        if ($p.MainWindowHandle -ne [IntPtr]::Zero) {
-          Log-IfDebug "using VSCODE_PID MainWindowHandle hwnd=$($p.MainWindowHandle.ToInt64()) pid=$($p.Id)"
-          return $p.MainWindowHandle
-        }
-      }
-    }
-  }
-
   if ($cwdIsReliable) {
     $fromTitle = [JF]::FindCodeWindow([string]$project, $true)
     if ($fromTitle -ne [IntPtr]::Zero) { return $fromTitle }
@@ -485,6 +514,28 @@ function Get-VSCodeWindow {
     $singleCodeWindow = [JF]::FindCodeWindow('', $true)
     if ($singleCodeWindow -ne [IntPtr]::Zero) { return $singleCodeWindow }
     return [IntPtr]::Zero
+  }
+
+  if ($env:VSCODE_PID -match '^\d+$') {
+    $p = Get-Process -Id ([int]$env:VSCODE_PID) -ErrorAction SilentlyContinue
+    if ($p -and $p.ProcessName -eq 'Code') {
+      $fromPid = [JF]::FindWindowForPids(@([int]$p.Id), [string]$project, $true)
+      if ($fromPid -ne [IntPtr]::Zero) { return $fromPid }
+
+      $singleCodeWindow = [JF]::FindCodeWindow('', $true)
+      if ($singleCodeWindow -ne [IntPtr]::Zero) {
+        $fromPidFallback = [JF]::FindWindowForPids(@([int]$p.Id), '', $false)
+        if ($fromPidFallback -eq $singleCodeWindow) {
+          Log-IfDebug "using single VSCODE_PID fallback hwnd=$($fromPidFallback.ToInt64()) pid=$($p.Id)"
+          return $fromPidFallback
+        }
+
+        if ($p.MainWindowHandle -eq $singleCodeWindow) {
+          Log-IfDebug "using single VSCODE_PID MainWindowHandle hwnd=$($p.MainWindowHandle.ToInt64()) pid=$($p.Id)"
+          return $p.MainWindowHandle
+        }
+      }
+    }
   }
 
   $code = @(Get-Process Code -ErrorAction SilentlyContinue)
@@ -523,8 +574,14 @@ function Test-WindowMatchesVSCodePid([IntPtr]$hwnd) {
   return $pidValue -eq [uint32]([int]$env:VSCODE_PID)
 }
 
+function Test-WindowIsOnlyVSCodeWindow([IntPtr]$hwnd) {
+  if ($hwnd -eq [IntPtr]::Zero) { return $false }
+  $singleCodeWindow = [JF]::FindCodeWindow('', $true)
+  return $singleCodeWindow -ne [IntPtr]::Zero -and $singleCodeWindow -eq $hwnd
+}
+
 function Test-WindowIsTrustedVSCodeTarget([IntPtr]$hwnd) {
-  return (Test-WindowLooksLikeProject $hwnd) -or (Test-WindowMatchesVSCodePid $hwnd)
+  return (Test-WindowLooksLikeProject $hwnd) -or ((Test-WindowMatchesVSCodePid $hwnd) -and (Test-WindowIsOnlyVSCodeWindow $hwnd))
 }
 
 $hostHwnd = Get-HostWindow

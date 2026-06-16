@@ -119,8 +119,14 @@ internal static class Program
                 var explicitWindow = windows.FirstOrDefault(w => w.Hwnd == requested);
                 if (explicitWindow.Hwnd != IntPtr.Zero)
                 {
-                    Log($"using explicit hwnd={requested.ToInt64()} score={explicitWindow.Score}");
-                    return requested;
+                    if (explicitWindow.Score >= 90 || best.Hwnd == IntPtr.Zero || best.Hwnd == requested)
+                    {
+                        Log($"using explicit hwnd={requested.ToInt64()} score={explicitWindow.Score}");
+                        return requested;
+                    }
+
+                    Log($"explicit hwnd score={explicitWindow.Score} is weaker than scored target hwnd={best.Hwnd.ToInt64()} score={best.Score}");
+                    return best.Hwnd;
                 }
 
                 if (best.Hwnd != IntPtr.Zero && best.Score >= 90)
