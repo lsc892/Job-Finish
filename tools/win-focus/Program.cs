@@ -31,10 +31,6 @@ internal static class Program
     private const uint WM_CLOSE = 0x0010;
     private const int ASFW_ANY = -1;
     private const uint LSFW_UNLOCK = 2;
-    private const uint PROCESS_CREATE_THREAD = 0x0002;
-    private const uint PROCESS_QUERY_INFORMATION = 0x0400;
-    private const uint PROCESS_VM_OPERATION = 0x0008;
-    private const uint WAIT_OBJECT_0 = 0x00000000;
     private const int FOCUS_RETRY_MS = 6_000;
     private const string ELECTRON_INPUT_CLASS = "Chrome_RenderWidgetHostHWND";
 
@@ -106,7 +102,7 @@ internal static class Program
 
         var ok = FocusWindowWithRetry(target);
         var stopped = ok && StopFlashingWithRetry(target);
-        Thread.Sleep(250);
+        Thread.Sleep(50);
 
         var after = DescribeForeground();
         Log($"foreground.after={after}");
@@ -433,7 +429,7 @@ internal static class Program
                 return true;
             }
 
-            Thread.Sleep(attempt == 1 ? 300 : 150);
+            Thread.Sleep(attempt == 1 ? 120 : 80);
         } while (watch.ElapsedMilliseconds < FOCUS_RETRY_MS);
 
         return IsTypingTargetActive(hwnd, FindPreferredInputChild(hwnd));
@@ -446,10 +442,7 @@ internal static class Program
             return false;
         }
 
-        if (!TryTransferForegroundFromForegroundOwner(hwnd))
-        {
-            DismissNotificationShellIfForeground(hwnd);
-        }
+        DismissNotificationShellIfForeground(hwnd);
 
         var fg = GetForegroundWindow();
         var fgThread = GetWindowThreadProcessId(fg, out _);
@@ -572,10 +565,10 @@ internal static class Program
     private static bool StopFlashingWithRetry(IntPtr hwnd)
     {
         var stopped = false;
-        for (var i = 0; i < 8; i++)
+        for (var i = 0; i < 4; i++)
         {
             stopped = StopFlashing(hwnd) || stopped;
-            Thread.Sleep(i == 0 ? 80 : 40);
+            Thread.Sleep(i == 0 ? 35 : 20);
         }
 
         return stopped;
@@ -591,13 +584,13 @@ internal static class Program
         var shellHwnd = GetForegroundWindow();
         Log($"shell.dismiss before={DescribeForeground()}");
         var closePosted = PostMessage(shellHwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
-        Thread.Sleep(120);
+        Thread.Sleep(20);
         var sent = SendKey(VK_ESCAPE);
 
         var watch = Stopwatch.StartNew();
-        while (watch.ElapsedMilliseconds < 350 && IsNotificationShellForeground())
+        while (watch.ElapsedMilliseconds < 180 && IsNotificationShellForeground())
         {
-            Thread.Sleep(35);
+            Thread.Sleep(20);
         }
 
         uint chordSent = 0;
@@ -605,9 +598,9 @@ internal static class Program
         {
             chordSent = SendKeyChord(VK_LWIN, VK_N);
             var chordWatch = Stopwatch.StartNew();
-            while (chordWatch.ElapsedMilliseconds < 350 && IsNotificationShellForeground())
+            while (chordWatch.ElapsedMilliseconds < 180 && IsNotificationShellForeground())
             {
-                Thread.Sleep(35);
+                Thread.Sleep(20);
             }
         }
 
@@ -616,9 +609,9 @@ internal static class Program
         {
             hidden = ShowWindowAsync(shellHwnd, SW_HIDE);
             var hideWatch = Stopwatch.StartNew();
-            while (hideWatch.ElapsedMilliseconds < 200 && IsNotificationShellForeground())
+            while (hideWatch.ElapsedMilliseconds < 80 && IsNotificationShellForeground())
             {
-                Thread.Sleep(25);
+                Thread.Sleep(20);
             }
         }
 
@@ -653,21 +646,21 @@ internal static class Program
             }
 
             process.Kill();
-            process.WaitForExit(800);
+            process.WaitForExit(350);
 
             var watch = Stopwatch.StartNew();
-            while (watch.ElapsedMilliseconds < 900)
+            while (watch.ElapsedMilliseconds < 600)
             {
                 var foreground = GetForegroundWindow();
                 GetWindowThreadProcessId(foreground, out var foregroundPid);
                 if (foregroundPid != pid)
                 {
-                    Thread.Sleep(120);
+                    Thread.Sleep(40);
                     Log($"shell.restart pid={pid} after={DescribeForeground()}");
                     return true;
                 }
 
-                Thread.Sleep(60);
+                Thread.Sleep(40);
             }
 
             Log($"shell.restart pid={pid} stillForeground={DescribeForeground()}");
@@ -677,106 +670,6 @@ internal static class Program
         {
             Log($"shell.restart.failed pid={pid} error={ex.GetType().Name}: {ex.Message}");
             return false;
-        }
-    }
-
-    private static bool TryTransferForegroundFromForegroundOwner(IntPtr targetHwnd)
-    {
-        var foregroundHwnd = GetForegroundWindow();
-        if (foregroundHwnd == IntPtr.Zero || foregroundHwnd == targetHwnd)
-        {
-            return false;
-        }
-
-        GetWindowThreadProcessId(foregroundHwnd, out var foregroundPid);
-        if (foregroundPid == 0)
-        {
-            return false;
-        }
-
-        var processName = GetWindowProcessName(foregroundHwnd);
-        if (!string.Equals(processName, "ShellExperienceHost", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        var process = OpenProcess(
-            PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION,
-            false,
-            foregroundPid);
-        if (process == IntPtr.Zero)
-        {
-            Log($"foreground.transfer.open.failed pid={foregroundPid} error={Marshal.GetLastWin32Error()}");
-            return false;
-        }
-
-        try
-        {
-            var helperPid = Environment.ProcessId;
-            GetWindowThreadProcessId(targetHwnd, out var targetPid);
-            var allowed = TryCallRemoteUser32(process, "AllowSetForegroundWindow", new IntPtr(helperPid), out var allowExit, out var allowThread, out var allowWait, out var allowError);
-            var targetAllowed = TryCallRemoteUser32(process, "AllowSetForegroundWindow", new IntPtr((int)targetPid), out var targetAllowExit, out var targetAllowThread, out var targetAllowWait, out var targetAllowError);
-            var anyAllowed = TryCallRemoteUser32(process, "AllowSetForegroundWindow", new IntPtr(ASFW_ANY), out var anyAllowExit, out var anyAllowThread, out var anyAllowWait, out var anyAllowError);
-            var unlocked = TryCallRemoteUser32(process, "LockSetForegroundWindow", new IntPtr(LSFW_UNLOCK), out var unlockExit, out var unlockThread, out var unlockWait, out var unlockError);
-            var transferred = TryCallRemoteUser32(process, "SetForegroundWindow", targetHwnd, out var transferExit, out var transferThread, out var transferWait, out var transferError);
-            Thread.Sleep(120);
-            var localForeground = SetForegroundWindow(targetHwnd);
-            Thread.Sleep(120);
-            var ok = GetForegroundWindow() == targetHwnd;
-            Log($"foreground.transfer pid={foregroundPid} process={processName} helperPid={helperPid} targetPid={targetPid} allow={allowed}/{allowExit}/t{allowThread}/w{allowWait}/e{allowError} allowTarget={targetAllowed}/{targetAllowExit}/t{targetAllowThread}/w{targetAllowWait}/e{targetAllowError} allowAny={anyAllowed}/{anyAllowExit}/t{anyAllowThread}/w{anyAllowWait}/e{anyAllowError} unlock={unlocked}/{unlockExit}/t{unlockThread}/w{unlockWait}/e{unlockError} remoteSet={transferred}/{transferExit}/t{transferThread}/w{transferWait}/e{transferError} localSet={localForeground} ok={ok} foreground={DescribeForeground()}");
-            return ok;
-        }
-        finally
-        {
-            CloseHandle(process);
-        }
-    }
-
-    private static bool TryCallRemoteUser32(
-        IntPtr process,
-        string procName,
-        IntPtr parameter,
-        out uint exitCode,
-        out uint threadId,
-        out uint waitResult,
-        out int error)
-    {
-        exitCode = 0;
-        threadId = 0;
-        waitResult = 0;
-        error = 0;
-
-        var user32 = GetModuleHandleW("user32.dll");
-        var proc = user32 != IntPtr.Zero ? GetProcAddress(user32, procName) : IntPtr.Zero;
-        if (proc == IntPtr.Zero)
-        {
-            error = Marshal.GetLastWin32Error();
-            return false;
-        }
-
-        var thread = CreateRemoteThread(
-            process,
-            IntPtr.Zero,
-            0,
-            proc,
-            parameter,
-            0,
-            out threadId);
-        if (thread == IntPtr.Zero)
-        {
-            error = Marshal.GetLastWin32Error();
-            return false;
-        }
-
-        try
-        {
-            waitResult = WaitForSingleObject(thread, 1_000);
-            GetExitCodeThread(thread, out exitCode);
-            return waitResult == WAIT_OBJECT_0 && exitCode != 0;
-        }
-        finally
-        {
-            CloseHandle(thread);
         }
     }
 
@@ -827,7 +720,7 @@ internal static class Program
             {
                 var result = shellType.InvokeMember("AppActivate", BindingFlags.InvokeMethod, null, shell, new object[] { title });
                 var activated = result is bool ok && ok;
-                Thread.Sleep(120);
+                Thread.Sleep(60);
                 Log($"activation.appActivate result={activated} foreground={GetForegroundWindow() == hwnd} title=\"{title}\"");
                 return activated;
             }
@@ -856,13 +749,13 @@ internal static class Program
         BringWindowToTop(hwnd);
         SwitchToThisWindow(hwnd, true);
         var foreground = SetForegroundWindow(hwnd);
-        Thread.Sleep(60);
+        Thread.Sleep(25);
         var currentFocus = GetThreadFocusWindow(targetThread);
         var active = SetActiveWindow(hwnd);
         var focusTarget = hwnd;
         var focus = SetFocus(focusTarget);
         var foregroundAfterFocus = SetForegroundWindow(hwnd);
-        Thread.Sleep(80);
+        Thread.Sleep(35);
         var ready = IsTypingTargetActive(hwnd, focusTarget);
         var finalTargetFocus = GetThreadFocusWindow(targetThread);
         var finalInputFocus = GetThreadFocusWindow(inputThread);
@@ -1207,34 +1100,6 @@ internal static class Program
 
     [DllImport("user32.dll")]
     private static extern bool FlashWindowEx(ref FLASHWINFO pwfi);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern IntPtr OpenProcess(uint processAccess, bool bInheritHandle, uint processId);
-
-    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    private static extern IntPtr GetModuleHandleW(string moduleName);
-
-    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Ansi)]
-    private static extern IntPtr GetProcAddress(IntPtr hModule, string procName);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern IntPtr CreateRemoteThread(
-        IntPtr hProcess,
-        IntPtr lpThreadAttributes,
-        uint dwStackSize,
-        IntPtr lpStartAddress,
-        IntPtr lpParameter,
-        uint dwCreationFlags,
-        out uint lpThreadId);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern uint WaitForSingleObject(IntPtr hHandle, uint dwMilliseconds);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool GetExitCodeThread(IntPtr hThread, out uint lpExitCode);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool CloseHandle(IntPtr hObject);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct INPUT
