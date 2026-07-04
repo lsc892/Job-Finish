@@ -108,13 +108,6 @@ export async function runWizard(platform: Platform): Promise<WizardResult> {
     }),
   ) as boolean;
 
-  const debug = unwrap(
-    await confirm({
-      message: "디버그 로그를 활성화할까요? (설치 문제 해결용)",
-      initialValue: false,
-    }),
-  ) as boolean;
-
   const config: Config = {
     version: 1,
     platform,
@@ -123,7 +116,8 @@ export async function runWizard(platform: Platform): Promise<WizardResult> {
     sound: { enabled: soundOn },
     suppressWhenFocused,
     clearToastOnFocus: true,
-    debug,
+    // Debug logging stays off on install; flip `debug` in job-finish.config.json to troubleshoot.
+    debug: false,
     watchApp: "",
   };
 
@@ -135,7 +129,6 @@ export async function runWizard(platform: Platform): Promise<WizardResult> {
       modes.includes("flash") ? `깜빡임:  최대 ${flashTimeout}` : null,
       `소리:   ${soundOn ? "켬 (OS 기본음)" : "끔"}`,
       `포커스: ${suppressWhenFocused ? "보고 있으면 생략" : "항상 알림"}`,
-      `디버그: ${debug ? "켬 (job-finish.log, jf-focus-vscode.log)" : "끔"}`,
     ]
       .filter(Boolean)
       .join("\n"),
