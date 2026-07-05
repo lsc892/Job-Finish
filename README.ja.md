@@ -63,7 +63,7 @@ npx job-finish doctor
 # 現在の設定で通知をプレビュー
 npx job-finish preview
 
-# Claude/Codex の hook を削除
+# hook とインストール済みファイルを削除
 npx job-finish uninstall
 ```
 
@@ -138,15 +138,11 @@ Job-Finishは、単に通知を出すだけではありません。開いてい�
 ## アンインストール
 
 ```powershell
+# Claude/Codex の hook とインストールしたファイルを削除
 npx job-finish uninstall
-```
 
-完全に片付けるには、次のようにします。
-
-```powershell
-Remove-Item -Recurse -Force "$env:USERPROFILE\.job-finish" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force ".\.claude\job-finish" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force "HKCU:\Software\Classes\jobfinish-focus" -ErrorAction SilentlyContinue
+# hook のみ削除し、生成されたファイルは残す
+npx job-finish uninstall --keep-files
 ```
 
 ## ライセンス

@@ -63,7 +63,7 @@ npx job-finish doctor
 # 현재 설정으로 알림 미리보기
 npx job-finish preview
 
-# Claude/Codex hook 제거
+# hook 과 설치된 파일 제거
 npx job-finish uninstall
 ```
 
@@ -138,15 +138,11 @@ Job-Finish는 단순히 알림만 띄우지 않습니다. 열린 VS Code 창이 
 ## 제거
 
 ```powershell
+# Claude/Codex hook 과 설치 폴더를 함께 제거
 npx job-finish uninstall
-```
 
-완전히 정리하려면:
-
-```powershell
-Remove-Item -Recurse -Force "$env:USERPROFILE\.job-finish" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force ".\.claude\job-finish" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force "HKCU:\Software\Classes\jobfinish-focus" -ErrorAction SilentlyContinue
+# hook 만 지우고 생성된 파일은 남기기
+npx job-finish uninstall --keep-files
 ```
 
 ## 라이선스

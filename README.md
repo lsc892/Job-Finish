@@ -63,7 +63,7 @@ npx job-finish doctor
 # Preview a notification with the current settings
 npx job-finish preview
 
-# Remove the Claude/Codex hooks
+# Remove the hooks and the installed files
 npx job-finish uninstall
 ```
 
@@ -138,15 +138,11 @@ Debug logging is off by default. Setting `"debug": true` in `job-finish.config.j
 ## Uninstall
 
 ```powershell
+# Remove the Claude/Codex hooks and the installed files
 npx job-finish uninstall
-```
 
-To clean up completely:
-
-```powershell
-Remove-Item -Recurse -Force "$env:USERPROFILE\.job-finish" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force ".\.claude\job-finish" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force "HKCU:\Software\Classes\jobfinish-focus" -ErrorAction SilentlyContinue
+# Remove only the hooks, keep the generated files
+npx job-finish uninstall --keep-files
 ```
 
 ## License

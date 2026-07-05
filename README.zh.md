@@ -63,7 +63,7 @@ npx job-finish doctor
 # 使用当前配置预览通知
 npx job-finish preview
 
-# 移除 Claude/Codex hook
+# 移除 hook 和已安装的文件
 npx job-finish uninstall
 ```
 
@@ -138,15 +138,11 @@ Job-Finish 不只是弹出一条通知。即使同时打开了多个 VS Code 窗
 ## 卸载
 
 ```powershell
+# 移除 Claude/Codex hook 与已安装的文件
 npx job-finish uninstall
-```
 
-如需彻底清理：
-
-```powershell
-Remove-Item -Recurse -Force "$env:USERPROFILE\.job-finish" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force ".\.claude\job-finish" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force "HKCU:\Software\Classes\jobfinish-focus" -ErrorAction SilentlyContinue
+# 只移除 hook，保留已生成的文件
+npx job-finish uninstall --keep-files
 ```
 
 ## 许可证
