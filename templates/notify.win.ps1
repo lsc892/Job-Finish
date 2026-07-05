@@ -427,6 +427,60 @@ class JfSummary {
     return ''
   }
 
+  # 토큰/세션 한도, API 오류처럼 Claude Code가 비정상 종료할 때 남기는 합성(assistant)
+  # 메시지 텍스트를 분류한다. 'usage-limit' | 'api-error' | 'error' 중 하나.
+  [string] ClassifyStopError([string]$content) {
+    $c = ([string]$content).ToLowerInvariant()
+    if ($c -match 'limit') { return 'usage-limit' }   # session/usage limit, limit reached 등
+    if ($c -match 'api error') { return 'api-error' }
+    return 'error'                                     # not logged in, prompt too long 등
+  }
+
+  # Stop 훅으로 들어온 Claude transcript의 마지막 assistant 항목을 보고 종료 유형을 판정한다.
+  # 한도 소진·API 오류 같은 비정상 종료는 Claude가 isApiErrorMessage 플래그가 붙은 합성
+  # assistant 메시지로 남기므로, 이를 정상 완료와 구분해 알림 제목을 다르게 줄 수 있게 한다.
+  # 반환: @{ Kind = 'normal'|'usage-limit'|'api-error'|'error'; Text = <토스트 본문 요약> }
+  [hashtable] GetClaudeStopInfo($payload) {
+    $result = @{ Kind = 'normal'; Text = '' }
+    if (-not ([JfUtil]::HasProperty($payload, 'transcript_path'))) { return $result }
+    $path = [string]([JfUtil]::GetProperty($payload, 'transcript_path', ''))
+    if ([string]::IsNullOrWhiteSpace($path) -or -not (Test-Path -LiteralPath $path)) { return $result }
+
+    try {
+      $lines = @(Get-Content -LiteralPath $path -Encoding UTF8 -Tail 200)
+      for ($i = $lines.Count - 1; $i -ge 0; $i--) {
+        $line = [string]$lines[$i]
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        try { $entry = $line | ConvertFrom-Json } catch { continue }
+
+        $role = ''
+        if ([JfUtil]::HasProperty($entry, 'role')) { $role = [string]$entry.role }
+        if (-not $role -and ([JfUtil]::HasProperty($entry, 'message')) -and $entry.message) {
+          if ([JfUtil]::HasProperty($entry.message, 'role')) { $role = [string]$entry.message.role }
+        }
+        $type = if ([JfUtil]::HasProperty($entry, 'type')) { [string]$entry.type } else { '' }
+        if ($role -ne 'assistant' -and $type -ne 'assistant') { continue }
+
+        $content = ''
+        if (([JfUtil]::HasProperty($entry, 'message')) -and $entry.message -and ([JfUtil]::HasProperty($entry.message, 'content'))) {
+          $content = $this.GetContentText($entry.message.content)
+        }
+        if (-not $content -and ([JfUtil]::HasProperty($entry, 'content'))) {
+          $content = $this.GetContentText($entry.content)
+        }
+
+        # 마지막 assistant 항목을 찾았으므로 여기서 분류하고 종료한다.
+        $result.Text = $this.FormatToastSummary($content)
+        if (([JfUtil]::HasProperty($entry, 'isApiErrorMessage')) -and [bool]$entry.isApiErrorMessage) {
+          $result.Kind = $this.ClassifyStopError($content)
+        }
+        return $result
+      }
+    } catch {}
+
+    return $result
+  }
+
   # Claude가 백그라운드 서브에이전트를 띄우면 메인 에이전트 턴이 끝나 Stop 훅이 먼저 터진다.
   # 서브에이전트 실행은 tool_result가 즉시 "Async agent launched..." 형태로 돌아오고,
   # 실제 완료는 나중에 <task-notification> 사용자 메시지로 온다. 따라서 "런치 확인(ack)은
@@ -1403,7 +1457,21 @@ $cwdIsReliable = [bool]$hasPayloadCwd -or $hasSessionCwd -or $hasProcessCwd
 $project = if ($focusCwd) { Split-Path -Leaf $focusCwd } else { 'workspace' }
 $activationId = [Guid]::NewGuid().ToString('N')
 $title = $agentName
-$text = $summary.LimitText($summary.GetEventToastText($effectiveEvent, $payload, $project))
+# Stop 이벤트는 정상 완료 외에 토큰/세션 한도 소진·API 오류로 인한 비정상 종료도 포함한다.
+# 그런 경우 제목을 달리해 한눈에 구분되도록 하고, 본문에는 한도 리셋 시각/오류 내용을 그대로 싣는다.
+if ($effectiveEvent -eq 'stop') {
+  $stopInfo = $summary.GetClaudeStopInfo($payload)
+  switch ($stopInfo.Kind) {
+    'usage-limit' { $title = "$agentName · Usage limit reached" }
+    'api-error'   { $title = "$agentName · API error" }
+    'error'       { $title = "$agentName · Stopped" }
+  }
+  $stopBody = if ($stopInfo.Text) { $stopInfo.Text } else { "$project work finished" }
+  $text = $summary.LimitText($stopBody)
+  if ($stopInfo.Kind -ne 'normal') { $config.Debug("abnormal stop detected kind=$($stopInfo.Kind)") }
+} else {
+  $text = $summary.LimitText($summary.GetEventToastText($effectiveEvent, $payload, $project))
+}
 
 $config.Debug("notifier start event=$effectiveEvent rawEvent=$Event modes=$($config.Modes -join ',') flashTimeout=$($config.Cfg.flashTimeout) sound=$($config.Cfg.sound.enabled) suppressWhenFocused=$($config.Cfg.suppressWhenFocused) project=$project cwdReliable=$cwdIsReliable sessionCwd=$hasSessionCwd")
 

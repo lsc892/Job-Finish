@@ -13,6 +13,7 @@ The instant Claude Code is waiting for your input or a Claude Code/Codex task fi
 
 - Claude Code + Codex support - Hooks up Claude Code's `Stop` / `AskUserQuestion` and Codex's `notify` events in one shot.
 - Native Windows notifications - Shows task completions, input prompts, and the last agent message as toast notifications.
+- Abnormal-stop alerts - Also notifies when Claude Code halts on a usage/session limit or an API error, with a distinct title (`Usage limit reached` / `API error`) so you can tell it apart from a normal finish at a glance.
 - Click the notification to return to VS Code - Tapping the toast finds your existing VS Code window and brings it to the front.
 - Open the project even when the window is gone - If the target VS Code window was closed, it reopens the project window with `code -n <project>`.
 - Focus awareness - Skips the notification if you are already looking at VS Code, and when it regains focus, clears only that window's notifications.
@@ -27,7 +28,7 @@ The instant Claude Code is waiting for your input or a Claude Code/Codex task fi
 
 | Target | Integration | Notification timing |
 | --- | --- | --- |
-| Claude Code | `~/.claude/settings.json` or `./.claude/settings.json` hooks | Task completion, `AskUserQuestion` input prompt |
+| Claude Code | `~/.claude/settings.json` or `./.claude/settings.json` hooks | Task completion, `AskUserQuestion` input prompt, usage-limit / API-error stop |
 | Codex | `~/.codex/config.toml` `notify` | Task completion, last assistant message |
 
 > Job-Finish is a Windows-only tool. It relies on PowerShell, the Windows toast API, and VS Code window focus handling.

@@ -13,6 +13,7 @@ Claude Codeが入力を待っている瞬間や、Claude Code / Codexの作業�
 
 - Claude Code + Codex 対応 - Claude Codeの `Stop` / `AskUserQuestion` と、Codexの `notify` イベントをまとめて連携します。
 - Windowsネイティブ通知 - 作業の完了、入力待ち、エージェントの最後のメッセージをトースト通知で表示します。
+- 異常終了の通知 - トークン・セッション上限の超過やAPIエラーでClaude Codeが停止したときも通知し、タイトル（`Usage limit reached` / `API error`）を変えて通常の完了と一目で見分けられます。
 - 通知クリックでVS Codeに復帰 - トーストを押すと既存のVS Codeウィンドウを探し出し、最前面に持ってきます。
 - ウィンドウがなくてもプロジェクトを開く - 対象のVS Codeウィンドウが閉じている場合は、`code -n <project>` 方式でプロジェクトのウィンドウを開き直します。
 - フォーカス検知 - すでにVS Codeを見ているときは通知を省略でき、再びフォーカスされるとそのウィンドウの通知だけを片付けます。
@@ -27,7 +28,7 @@ Claude Codeが入力を待っている瞬間や、Claude Code / Codexの作業�
 
 | 対象 | 連携方式 | 通知タイミング |
 | --- | --- | --- |
-| Claude Code | `~/.claude/settings.json` または `./.claude/settings.json` の hooks | 作業完了、`AskUserQuestion` の入力待ち |
+| Claude Code | `~/.claude/settings.json` または `./.claude/settings.json` の hooks | 作業完了、`AskUserQuestion` の入力待ち、上限超過・APIエラーによる停止 |
 | Codex | `~/.codex/config.toml` の `notify` | 作業完了、最後の assistant メッセージ |
 
 > Job-FinishはWindows専用ツールです。PowerShellとWindowsのtoast API、VS Codeのウィンドウフォーカス処理を利用します。

@@ -13,6 +13,7 @@ Claude Code가 입력을 기다리거나 Claude Code/Codex 작업이 끝나는 �
 
 - Claude Code + Codex 지원 - Claude Code의 `Stop` / `AskUserQuestion`, Codex의 `notify` 이벤트를 한 번에 연결합니다.
 - Windows 네이티브 알림 - 작업 완료, 입력 대기, 마지막 에이전트 메시지를 토스트 알림으로 보여줍니다.
+- 비정상 종료 알림 - 토큰·세션 한도 소진이나 API 오류로 Claude Code가 멈출 때도 알림을 띄우고, 제목(`Usage limit reached` / `API error`)을 달리해 정상 완료와 한눈에 구분됩니다.
 - 알림 클릭으로 VS Code 복귀 - 토스트를 누르면 기존 VS Code 창을 찾아 전면으로 가져옵니다.
 - 창이 없어도 프로젝트 열기 - 대상 VS Code 창이 닫혔으면 `code -n <project>` 방식으로 프로젝트 창을 다시 엽니다.
 - 포커스 인식 - 이미 VS Code를 보고 있으면 알림을 생략할 수 있고, 다시 포커스되면 해당 창의 알림만 정리합니다.
@@ -27,7 +28,7 @@ Claude Code가 입력을 기다리거나 Claude Code/Codex 작업이 끝나는 �
 
 | 대상 | 연결 방식 | 알림 타이밍 |
 | --- | --- | --- |
-| Claude Code | `~/.claude/settings.json` 또는 `./.claude/settings.json` hooks | 작업 완료, `AskUserQuestion` 입력 대기 |
+| Claude Code | `~/.claude/settings.json` 또는 `./.claude/settings.json` hooks | 작업 완료, `AskUserQuestion` 입력 대기, 한도 소진·API 오류 중단 |
 | Codex | `~/.codex/config.toml` `notify` | 작업 완료, 마지막 assistant 메시지 |
 
 > Job-Finish는 Windows 전용 도구입니다. PowerShell과 Windows toast API, VS Code 창 포커스 처리를 사용합니다.

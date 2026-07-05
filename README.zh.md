@@ -13,6 +13,7 @@
 
 - 同时支持 Claude Code 与 Codex —— 一次性接入 Claude Code 的 `Stop` / `AskUserQuestion` 与 Codex 的 `notify` 事件。
 - Windows 原生通知 —— 以 toast 通知的形式展示任务完成、等待输入以及智能体的最后一条消息。
+- 异常中断提醒 —— 当 Claude Code 因用量/会话额度耗尽或 API 错误而停止时也会通知，并使用不同的标题（`Usage limit reached` / `API error`），一眼即可与正常完成区分开。
 - 点击通知回到 VS Code —— 点击 toast 后，会找到已有的 VS Code 窗口并将其带到前台。
 - 窗口已关闭也能打开项目 —— 如果目标 VS Code 窗口已被关闭，会通过 `code -n <project>` 的方式重新打开项目窗口。
 - 焦点感知 —— 如果你已经在看着 VS Code，可以跳过通知；重新聚焦时，仅清理对应窗口的通知。
@@ -27,7 +28,7 @@
 
 | 对象 | 接入方式 | 通知时机 |
 | --- | --- | --- |
-| Claude Code | `~/.claude/settings.json` 或 `./.claude/settings.json` hooks | 任务完成、`AskUserQuestion` 等待输入 |
+| Claude Code | `~/.claude/settings.json` 或 `./.claude/settings.json` hooks | 任务完成、`AskUserQuestion` 等待输入、额度耗尽 / API 错误中断 |
 | Codex | `~/.codex/config.toml` 的 `notify` | 任务完成、最后一条 assistant 消息 |
 
 > Job-Finish 是仅面向 Windows 的工具。它使用了 PowerShell、Windows toast API 以及 VS Code 窗口焦点处理。
