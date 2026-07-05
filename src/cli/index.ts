@@ -28,7 +28,7 @@ async function main(): Promise<void> {
           `  npx ${PKG} init        대화형 설치\n` +
           `  npx ${PKG} doctor      의존성 검사 + 테스트 알림\n` +
           `  npx ${PKG} preview     현재 설정으로 미리보기\n` +
-          `  npx ${PKG} uninstall   hook 제거\n`,
+          `  npx ${PKG} uninstall   hook + 설치 폴더 제거 (--keep-files: 파일 보존)\n`,
       );
       break;
     default:
