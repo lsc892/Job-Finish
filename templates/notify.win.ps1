@@ -427,6 +427,67 @@ class JfSummary {
     return ''
   }
 
+  # Claude가 백그라운드 서브에이전트를 띄우면 메인 에이전트 턴이 끝나 Stop 훅이 먼저 터진다.
+  # 서브에이전트 실행은 tool_result가 즉시 "Async agent launched..." 형태로 돌아오고,
+  # 실제 완료는 나중에 <task-notification> 사용자 메시지로 온다. 따라서 "런치 확인(ack)은
+  # 있는데 아직 완료 알림이 없는" 서브에이전트가 있으면 여전히 돌아가는 중이므로 참을 반환한다.
+  # (동기 서브에이전트는 런치 ack가 없어 여기에 걸리지 않는다 → 정상 알림.)
+  [bool] HasPendingSubagentTask($payload) {
+    if (-not ([JfUtil]::HasProperty($payload, 'transcript_path'))) { return $false }
+    $path = [string]([JfUtil]::GetProperty($payload, 'transcript_path', ''))
+    if ([string]::IsNullOrWhiteSpace($path) -or -not (Test-Path -LiteralPath $path)) { return $false }
+
+    try {
+      $lines = @(Get-Content -LiteralPath $path -Encoding UTF8 -Tail 800)
+      $agentUseIds = New-Object 'System.Collections.Generic.HashSet[string]'  # tool_use name=Agent ids
+      $ackedIds = New-Object 'System.Collections.Generic.HashSet[string]'     # tool_result carrying a bg-launch ack
+      $stopped = New-Object 'System.Collections.Generic.HashSet[string]'      # ids named by a completion notification
+      foreach ($line in $lines) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+
+        # Completion/stop signal: a task-notification names the finished subagent.
+        if ($line.IndexOf('task-notification', [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+          foreach ($m in [regex]::Matches($line, '<tool-use-id>(toolu_[^<]+)</tool-use-id>')) {
+            [void]$stopped.Add($m.Groups[1].Value)
+          }
+        }
+
+        if ($line.IndexOf('tool_use', [System.StringComparison]::OrdinalIgnoreCase) -lt 0 -and
+            $line.IndexOf('tool_result', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+        try { $entry = $line | ConvertFrom-Json } catch { continue }
+        $message = [JfUtil]::GetProperty($entry, 'message', $null)
+        if (-not $message) { continue }
+        $content = [JfUtil]::GetProperty($message, 'content', $null)
+        if ($null -eq $content) { continue }
+        foreach ($block in @($content)) {
+          if ($null -eq $block) { continue }
+          $btype = [string]([JfUtil]::GetProperty($block, 'type', ''))
+          if ($btype -eq 'tool_use') {
+            if (([string]([JfUtil]::GetProperty($block, 'name', ''))) -eq 'Agent') {
+              $id = [string]([JfUtil]::GetProperty($block, 'id', ''))
+              if ($id) { [void]$agentUseIds.Add($id) }
+            }
+          } elseif ($btype -eq 'tool_result') {
+            $rid = [string]([JfUtil]::GetProperty($block, 'tool_use_id', ''))
+            if (-not $rid) { continue }
+            $rtext = $this.GetContentText([JfUtil]::GetProperty($block, 'content', ''))
+            if ($rtext -match 'Async agent launched' -or $rtext -match 'working in the background') {
+              [void]$ackedIds.Add($rid)
+            }
+          }
+        }
+      }
+      # A background subagent is still running when its launch was acked but no
+      # completion notification has arrived yet. Gating on Agent tool_use ids keeps
+      # stray marker text in unrelated tool output from producing false positives.
+      foreach ($id in $agentUseIds) {
+        if ($ackedIds.Contains($id) -and -not $stopped.Contains($id)) { return $true }
+      }
+    } catch {}
+
+    return $false
+  }
+
   # Codex 세션 로그 파일을 최신순으로 훑어 마지막 assistant 메시지를 찾아 토스트 본문으로 요약한다.
   [string] GetCodexSessionSummary() {
     try {
@@ -1345,6 +1406,14 @@ $title = $agentName
 $text = $summary.LimitText($summary.GetEventToastText($effectiveEvent, $payload, $project))
 
 $config.Debug("notifier start event=$effectiveEvent rawEvent=$Event modes=$($config.Modes -join ',') flashTimeout=$($config.Cfg.flashTimeout) sound=$($config.Cfg.sound.enabled) suppressWhenFocused=$($config.Cfg.suppressWhenFocused) project=$project cwdReliable=$cwdIsReliable sessionCwd=$hasSessionCwd")
+
+# A background subagent (Task) makes the main agent yield, firing Stop before the
+# real work is done. Skip that spurious 'finished' notification; the genuine Stop
+# fires again once the subagent completes and its tool_result lands.
+if (-not $Test -and $effectiveEvent -eq 'stop' -and $summary.HasPendingSubagentTask($payload)) {
+  $config.Debug('suppressing stop notification: a background subagent Task is still running')
+  exit 0
+}
 
 # ------------------------------------------------------- source window lookup
 $hostHwnd = Get-HostWindow
