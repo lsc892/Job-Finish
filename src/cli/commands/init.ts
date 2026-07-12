@@ -21,7 +21,7 @@ import {
 } from "../install-status.js";
 import { installClaude } from "../installers/claude.js";
 import { installCodex } from "../installers/codex.js";
-import { runNotifier } from "../run-notifier.js";
+import { primeNotifier, runNotifier } from "../run-notifier.js";
 import { finish, runWizard, type WizardResult } from "../wizard.js";
 
 // 의존성 점검 → 마법사로 설정 수집 → 전역 설치 충돌 처리 → 스크립트/설정 생성 → Claude·Codex hook 설치 → 선택적 테스트 알림까지 설치 전 과정을 순서대로 수행한다.
@@ -66,6 +66,9 @@ export async function cmdInit(): Promise<void> {
   const s = spinner();
   s.start("스크립트와 설정을 생성하는 중");
   const { scriptPath, configPath } = generate(dir, platform, config);
+  // 첫 알림이 시작 메뉴 바로가기를 lazy 생성하면 Windows가 그 첫 토스트를 조용히 삼킨다.
+  // 설치 시점에 미리 바로가기·프로토콜을 등록해 두어 첫 알림부터 뜨게 한다.
+  await primeNotifier(scriptPath, platform);
   s.stop("notifier 생성 완료");
 
   const lines: string[] = [`스크립트: ${scriptPath}`, `설정:     ${configPath}`];

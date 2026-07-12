@@ -21,3 +21,19 @@ export function runNotifier(scriptPath: string, platform: Platform, test: boolea
     child.on("exit", (code) => resolve(code ?? 0));
   });
 }
+
+/**
+ * Prime the notifier at install time: create the Start Menu shortcut and register
+ * the focus protocol up front so the very first notification isn't the one that
+ * lazily creates them (Windows silently drops the first toast for an
+ * AppUserModelID it hasn't registered yet).
+ */
+export function primeNotifier(scriptPath: string, platform: Platform): Promise<number> {
+  void platform;
+  const args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath, "-Prime"];
+  return new Promise((resolve) => {
+    const child = spawn("powershell", args, { stdio: "ignore" });
+    child.on("error", () => resolve(1));
+    child.on("exit", (code) => resolve(code ?? 0));
+  });
+}
