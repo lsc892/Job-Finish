@@ -1504,10 +1504,12 @@ if ($cwdIsReliable -and $vscodeHwnd -ne [IntPtr]::Zero -and (Get-WindowProcessNa
   $config.Debug("discarding vscode target hwnd=$($vscodeHwnd.ToInt64()) because title does not match project=$project")
   $vscodeHwnd = [IntPtr]::Zero
 }
-if ($cwdIsReliable -and $vscodeHwnd -eq [IntPtr]::Zero -and $hostHwnd -ne [IntPtr]::Zero -and (Get-WindowProcessName $hostHwnd) -eq 'Code' -and -not (Test-WindowIsTrustedVSCodeTarget $hostHwnd)) {
-  $config.Debug("discarding host fallback hwnd=$($hostHwnd.ToInt64()) because it is a different VS Code project")
-  $hostHwnd = [IntPtr]::Zero
-}
+# $hostHwnd는 이 notifier의 상위 프로세스 트리에서 찾은 창 — 즉 에이전트가 실제로 돌고 있는
+# VS Code 창이다. 제목이 $project(=cwd 말단 폴더명)와 안 맞더라도(에이전트가 이미 열린
+# 워크스페이스의 하위 폴더에서 작업한 경우, 창 제목엔 워크스페이스 루트만 뜬다) 이 창이
+# 올바른 대상이므로 버리지 않는다. 예전엔 제목 불일치를 '다른 프로젝트'로 오판해 이 창을
+# 버렸고, 그 탓에 클릭 시 기존 창을 포커스하지 못하고 하위 폴더를 루트로 새 VS Code 창을
+# 여는 버그가 있었다(#6).
 $hasVSCodeTarget = $vscodeHwnd -ne [IntPtr]::Zero
 $focusTarget = if ($vscodeHwnd -ne [IntPtr]::Zero) { $vscodeHwnd } else { $hostHwnd }
 $focusTargetPid = [uint32]0
@@ -1516,7 +1518,9 @@ if ($focusTarget -ne [IntPtr]::Zero) {
 }
 $toastTarget = if ($hasVSCodeTarget) {
   $vscodeHwnd
-} elseif (-not $cwdIsReliable -and $hostHwnd -ne [IntPtr]::Zero -and (Get-WindowProcessName $hostHwnd) -eq 'Code') {
+} elseif ($hostHwnd -ne [IntPtr]::Zero -and (Get-WindowProcessName $hostHwnd) -eq 'Code') {
+  # 에이전트가 돌던 VS Code 창(host)을 토스트 대상 hwnd로 넘긴다. cwd가 신뢰 가능하든
+  # 아니든, 이 hwnd가 있으면 클릭 시 새 창을 여는 대신 그 창을 포커스한다(#6).
   $hostHwnd
 } else {
   [IntPtr]::Zero
