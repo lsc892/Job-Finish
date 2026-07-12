@@ -6,6 +6,7 @@
 param(
   [string]$Event = "stop",
   [switch]$Test,
+  [switch]$Prime,
   [switch]$WatchToast,
   [switch]$WatchFlash,
   [string]$ToastTag = "",
@@ -1426,6 +1427,19 @@ $config = [JfConfig]::new($PSScriptRoot)
 $summary = [JfSummary]::new($maxToastTextLength)
 $dedup = [JfDedup]::new($appId)
 $focusProtocol = [JfFocusProtocol]::new($PSScriptRoot, $protocolName)
+
+# ---------------------------------------------------------------- prime (install)
+# Run once at install time (`-Prime`) to create the Start Menu shortcut and register
+# the focus protocol ahead of any notification. Windows silently drops the very first
+# toast whose AppUserModelID it hasn't registered yet; lazily creating the shortcut on
+# the first real toast is exactly what triggers that drop. Priming here makes the
+# shortcut already exist by the time the first notification fires, so it shows.
+if ($Prime) {
+  $focusProtocol.RegisterFocusProtocol()
+  [void](Install-ToastShortcut $appId $appDisplayName '')
+  $config.Debug('prime complete: focus protocol registered and toast shortcut installed')
+  exit 0
+}
 
 # ---------------------------------------------------------------- flash worker
 if ($WatchFlash) {
