@@ -4,7 +4,7 @@ using System.Diagnostics;
 internal static partial class Program
 {
     // 명시된 hwnd가 유효하면 우선하되, 점수 90 이상인 스코어링 우승 창이 더 강하면 그쪽을 택하고, 둘 다 없으면 창이 하나일 때만 그 창을 쓴다.
-    private static IntPtr ResolveTarget(long? explicitHwnd, List<WindowInfo> windows, string targetKind)
+    private static IntPtr ResolveTarget(long? explicitHwnd, List<WindowInfo> windows)
     {
         var best = windows.FirstOrDefault(w => w.Score >= 90);
 
@@ -30,13 +30,6 @@ internal static partial class Program
                 {
                     Logger.Log($"explicit hwnd did not match cwd/title; using scored target hwnd={best.Hwnd.ToInt64()} score={best.Score}");
                     return best.Hwnd;
-                }
-
-                if (targetKind == TargetCodexDesktop)
-                {
-                    var fallback = windows.Count == 1 ? windows[0].Hwnd : IntPtr.Zero;
-                    Logger.Log($"explicit hwnd is not a Codex desktop window; fallback={fallback.ToInt64()}");
-                    return fallback;
                 }
 
                 return requested;
@@ -65,7 +58,7 @@ internal static partial class Program
 
         do
         {
-            var windows = GetScoredTargetWindows(cwd, titleHint, preferredPid, TargetVSCode);
+            var windows = GetScoredCodeWindows(cwd, titleHint, preferredPid);
             var best = windows.FirstOrDefault(w => w.Score >= 90);
             if (best.Hwnd != IntPtr.Zero)
             {

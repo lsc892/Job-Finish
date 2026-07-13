@@ -740,30 +740,6 @@ function Get-VSCodeWindow([string]$cwd) {
   return [IntPtr]::Zero
 }
 
-function Test-CodexDesktopProcessName([string]$processName) {
-  return $processName -ieq 'Codex' -or $processName -ieq 'Orca'
-}
-
-function Get-CodexDesktopWindow {
-  $pidValue = Get-QueryValue $Uri 'pid'
-  if ($pidValue -match '^\d+$') {
-    $p = Get-Process -Id ([int]$pidValue) -ErrorAction SilentlyContinue
-    if ($p -and (Test-CodexDesktopProcessName ([string]$p.ProcessName))) {
-      $fromPid = [FocusVSCode]::FindCodeWindow(@([int]$p.Id), '', $false)
-      if ($fromPid -ne [IntPtr]::Zero) { return $fromPid }
-    }
-  }
-
-  $desktop = @(Get-Process Codex,Orca -ErrorAction SilentlyContinue)
-  if ($desktop.Count -eq 0) { return [IntPtr]::Zero }
-
-  $main = @($desktop | Where-Object { $_.MainWindowHandle -ne 0 })
-  if ($main.Count -eq 1) { return [IntPtr]$main[0].MainWindowHandle }
-
-  $ids = @($desktop | ForEach-Object { [int]$_.Id })
-  return [FocusVSCode]::FindCodeWindow($ids, '', $false)
-}
-
 function Stop-Flashing([IntPtr]$h) {
   if ($h -eq [IntPtr]::Zero -or -not [FocusVSCode]::IsWindow($h)) { return }
   $fw = New-Object FocusVSCode+FLASHWINFO
@@ -791,11 +767,10 @@ function Focus-Window([IntPtr]$h) {
 $cwd = Get-QueryValue $Uri 'cwd'
 $activationId = Get-QueryValue $Uri 'id'
 Set-FlashStopSignal $activationId
-$targetKind = Get-QueryValue $Uri 'target'
 $hwndValue = Get-QueryValue $Uri 'hwnd'
 $h = if ($hwndValue -match '^\d+$') { [IntPtr]([int64]$hwndValue) } else { [IntPtr]::Zero }
 if ($h -eq [IntPtr]::Zero -or -not [FocusVSCode]::IsWindow($h)) {
-  $h = if ($targetKind -eq 'codex-desktop') { Get-CodexDesktopWindow } else { Get-VSCodeWindow $cwd }
+  $h = Get-VSCodeWindow $cwd
 }
 Focus-Window $h
 '@
@@ -922,29 +897,6 @@ function Get-ProcessTree {
     $cur = [int]$proc.ParentProcessId
   }
   return $ids.ToArray()
-}
-
-function Test-CodexDesktopProcessName([string]$processName) {
-  return $processName -ieq 'Codex' -or $processName -ieq 'Orca'
-}
-
-# Codex Desktop starts the agent below its desktop process. Resolve only a
-# desktop ancestor so an unrelated open Codex/Orca window is never selected for
-# a Codex CLI session running in VS Code or a standalone terminal.
-function Get-CodexDesktopHostWindow {
-  $tree = Get-ProcessTree
-  foreach ($id in $tree) {
-    $p = Get-Process -Id $id -ErrorAction SilentlyContinue
-    if (-not $p -or -not (Test-CodexDesktopProcessName ([string]$p.ProcessName))) { continue }
-
-    $fromPid = [JF]::FindWindowForPids(@([int]$p.Id), '', $false)
-    if ($fromPid -ne [IntPtr]::Zero) {
-      $config.Debug("using Codex desktop ancestor hwnd=$($fromPid.ToInt64()) pid=$($p.Id) process=$($p.ProcessName)")
-      return $fromPid
-    }
-  }
-
-  return [IntPtr]::Zero
 }
 
 function Get-HostWindow {
@@ -1357,7 +1309,7 @@ function Install-ToastShortcut([string]$shortcutAppId, [string]$displayName, [st
   }
 }
 
-function New-FocusLaunchUri([string]$cwd, $hwnd, $targetPid, [bool]$allowOpenFallback, [string]$targetKind, [string]$focusActivationId) {
+function New-FocusLaunchUri([string]$cwd, $hwnd, $targetPid, [bool]$allowOpenFallback, [string]$focusActivationId) {
   $query = New-Object 'System.Collections.Generic.List[string]'
   $query.Add("cwd=$([Uri]::EscapeDataString([string]$cwd))")
 
@@ -1373,9 +1325,6 @@ function New-FocusLaunchUri([string]$cwd, $hwnd, $targetPid, [bool]$allowOpenFal
   if ($project) {
     $query.Add("title=$([Uri]::EscapeDataString([string]$project))")
   }
-  if ($targetKind) {
-    $query.Add("target=$([Uri]::EscapeDataString([string]$targetKind))")
-  }
   if ($allowOpenFallback) {
     $query.Add('open=1')
     $query.Add('newWindow=1')
@@ -1388,10 +1337,10 @@ function New-FocusLaunchUri([string]$cwd, $hwnd, $targetPid, [bool]$allowOpenFal
   return "${protocolName}://open?$($query -join '&')"
 }
 
-function Show-Toast($title, $text, $cwd, $hwnd, $targetPid, [bool]$allowOpenFallback, [string]$targetKind, [string]$focusActivationId) {
+function Show-Toast($title, $text, $cwd, $hwnd, $targetPid, [bool]$allowOpenFallback, [string]$focusActivationId) {
   try {
     $config.Debug('toast enter')
-    $launch = New-FocusLaunchUri $cwd $hwnd $targetPid $allowOpenFallback $targetKind $focusActivationId
+    $launch = New-FocusLaunchUri $cwd $hwnd $targetPid $allowOpenFallback $focusActivationId
     $focusProtocol.RegisterFocusProtocol()
     $config.Debug('toast after protocol')
     Install-ToastShortcut $appId $appDisplayName $launch
@@ -1431,7 +1380,7 @@ function Show-Toast($title, $text, $cwd, $hwnd, $targetPid, [bool]$allowOpenFall
         $script:toastRetryInProgress = $true
         Start-Sleep -Milliseconds $toastRetryDelayMs
         $config.Debug('toast retrying once after failure')
-        return Show-Toast $title $text $cwd $hwnd $targetPid $allowOpenFallback $targetKind $focusActivationId
+        return Show-Toast $title $text $cwd $hwnd $targetPid $allowOpenFallback $focusActivationId
       } finally {
         $script:toastRetryInProgress = $false
       }
@@ -1550,7 +1499,6 @@ if (-not $Test -and $effectiveEvent -eq 'stop' -and $summary.HasPendingSubagentT
 
 # ------------------------------------------------------- source window lookup
 $hostHwnd = Get-HostWindow
-$codexDesktopHwnd = if ($effectiveEvent -eq 'codex') { Get-CodexDesktopHostWindow } else { [IntPtr]::Zero }
 $vscodeHwnd = Get-VSCodeWindow
 if ($cwdIsReliable -and $vscodeHwnd -ne [IntPtr]::Zero -and (Get-WindowProcessName $vscodeHwnd) -eq 'Code' -and -not (Test-WindowIsTrustedVSCodeTarget $vscodeHwnd)) {
   $config.Debug("discarding vscode target hwnd=$($vscodeHwnd.ToInt64()) because title does not match project=$project")
@@ -1562,16 +1510,13 @@ if ($cwdIsReliable -and $vscodeHwnd -ne [IntPtr]::Zero -and (Get-WindowProcessNa
 # 올바른 대상이므로 버리지 않는다. 예전엔 제목 불일치를 '다른 프로젝트'로 오판해 이 창을
 # 버렸고, 그 탓에 클릭 시 기존 창을 포커스하지 못하고 하위 폴더를 루트로 새 VS Code 창을
 # 여는 버그가 있었다(#6).
-$hasCodexDesktopTarget = $codexDesktopHwnd -ne [IntPtr]::Zero
-$hasVSCodeTarget = -not $hasCodexDesktopTarget -and $vscodeHwnd -ne [IntPtr]::Zero
-$focusTarget = if ($hasCodexDesktopTarget) { $codexDesktopHwnd } elseif ($vscodeHwnd -ne [IntPtr]::Zero) { $vscodeHwnd } else { $hostHwnd }
+$hasVSCodeTarget = $vscodeHwnd -ne [IntPtr]::Zero
+$focusTarget = if ($vscodeHwnd -ne [IntPtr]::Zero) { $vscodeHwnd } else { $hostHwnd }
 $focusTargetPid = [uint32]0
 if ($focusTarget -ne [IntPtr]::Zero) {
   [JF]::GetWindowThreadProcessId($focusTarget, [ref]$focusTargetPid) | Out-Null
 }
-$toastTarget = if ($hasCodexDesktopTarget) {
-  $codexDesktopHwnd
-} elseif ($hasVSCodeTarget) {
+$toastTarget = if ($hasVSCodeTarget) {
   $vscodeHwnd
 } elseif ($hostHwnd -ne [IntPtr]::Zero -and (Get-WindowProcessName $hostHwnd) -eq 'Code') {
   # 에이전트가 돌던 VS Code 창(host)을 토스트 대상 hwnd로 넘긴다. cwd가 신뢰 가능하든
@@ -1584,10 +1529,8 @@ $toastTargetPid = [uint32]0
 if ($toastTarget -ne [IntPtr]::Zero) {
   [JF]::GetWindowThreadProcessId($toastTarget, [ref]$toastTargetPid) | Out-Null
 }
-$targetKind = if ($hasCodexDesktopTarget) { 'codex-desktop' } else { 'vscode' }
-$allowOpenFallback = $cwdIsReliable -and -not $hasCodexDesktopTarget
 
-$config.Debug("window target host=$($hostHwnd.ToInt64()) codexDesktop=$($codexDesktopHwnd.ToInt64()) vscode=$($vscodeHwnd.ToInt64()) kind=$targetKind focus=$($focusTarget.ToInt64()) focusPid=$focusTargetPid toast=$($toastTarget.ToInt64()) toastPid=$toastTargetPid")
+$config.Debug("window target host=$($hostHwnd.ToInt64()) vscode=$($vscodeHwnd.ToInt64()) focus=$($focusTarget.ToInt64()) focusPid=$focusTargetPid toast=$($toastTarget.ToInt64()) toastPid=$toastTargetPid")
 
 if (-not $Test -and $effectiveEvent -eq 'codex' -and -not $cwdIsReliable -and $dedup.TestRecent($recentNotificationWindowSec)) {
   $config.Debug('suppressing unreliable Codex notification because a recent VS Code toast was already shown')
@@ -1607,13 +1550,12 @@ if ($WatchToast) {
 # ------------------------------------------------------------------- notify
 if ($config.Modes -contains 'os') {
   $config.Debug('showing toast notification')
-  $toastShown = Show-Toast $title $text $focusCwd $toastTarget $toastTargetPid $allowOpenFallback $targetKind $activationId
+  $toastShown = Show-Toast $title $text $focusCwd $toastTarget $toastTargetPid $cwdIsReliable $activationId
   if (-not $toastShown) {
-    $fallbackLaunch = New-FocusLaunchUri $focusCwd $toastTarget $toastTargetPid $allowOpenFallback $targetKind $activationId
+    $fallbackLaunch = New-FocusLaunchUri $focusCwd $toastTarget $toastTargetPid $cwdIsReliable $activationId
     Show-Balloon $title $text $fallbackLaunch
   } else {
-    $toastWatchTitle = if ($hasCodexDesktopTarget) { '' } else { [string]$project }
-    Start-ToastFocusWatcher $toastTarget (Get-ToastTag $toastTarget) $toastWatchTitle
+    Start-ToastFocusWatcher $toastTarget (Get-ToastTag $toastTarget) $project
   }
 }
 
