@@ -14,9 +14,9 @@
 - 同时支持 Claude Code 与 Codex —— 一次性接入 Claude Code 的 `Stop` / `AskUserQuestion` 与 Codex 的 `notify` 事件。
 - Windows 原生通知 —— 以 toast 通知的形式展示任务完成、等待输入以及智能体的最后一条消息。
 - 异常中断提醒 —— 当 Claude Code 因用量/会话额度耗尽或 API 错误而停止时也会通知，并使用不同的标题（`Usage limit reached` / `API error`），一眼即可与正常完成区分开。
-- 点击通知回到 VS Code —— 点击 toast 后，会找到已有的 VS Code 窗口并将其带到前台。
+- 点击通知回到工作窗口 —— 点击 toast 后，会将发出通知的 Codex Desktop 或 VS Code 窗口带到前台。
 - 窗口已关闭也能打开项目 —— 如果目标 VS Code 窗口已被关闭，会通过 `code -n <project>` 的方式重新打开项目窗口。
-- 焦点感知 —— 如果你已经在看着 VS Code，可以跳过通知；重新聚焦时，仅清理对应窗口的通知。
+- 焦点感知 —— 如果你已经在查看目标窗口，可以跳过通知；重新聚焦时，仅清理对应窗口的通知。
 - 任务栏闪烁 —— 即使错过了通知，目标窗口也会在任务栏中闪烁。可在 `30s`、`5m`、`10m`、`infinite` 中选择。
 - 声音提醒 —— 通过操作系统默认提示音听到任务完成。
 - global / project 两种安装范围 —— 可选择面向整个账户，或仅面向当前项目安装。
@@ -31,7 +31,7 @@
 | Claude Code | `~/.claude/settings.json` 或 `./.claude/settings.json` hooks | 任务完成、`AskUserQuestion` 等待输入、额度耗尽 / API 错误中断 |
 | Codex | `~/.codex/config.toml` 的 `notify` | 任务完成、最后一条 assistant 消息 |
 
-> Job-Finish 是仅面向 Windows 的工具。它使用了 PowerShell、Windows toast API 以及 VS Code 窗口焦点处理。
+> Job-Finish 是仅面向 Windows 的工具。它使用了 PowerShell、Windows toast API 以及 Codex Desktop/VS Code 窗口焦点处理。
 
 ## 安装
 
@@ -48,7 +48,7 @@ npx job-finish init
 | 通知模式 | Windows toast、任务栏闪烁 |
 | 闪烁时长 | `30s`、`5m`、`10m`、`infinite` |
 | 声音 | 是否使用 Windows 默认提示音 |
-| 焦点抑制 | 当你已经在看目标 VS Code 窗口时，是否跳过通知 |
+| 焦点抑制 | 当你已经在看目标应用窗口时，是否跳过通知 |
 
 安装完成后，可以立即发送一条测试通知。
 
@@ -84,11 +84,11 @@ Claude Code Stop / AskUserQuestion
   -> 运行 job-finish-notify.ps1
   -> Windows toast / 任务栏闪烁 / 声音
   -> 点击 toast 时启动 jobfinish-focus://open
-  -> jf-focus-vscode.exe 查找已有的 VS Code 窗口
+  -> jf-focus-vscode.exe 查找发出通知的 Codex Desktop 或 VS Code 窗口
   -> 将匹配的窗口置于前台，或在新窗口中打开项目
 ```
 
-Job-Finish 不只是弹出一条通知。即使同时打开了多个 VS Code 窗口，它也会利用项目名、cwd、窗口句柄（window handle）和进程 ID（process id）找到最合适的那个窗口。通知点击与任务栏闪烁被设计为指向同一个窗口，因此即便同时处理多个项目也不会混淆。
+Job-Finish 不只是弹出一条通知。Codex Desktop 事件会跟随启动任务的桌面进程，而 VS Code 事件会利用项目名、cwd、窗口句柄（window handle）和进程 ID（process id）找到最合适的窗口。通知点击与任务栏闪烁始终指向同一个窗口。
 
 ## 安装的文件
 
@@ -132,7 +132,7 @@ Job-Finish 不只是弹出一条通知。即使同时打开了多个 VS Code 窗
 - Windows
 - Node.js 18+
 - PowerShell
-- VS Code
+- VS Code 或 Codex Desktop
 
 `jf-focus-vscode.exe` 以 self-contained 二进制文件的形式发布，因此无需额外安装 .NET 运行时。
 

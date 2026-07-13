@@ -17,6 +17,7 @@ internal static partial class Program
         var explicitHwnd = Args.TryParseLong(Args.GetQueryValue(uri, "hwnd") ?? Args.GetArg(args, "--hwnd"));
         var preferredPid = Args.TryParseInt(Args.GetQueryValue(uri, "pid") ?? Args.GetArg(args, "--pid"));
         var activationId = Args.GetQueryValue(uri, "id") ?? Args.GetArg(args, "--id");
+        var targetKind = NormalizeTargetKind(Args.GetQueryValue(uri, "target") ?? Args.GetArg(args, "--target"));
         var openWhenMissing = Args.HasFlag(args, "--open") || Args.IsTruthy(Args.GetQueryValue(uri, "open"));
         var openInNewWindow = Args.HasFlag(args, "--new-window") || Args.IsTruthy(Args.GetQueryValue(uri, "newWindow"));
         var waitMs = Args.TryParseInt(Args.GetQueryValue(uri, "waitMs") ?? Args.GetArg(args, "--wait-ms")) ?? 6_000;
@@ -30,6 +31,7 @@ internal static partial class Program
         Logger.Log($"preferredPid={preferredPid?.ToString() ?? ""}");
         Logger.Log($"explicitHwnd={explicitHwnd?.ToString() ?? ""}");
         Logger.Log($"activationId={activationId ?? ""}");
+        Logger.Log($"targetKind={targetKind}");
         Logger.Log($"openWhenMissing={openWhenMissing}");
         Logger.Log($"openInNewWindow={openInNewWindow}");
         Logger.Log($"waitMs={waitMs}");
@@ -42,7 +44,7 @@ internal static partial class Program
             Logger.Log($"toast.defer.after={Logger.DescribeForeground()}");
         }
 
-        var windows = GetScoredCodeWindows(cwd, titleHint, preferredPid);
+        var windows = GetScoredTargetWindows(cwd, titleHint, preferredPid, targetKind);
         LogCandidates(windows);
 
         if (listOnly)
@@ -52,8 +54,8 @@ internal static partial class Program
 
         WriteFlashStopSignal(activationId);
 
-        var target = ResolveTarget(explicitHwnd, windows);
-        if ((target == IntPtr.Zero || !NativeMethods.IsWindow(target)) && openWhenMissing)
+        var target = ResolveTarget(explicitHwnd, windows, targetKind);
+        if ((target == IntPtr.Zero || !NativeMethods.IsWindow(target)) && openWhenMissing && targetKind == TargetVSCode)
         {
             var knownHwnds = windows.Select(w => w.Hwnd).ToHashSet();
             if (VSCodeLauncher.TryLaunchVSCode(cwd, openInNewWindow, windows))

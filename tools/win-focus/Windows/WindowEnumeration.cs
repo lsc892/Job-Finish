@@ -1,24 +1,48 @@
-// 책임: 열린 창 열거와 VS Code 후보 스코어링.
+// 책임: 열린 창 열거와 VS Code/Codex 데스크톱 후보 스코어링.
 using System.Diagnostics;
 
 internal static partial class Program
 {
-    // 최상위 창을 열거해 프로세스명이 Code인 것만 남기고, 점수(내림차순)→Z순서(오름차순)로 정렬해 가장 적합한 창을 앞에 둔다.
-    private static List<WindowInfo> GetScoredCodeWindows(string cwd, string? titleHint, int? preferredPid)
+    private const string TargetVSCode = "vscode";
+    private const string TargetCodexDesktop = "codex-desktop";
+
+    private static string NormalizeTargetKind(string? value)
+    {
+        return string.Equals(value, TargetCodexDesktop, StringComparison.OrdinalIgnoreCase)
+            ? TargetCodexDesktop
+            : TargetVSCode;
+    }
+
+    // 최상위 창을 열거해 요청한 앱의 창만 남기고, 점수(내림차순)→Z순서(오름차순)로 정렬해 가장 적합한 창을 앞에 둔다.
+    private static List<WindowInfo> GetScoredTargetWindows(string cwd, string? titleHint, int? preferredPid, string targetKind)
     {
         return EnumerateTopLevelWindows()
-            .Where(w => string.Equals(w.ProcessName, "Code", StringComparison.OrdinalIgnoreCase))
+            .Where(w => IsTargetProcess(w.ProcessName, targetKind))
             .Select(w => w with { Score = ScoreWindow(w, cwd, titleHint, preferredPid) })
             .OrderByDescending(w => w.Score)
             .ThenBy(w => w.ZOrder)
             .ToList();
     }
 
+    private static bool IsTargetProcess(string processName, string targetKind)
+    {
+        if (targetKind == TargetCodexDesktop)
+        {
+            // Codex Desktop release builds use Codex.exe. The desktop host used by
+            // current Codex/Orca distributions is Orca.exe. A CLI codex.exe has no
+            // visible top-level window, so it is naturally excluded by enumeration.
+            return string.Equals(processName, "Codex", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(processName, "Orca", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return string.Equals(processName, "Code", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static void LogCandidates(List<WindowInfo> windows)
     {
         foreach (var w in windows)
         {
-            Logger.Log($"candidate hwnd={w.Hwnd.ToInt64()} pid={w.Pid} score={w.Score} title=\"{w.Title}\" path=\"{w.Path}\"");
+            Logger.Log($"candidate hwnd={w.Hwnd.ToInt64()} pid={w.Pid} process={w.ProcessName} score={w.Score} title=\"{w.Title}\" path=\"{w.Path}\"");
         }
     }
 
