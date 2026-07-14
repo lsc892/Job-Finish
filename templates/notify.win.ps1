@@ -899,6 +899,15 @@ function Get-ProcessTree {
   return $ids.ToArray()
 }
 
+function Test-VSCodeProcessOrigin {
+  foreach ($processId in Get-ProcessTree) {
+    $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
+    if ($process -and $process.ProcessName -ieq 'Code') { return $true }
+  }
+
+  return $false
+}
+
 function Get-HostWindow {
   $tree = Get-ProcessTree
   $fromTree = if ($cwdIsReliable) { [JF]::FindWindowForPids($tree, [string]$project, $true) } else { [IntPtr]::Zero }
@@ -1444,6 +1453,13 @@ if ($Prime) {
 # ---------------------------------------------------------------- flash worker
 if ($WatchFlash) {
   Watch-FlashWindow
+  exit 0
+}
+
+# A global Claude/Codex hook can also fire from desktop clients. Only a hook
+# whose process ancestry reaches Code.exe belongs to a VS Code session.
+if (-not $Test -and -not $WatchToast -and -not (Test-VSCodeProcessOrigin)) {
+  $config.Debug('suppressing notification: hook process did not originate from VS Code')
   exit 0
 }
 
