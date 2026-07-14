@@ -5,6 +5,11 @@
 AI 에이전트가 끝났는지 확인하려고 터미널을 계속 보고 있을 필요 없습니다.
 Claude Code가 입력을 기다리거나 Claude Code/Codex 작업이 끝나는 순간, Windows 알림으로 돌아오세요.
 
+| 토스트 알림 | 작업 표시줄 깜빡임 |
+| :---: | :---: |
+| ![토스트 알림 데모](resources/Toast.gif) | ![작업 표시줄 깜빡임 데모](resources/Flash.gif) |
+| 토스트를 클릭하면 VS Code로 바로 복귀 | 돌아올 때까지 대상 창이 깜빡임 |
+
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4)
 ![Node](https://img.shields.io/badge/node-%3E%3D18-339933)
 ![License](https://img.shields.io/badge/license-MIT-blue)
@@ -23,6 +28,7 @@ Claude Code가 입력을 기다리거나 Claude Code/Codex 작업이 끝나는 �
 - 안전한 설정 병합 - Claude/Codex 설정을 덮어쓰지 않고 필요한 hook만 추가하며, 변경 전 `.bak` 백업을 남깁니다.
 - 중복 알림 방지 - 이전 Job-Finish hook 잔여물을 정리하고 Codex notify 충돌을 감지합니다.
 - 진단과 미리보기 - `doctor`, `preview` 명령으로 현재 설치와 알림 동작을 빠르게 확인합니다.
+- VS Code 환경 전용 - Codex Desktop, Claude Desktop, Orca ADE 같은 데스크톱 클라이언트에는 자체 알림 기능이 있어 Job-Finish와 충돌합니다. 그래서 알림과 작업표시줄 깜빡임은 에이전트가 VS Code 안에서 동작할 때만 뜨고, 그 외 환경에서 실행된 hook은 건너뜁니다.
 
 ## 지원 대상
 

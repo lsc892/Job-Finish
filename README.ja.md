@@ -5,6 +5,11 @@
 AIエージェントが終わったかどうかを確認するために、ターミナルをずっと見張っている必要はありません。
 Claude Codeが入力を待っている瞬間や、Claude Code / Codexの作業が完了した瞬間に、Windows通知で呼び戻します。
 
+| トースト通知 | タスクバーの点滅 |
+| :---: | :---: |
+| ![トースト通知のデモ](resources/Toast.gif) | ![タスクバー点滅のデモ](resources/Flash.gif) |
+| トーストをクリックすると VS Code に復帰 | 戻るまで対象ウィンドウが点滅 |
+
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4)
 ![Node](https://img.shields.io/badge/node-%3E%3D18-339933)
 ![License](https://img.shields.io/badge/license-MIT-blue)
@@ -23,6 +28,7 @@ Claude Codeが入力を待っている瞬間や、Claude Code / Codexの作業�
 - 安全な設定マージ - Claude / Codexの設定を上書きせず、必要なhookだけを追加し、変更前に `.bak` バックアップを残します。
 - 重複通知の防止 - 以前のJob-Finish hookの残骸を整理し、Codexのnotify競合を検知します。
 - 診断とプレビュー - `doctor`、`preview` コマンドで、現在のインストール状態と通知動作をすばやく確認できます。
+- VS Code環境専用 - Codex Desktop、Claude Desktop、Orca ADEといったデスクトップクライアントには独自の通知機能があり、Job-Finishと競合します。そのため通知とタスクバーの点滅は、エージェントがVS Code内で動作しているときだけ発火し、それ以外の環境から起動されたhookはスキップされます。
 
 ## 対応対象
 

@@ -5,6 +5,11 @@
 Stop staring at your terminal to check whether the AI agent is done.
 The instant Claude Code is waiting for your input or a Claude Code/Codex task finishes, a Windows notification brings you back.
 
+| Toast notification | Taskbar flashing |
+| :---: | :---: |
+| ![Toast notification demo](resources/Toast.gif) | ![Taskbar flashing demo](resources/Flash.gif) |
+| Click the toast to jump back to VS Code | The target window flashes until you return |
+
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4)
 ![Node](https://img.shields.io/badge/node-%3E%3D18-339933)
 ![License](https://img.shields.io/badge/license-MIT-blue)
@@ -23,6 +28,7 @@ The instant Claude Code is waiting for your input or a Claude Code/Codex task fi
 - Safe settings merge - Adds only the hooks it needs without overwriting your Claude/Codex settings, and leaves a `.bak` backup before making changes.
 - Duplicate notification prevention - Cleans up leftovers from previous Job-Finish hooks and detects Codex notify conflicts.
 - Diagnostics and preview - Use the `doctor` and `preview` commands to quickly check the current install and notification behavior.
+- VS Code only, by design - Desktop clients like Codex Desktop, Claude Desktop, and Orca ADE ship their own built-in alerts, which would collide with Job-Finish. So notifications and taskbar flashing fire only when the agent is running inside VS Code; hooks triggered from those other environments are skipped.
 
 ## Supported Targets
 

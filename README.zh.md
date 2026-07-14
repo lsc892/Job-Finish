@@ -5,6 +5,11 @@
 无需一直盯着终端，确认 AI 智能体是否已经完成。
 当 Claude Code 正在等待输入，或者 Claude Code/Codex 的任务结束时，通过 Windows 通知让你第一时间回到工作。
 
+| 弹窗通知 | 任务栏闪烁 |
+| :---: | :---: |
+| ![弹窗通知演示](resources/Toast.gif) | ![任务栏闪烁演示](resources/Flash.gif) |
+| 点击弹窗即可跳回 VS Code | 在你回来之前目标窗口持续闪烁 |
+
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4)
 ![Node](https://img.shields.io/badge/node-%3E%3D18-339933)
 ![License](https://img.shields.io/badge/license-MIT-blue)
@@ -23,6 +28,7 @@
 - 安全的配置合并 —— 不会覆盖 Claude/Codex 配置，只追加所需的 hook，并在修改前留下 `.bak` 备份。
 - 防止重复通知 —— 清理旧的 Job-Finish hook 残留，并检测 Codex notify 冲突。
 - 诊断与预览 —— 通过 `doctor`、`preview` 命令快速确认当前安装状态与通知效果。
+- 仅在 VS Code 中生效 —— Codex Desktop、Claude Desktop、Orca ADE 等桌面客户端自带通知功能，会与 Job-Finish 冲突。因此通知与任务栏闪烁仅在智能体运行于 VS Code 时触发，从这些其他环境触发的 hook 会被跳过。
 
 ## 支持对象
 
