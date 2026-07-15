@@ -7,7 +7,7 @@ Claude Code가 입력을 기다리거나 Claude Code/Codex 작업이 끝나는 �
 
 | 토스트 알림 | 작업 표시줄 깜빡임 |
 | :---: | :---: |
-| <img src="resources/Toast.gif" alt="토스트 알림 데모" width="420"> | <img src="resources/Flash.gif" alt="작업 표시줄 깜빡임 데모" width="420"> |
+| <img src="resources/Toast.gif" alt="토스트 알림 데모" width="380"> | <img src="resources/Flash.gif" alt="작업 표시줄 깜빡임 데모" width="380"> |
 | 토스트를 클릭하면 VS Code로 바로 복귀 | 돌아올 때까지 대상 창이 깜빡임 |
 
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4)

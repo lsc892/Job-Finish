@@ -7,7 +7,7 @@ The instant Claude Code is waiting for your input or a Claude Code/Codex task fi
 
 | Toast notification | Taskbar flashing |
 | :---: | :---: |
-| <img src="resources/Toast.gif" alt="Toast notification demo" width="420"> | <img src="resources/Flash.gif" alt="Taskbar flashing demo" width="420"> |
+| <img src="resources/Toast.gif" alt="Toast notification demo" width="380"> | <img src="resources/Flash.gif" alt="Taskbar flashing demo" width="380"> |
 | Click the toast to jump back to VS Code | The target window flashes until you return |
 
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4)
