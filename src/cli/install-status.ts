@@ -50,7 +50,12 @@ export function hasGlobalInstall(status: GlobalInstallStatus): boolean {
   return status.claude || status.codexTarget !== null;
 }
 
-export function describeGlobalInstall(status: GlobalInstallStatus, cwd: string, platform: Platform): string[] {
+export function describeGlobalInstall(
+  status: GlobalInstallStatus,
+  cwd: string,
+  platform: Platform,
+  targetKinds = { globalInstall: "global install", globalCodexNotify: "global Codex notify" },
+): string[] {
   const lines: string[] = [];
   if (status.claude) {
     lines.push(`Claude:   ${claudeSettingsPath("global", cwd)}`);
@@ -59,8 +64,8 @@ export function describeGlobalInstall(status: GlobalInstallStatus, cwd: string, 
     const globalScript = notifierScriptPath(resolveInstallDir("global", cwd), platform);
     const targetKind =
       path.resolve(status.codexTarget) === path.resolve(globalScript)
-        ? "global install"
-        : "global Codex notify";
+        ? targetKinds.globalInstall
+        : targetKinds.globalCodexNotify;
     lines.push(`Codex:    ${codexConfigPath()} -> ${status.codexTarget} (${targetKind})`);
   }
   return lines;
@@ -87,20 +92,6 @@ export function cleanupProjectInstall(cwd: string, platform: Platform): CleanupR
   }
 
   return cleaned;
-}
-
-export function cleanupLines(cleaned: CleanupResult): string[] {
-  const lines: string[] = [];
-  if (cleaned.claudeSettings.length) {
-    lines.push(`정리:     프로젝트 Claude hook 제거 (${cleaned.claudeSettings.join(", ")})`);
-  }
-  if (cleaned.codexConfig) {
-    lines.push(`정리:     프로젝트 설치본을 가리키던 Codex notify 제거 (${cleaned.codexConfig})`);
-  }
-  if (cleaned.installDirs.length) {
-    lines.push(`정리:     프로젝트 설치 폴더 삭제 (${cleaned.installDirs.join(", ")})`);
-  }
-  return lines;
 }
 
 /**

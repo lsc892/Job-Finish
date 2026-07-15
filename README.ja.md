@@ -36,7 +36,15 @@ Claude Codeが入力を待っている瞬間や、Claude Code / Codexの作業�
 ## インストール
 
 ```powershell
-npx job-finish init
+npx job-finish init jp
+```
+
+インストールウィザードは既定で英語表示です。コマンドの末尾に言語コードを付けると、韓国語、中国語、または日本語で実行できます。
+
+```powershell
+npx job-finish init ko  # 韓国語
+npx job-finish init zh  # 中国語
+npx job-finish init jp  # 日本語
 ```
 
 インストールウィザードでは、次の項目を選択します。
@@ -55,8 +63,8 @@ npx job-finish init
 ## 使い方
 
 ```powershell
-# 対話型インストール
-npx job-finish init
+# 日本語の対話型インストール（言語コードを省略すると英語）
+npx job-finish init jp
 
 # インストール状態と依存関係の確認 + テスト通知
 npx job-finish doctor
@@ -73,7 +81,7 @@ npx job-finish uninstall
 ```powershell
 npm install
 npm run build
-node dist/index.js init
+node dist/index.js init jp
 ```
 
 ## 仕組み

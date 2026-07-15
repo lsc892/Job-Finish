@@ -39,6 +39,14 @@ The instant Claude Code is waiting for your input or a Claude Code/Codex task fi
 npx job-finish init
 ```
 
+The install wizard uses English by default. Append a language code to run it in Korean, Chinese, or Japanese:
+
+```powershell
+npx job-finish init ko  # Korean
+npx job-finish init zh  # Chinese
+npx job-finish init jp  # Japanese
+```
+
 The install wizard lets you choose the following.
 
 | Setting | Description |
@@ -55,7 +63,7 @@ Once installation finishes, you can send a test notification right away.
 ## Usage
 
 ```powershell
-# Interactive install
+# Interactive install (English by default; append ko, zh, or jp to change the wizard language)
 npx job-finish init
 
 # Check install status and dependencies + test notification

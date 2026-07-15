@@ -36,7 +36,15 @@
 ## 安装
 
 ```powershell
-npx job-finish init
+npx job-finish init zh
+```
+
+安装向导默认使用英语。可在命令末尾添加语言代码，以韩语、中文或日语运行：
+
+```powershell
+npx job-finish init ko  # 韩语
+npx job-finish init zh  # 中文
+npx job-finish init jp  # 日语
 ```
 
 在安装向导中可选择以下内容：
@@ -55,8 +63,8 @@ npx job-finish init
 ## 使用方法
 
 ```powershell
-# 交互式安装
-npx job-finish init
+# 中文交互式安装（省略语言代码时使用英语）
+npx job-finish init zh
 
 # 检查安装状态与依赖 + 发送测试通知
 npx job-finish doctor
@@ -73,7 +81,7 @@ npx job-finish uninstall
 ```powershell
 npm install
 npm run build
-node dist/index.js init
+node dist/index.js init zh
 ```
 
 ## 工作原理

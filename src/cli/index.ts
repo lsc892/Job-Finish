@@ -9,7 +9,7 @@ async function main(): Promise<void> {
   const cmd = process.argv[2] ?? "init";
   switch (cmd) {
     case "init":
-      await cmdInit();
+      await cmdInit(process.argv[3]);
       break;
     case "doctor":
       await cmdDoctor();
@@ -24,15 +24,15 @@ async function main(): Promise<void> {
     case "--help":
     case "help":
       console.log(
-        `\n${PKG} - 에이전트 작업 완료 알림\n\n` +
-          `  npx ${PKG} init        대화형 설치\n` +
-          `  npx ${PKG} doctor      의존성 검사 + 테스트 알림\n` +
-          `  npx ${PKG} preview     현재 설정으로 미리보기\n` +
-          `  npx ${PKG} uninstall   hook + 설치 폴더 제거 (--keep-files: 파일 보존)\n`,
+        `\n${PKG} - Agent task completion notifications\n\n` +
+          `  npx ${PKG} init [ko|zh|jp]  Interactive install (English by default)\n` +
+          `  npx ${PKG} doctor           Check dependencies + test notification\n` +
+          `  npx ${PKG} preview          Preview with the current settings\n` +
+          `  npx ${PKG} uninstall        Remove hooks + install folder (--keep-files preserves files)\n`,
       );
       break;
     default:
-      console.log(pc.red(`알 수 없는 명령: ${cmd}`));
+      console.log(pc.red(`Unknown command: ${cmd}`));
       process.exit(1);
   }
 }

@@ -16,6 +16,7 @@ import {
   type NotifyMode,
   type Platform,
 } from "../shared/config-schema.js";
+import { getInstallCopy, type InstallLocale } from "./locale.js";
 
 export interface WizardResult {
   scope: "global" | "project";
@@ -23,13 +24,13 @@ export interface WizardResult {
   config: Config;
 }
 
-function bail(): never {
-  cancel("설치를 취소했어요.");
+function bail(locale: InstallLocale): never {
+  cancel(getInstallCopy(locale).wizard.cancelled);
   process.exit(0);
 }
 
-function unwrap<T>(value: T | symbol): T {
-  if (isCancel(value)) bail();
+function unwrap<T>(value: T | symbol, locale: InstallLocale): T {
+  if (isCancel(value)) bail(locale);
   return value as T;
 }
 
@@ -37,21 +38,23 @@ function unwrap<T>(value: T | symbol): T {
  * Interactive setup. Mirrors cc-statusline's flow: a few spacebar-toggled
  * multiselects and simple prompts, then returns everything generate/install need.
  */
-export async function runWizard(platform: Platform): Promise<WizardResult> {
-  intro(pc.bgCyan(pc.black(" job-finish ")) + pc.dim(" 작업 완료 알림 설정"));
+export async function runWizard(platform: Platform, locale: InstallLocale = "en"): Promise<WizardResult> {
+  const copy = getInstallCopy(locale).wizard;
+  intro(pc.bgCyan(pc.black(" job-finish ")) + pc.dim(` ${copy.intro}`));
 
   type Opt<T> = { value: T; label: string; hint?: string };
 
   const scopeOptions: Opt<"global" | "project">[] = [
-    { value: "project", label: "이 프로젝트 (./.claude)", hint: "권장" },
-    { value: "global", label: "전역 (~/.claude)" },
+    { value: "project", label: copy.project, hint: copy.recommended },
+    { value: "global", label: copy.global },
   ];
   const scope = unwrap(
     await select({
-      message: "설치 범위를 고르세요",
+      message: copy.scopePrompt,
       options: scopeOptions,
       initialValue: "project" as "global" | "project",
     }),
+    locale,
   ) as "global" | "project";
 
   const agentOptions: Opt<Agent>[] = [
@@ -60,52 +63,57 @@ export async function runWizard(platform: Platform): Promise<WizardResult> {
   ];
   const agents = unwrap(
     await multiselect({
-      message: "어떤 에이전트에 연결할까요? (스페이스로 체크)",
+      message: copy.agentPrompt,
       options: agentOptions,
       initialValues: ["claude"] as Agent[],
       required: true,
     }),
+    locale,
   ) as Agent[];
 
   const modeOptions: Opt<NotifyMode>[] = [
-    { value: "os", label: "OS 알림창", hint: "알림 센터에 기록" },
-    { value: "flash", label: "작업표시줄 깜빡임", hint: "창을 안 볼 때만 / 다시 보면 멈춤" },
+    { value: "os", label: copy.osMode, hint: copy.osModeHint },
+    { value: "flash", label: copy.flashMode, hint: copy.flashModeHint },
   ];
   const modes = unwrap(
     await multiselect({
-      message: "알림 모드 (스페이스로 체크)",
+      message: copy.modePrompt,
       options: modeOptions,
       initialValues: ["os", "flash"] as NotifyMode[],
       required: true,
     }),
+    locale,
   ) as NotifyMode[];
 
   let flashTimeout: FlashTimeout = "5m";
   if (modes.includes("flash")) {
     const timeoutOptions: Opt<FlashTimeout>[] = [
-      { value: "30s", label: "30초" },
-      { value: "5m", label: "5분" },
-      { value: "10m", label: "10분" },
-      { value: "infinite", label: "무한 (창을 다시 볼 때까지)" },
+      { value: "30s", label: copy.seconds30 },
+      { value: "5m", label: copy.minutes5 },
+      { value: "10m", label: copy.minutes10 },
+      { value: "infinite", label: copy.infinite },
     ];
     flashTimeout = unwrap(
       await select({
-        message: "작업표시줄 최대 깜빡임 시간",
+        message: copy.flashTimeoutPrompt,
         options: timeoutOptions,
         initialValue: "5m" as FlashTimeout,
       }),
+      locale,
     ) as FlashTimeout;
   }
 
   const soundOn = unwrap(
-    await confirm({ message: "작업 완료 때 소리를 켤까요? (OS 기본음)", initialValue: true }),
+    await confirm({ message: copy.soundPrompt, initialValue: true }),
+    locale,
   ) as boolean;
 
   const suppressWhenFocused = unwrap(
     await confirm({
-      message: "에이전트 창(VS Code)을 보고 있을 때 알림을 생략할까요?",
+      message: copy.focusPrompt,
       initialValue: true,
     }),
+    locale,
   ) as boolean;
 
   const config: Config = {
@@ -123,16 +131,16 @@ export async function runWizard(platform: Platform): Promise<WizardResult> {
 
   note(
     [
-      `범위:   ${scope === "project" ? "프로젝트 (./.claude)" : "전역 (~/.claude)"}`,
-      `에이전트: ${agents.join(", ")}`,
-      `모드:   ${modes.join(", ")}`,
-      modes.includes("flash") ? `깜빡임:  최대 ${flashTimeout}` : null,
-      `소리:   ${soundOn ? "켬 (OS 기본음)" : "끔"}`,
-      `포커스: ${suppressWhenFocused ? "보고 있으면 생략" : "항상 알림"}`,
+      `${copy.scope}: ${scope === "project" ? copy.project : copy.global}`,
+      `${copy.agents}: ${agents.join(", ")}`,
+      `${copy.modes}: ${modes.join(", ")}`,
+      modes.includes("flash") ? `${copy.flash}: ${copy.maximum} ${flashTimeout}` : null,
+      `${copy.sound}: ${soundOn ? copy.soundOn : copy.soundOff}`,
+      `${copy.focus}: ${suppressWhenFocused ? copy.focusSkip : copy.focusAlways}`,
     ]
       .filter(Boolean)
       .join("\n"),
-    "설정 요약",
+    copy.summaryTitle,
   );
 
   return { scope, agents, config };

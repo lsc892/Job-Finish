@@ -7,25 +7,62 @@ import {
   claudeSettingsPath,
   codexConfigPath,
   currentPlatform,
+  type DependencyCheck,
   installDir as resolveInstallDir,
 } from "../detect.js";
 import { generate } from "../generate.js";
 import {
-  cleanupLines,
   cleanupProjectInstall,
   describeGlobalInstall,
   emptyCleanup,
   getGlobalInstallStatus,
   hasGlobalInstall,
   resetClaudeResidue,
+  type CleanupResult,
 } from "../install-status.js";
 import { installClaude } from "../installers/claude.js";
 import { installCodex } from "../installers/codex.js";
+import { getInstallCopy, parseInstallLocale } from "../locale.js";
 import { primeNotifier, runNotifier } from "../run-notifier.js";
 import { finish, runWizard, type WizardResult } from "../wizard.js";
 
+type InitCopy = ReturnType<typeof getInstallCopy>["init"];
+
+function formatCleanupLines(cleaned: CleanupResult, copy: InitCopy): string[] {
+  const lines: string[] = [];
+  if (cleaned.claudeSettings.length) {
+    lines.push(`${copy.cleanup}: ${copy.projectClaudeRemoved} (${cleaned.claudeSettings.join(", ")})`);
+  }
+  if (cleaned.codexConfig) {
+    lines.push(`${copy.cleanup}: ${copy.projectCodexRemoved} (${cleaned.codexConfig})`);
+  }
+  if (cleaned.installDirs.length) {
+    lines.push(`${copy.cleanup}: ${copy.projectInstallRemoved} (${cleaned.installDirs.join(", ")})`);
+  }
+  return lines;
+}
+
+function formatDependency(dependency: DependencyCheck, copy: InitCopy): string {
+  const isSound = dependency.name === "default sound file";
+  const name = isSound ? copy.defaultSoundFile : dependency.name;
+  const detail = dependency.detail === "not found" ? copy.notFound : dependency.detail;
+  const hint = dependency.hint
+    ? isSound
+      ? copy.soundHint
+      : dependency.name === "PowerShell"
+        ? copy.powerShellHint
+        : dependency.hint
+    : undefined;
+  return `${pc.yellow("!")} ${name}: ${detail}${hint ? `\n  ${pc.dim(hint)}` : ""}`;
+}
+
 // 의존성 점검 → 마법사로 설정 수집 → 전역 설치 충돌 처리 → 스크립트/설정 생성 → Claude·Codex hook 설치 → 선택적 테스트 알림까지 설치 전 과정을 순서대로 수행한다.
-export async function cmdInit(): Promise<void> {
+export async function cmdInit(language?: string): Promise<void> {
+  const locale = parseInstallLocale(language);
+  if (!locale) {
+    throw new Error(`Unsupported installer language: ${language}. Use en, ko, zh, or jp.`);
+  }
+  const copy = getInstallCopy(locale).init;
   const platform = currentPlatform();
   const cwd = process.cwd();
 
@@ -33,12 +70,12 @@ export async function cmdInit(): Promise<void> {
   const missing = deps.filter((d) => !d.ok);
   if (missing.length) {
     note(
-      missing.map((d) => `${pc.yellow("!")} ${d.name}: ${d.detail}${d.hint ? `\n  ${pc.dim(d.hint)}` : ""}`).join("\n"),
-      "확인 필요",
+      missing.map((dependency) => formatDependency(dependency, copy)).join("\n"),
+      copy.attentionNeeded,
     );
   }
 
-  const result: WizardResult = await runWizard(platform);
+  const result: WizardResult = await runWizard(platform, locale);
   const { scope, agents, config } = result;
 
   const globalStatus = getGlobalInstallStatus(cwd, platform);
@@ -46,14 +83,17 @@ export async function cmdInit(): Promise<void> {
     const cleanedProject = cleanupProjectInstall(cwd, platform);
     note(
       [
-        pc.yellow("전역 Job-Finish가 이미 활성이라 프로젝트 설치를 건너뜁니다."),
-        ...describeGlobalInstall(globalStatus, cwd, platform),
-        ...cleanupLines(cleanedProject),
-        "Codex notify는 전역 설정이 하나뿐이라 프로젝트 설치도 전역 Codex 설정을 바꿀 수 있어요.",
+        pc.yellow(copy.globalActive),
+        ...describeGlobalInstall(globalStatus, cwd, platform, {
+          globalInstall: copy.globalInstall,
+          globalCodexNotify: copy.globalCodexNotify,
+        }),
+        ...formatCleanupLines(cleanedProject, copy),
+        copy.codexGlobalWarning,
       ].join("\n"),
-      "전역 설치 유지",
+      copy.keepGlobalTitle,
     );
-    finish("전역 설치만 남도록 처리했어요.");
+    finish(copy.globalOnly);
     return;
   }
 
@@ -64,46 +104,46 @@ export async function cmdInit(): Promise<void> {
   const cleaned = resetClaudeResidue(keepScope, cwd);
 
   const s = spinner();
-  s.start("스크립트와 설정을 생성하는 중");
+  s.start(copy.generating);
   const { scriptPath, configPath } = generate(dir, platform, config);
   // 첫 알림이 시작 메뉴 바로가기를 lazy 생성하면 Windows가 그 첫 토스트를 조용히 삼킨다.
   // 설치 시점에 미리 바로가기·프로토콜을 등록해 두어 첫 알림부터 뜨게 한다.
   await primeNotifier(scriptPath, platform);
-  s.stop("notifier 생성 완료");
+  s.stop(copy.generated);
 
-  const lines: string[] = [`스크립트: ${scriptPath}`, `설정:     ${configPath}`];
-  lines.push(...cleanupLines(projectCleaned));
+  const lines: string[] = [`${copy.script}: ${scriptPath}`, `${copy.config}: ${configPath}`];
+  lines.push(...formatCleanupLines(projectCleaned, copy));
   if (cleaned.length) {
-    lines.push(`리셋:     이전 설치 잔여 정리 (${cleaned.length}곳) ${cleaned.join(", ")}`);
+    lines.push(`${copy.reset}: ${copy.previousResidueRemoved} (${cleaned.length}) ${cleaned.join(", ")}`);
   }
 
   if (agents.includes("claude")) {
     const sp = claudeSettingsPath(scope, cwd);
     const r = installClaude(sp, dir, platform);
-    lines.push(`Claude:   ${r.settingsPath}${r.backupPath ? pc.dim(" (백업 ✓)") : ""}`);
+    lines.push(`Claude: ${r.settingsPath}${r.backupPath ? pc.dim(` (${copy.backup})`) : ""}`);
   }
 
   if (agents.includes("codex")) {
     const r = installCodex(codexConfigPath(), dir, platform);
     if (r.conflict) {
-      lines.push(pc.yellow("Codex:    기존 notify 설정이 있어 건너뜀 - 수동 설정 필요"));
+      lines.push(pc.yellow(copy.codexConflict));
       log.warn(
-        `Codex의 notify는 하나만 가능해요. 기존 설정을 유지했습니다.\n` +
-          `  직접 추가하려면 ${codexConfigPath()} 에:\n` +
+        `${copy.codexOnlyOne}\n` +
+          `  ${copy.addManually} ${codexConfigPath()}:\n` +
           `  notify = ${JSON.stringify(buildCodexNotifyArgv(scriptPath, platform))}`,
       );
     } else {
-      lines.push(`Codex:    ${r.settingsPath}${r.backupPath ? pc.dim(" (백업 ✓)") : ""}`);
+      lines.push(`Codex: ${r.settingsPath}${r.backupPath ? pc.dim(` (${copy.backup})`) : ""}`);
     }
   }
 
-  note(lines.join("\n"), "설치 완료");
+  note(lines.join("\n"), copy.installComplete);
 
-  const wantTest = await confirm({ message: "지금 테스트 알림을 보내볼까요?", initialValue: true });
+  const wantTest = await confirm({ message: copy.testPrompt, initialValue: true });
   if (!isCancel(wantTest) && wantTest) {
     await runNotifier(scriptPath, platform, true);
-    log.success("테스트 알림을 보냈어요. 알림/소리를 확인하세요.");
+    log.success(copy.testSent);
   }
 
-  finish("끝났어요! 에이전트를 다시 시작하면 작업 완료 때 알림이 뜹니다.");
+  finish(copy.finished);
 }
