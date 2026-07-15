@@ -5,6 +5,11 @@
 AIエージェントが終わったかどうかを確認するために、ターミナルをずっと見張っている必要はありません。
 Claude Codeが入力を待っている瞬間や、Claude Code / Codexの作業が完了した瞬間に、Windows通知で呼び戻します。
 
+| トースト通知 | タスクバーの点滅 |
+| :---: | :---: |
+| ![トースト通知のデモ](resources/Toast.gif) | ![タスクバー点滅のデモ](resources/Flash.gif) |
+| トーストをクリックすると VS Code に復帰 | 戻るまで対象ウィンドウが点滅 |
+
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4)
 ![Node](https://img.shields.io/badge/node-%3E%3D18-339933)
 ![License](https://img.shields.io/badge/license-MIT-blue)
@@ -14,15 +19,16 @@ Claude Codeが入力を待っている瞬間や、Claude Code / Codexの作業�
 - Claude Code + Codex 対応 - Claude Codeの `Stop` / `AskUserQuestion` と、Codexの `notify` イベントをまとめて連携します。
 - Windowsネイティブ通知 - 作業の完了、入力待ち、エージェントの最後のメッセージをトースト通知で表示します。
 - 異常終了の通知 - トークン・セッション上限の超過やAPIエラーでClaude Codeが停止したときも通知し、タイトル（`Usage limit reached` / `API error`）を変えて通常の完了と一目で見分けられます。
-- 通知クリックで作業ウィンドウに復帰 - トーストを押すと、通知元のCodex DesktopまたはVS Codeウィンドウを最前面に持ってきます。
+- 通知クリックでVS Codeに復帰 - トーストを押すと既存のVS Codeウィンドウを探し出し、最前面に持ってきます。
 - ウィンドウがなくてもプロジェクトを開く - 対象のVS Codeウィンドウが閉じている場合は、`code -n <project>` 方式でプロジェクトのウィンドウを開き直します。
-- フォーカス検知 - すでに対象ウィンドウを見ているときは通知を省略でき、再びフォーカスされるとそのウィンドウの通知だけを片付けます。
+- フォーカス検知 - すでにVS Codeを見ているときは通知を省略でき、再びフォーカスされるとそのウィンドウの通知だけを片付けます。
 - タスクバーの点滅 - 通知を見逃しても、対象のウィンドウがタスクバーで点滅します。`30s`、`5m`、`10m`、`infinite` から選べます。
 - サウンド通知 - OS標準の通知音で作業の完了を耳でも確認できます。
 - global / project インストール - アカウント全体向け、または現在のプロジェクト向けにインストール範囲を選べます。
 - 安全な設定マージ - Claude / Codexの設定を上書きせず、必要なhookだけを追加し、変更前に `.bak` バックアップを残します。
 - 重複通知の防止 - 以前のJob-Finish hookの残骸を整理し、Codexのnotify競合を検知します。
 - 診断とプレビュー - `doctor`、`preview` コマンドで、現在のインストール状態と通知動作をすばやく確認できます。
+- VS Code環境専用 - Codex Desktop、Claude Desktop、Orca ADEといったデスクトップクライアントには独自の通知機能があり、Job-Finishと競合します。そのため通知とタスクバーの点滅は、エージェントがVS Code内で動作しているときだけ発火し、それ以外の環境から起動されたhookはスキップされます。
 
 ## 対応対象
 
@@ -31,7 +37,7 @@ Claude Codeが入力を待っている瞬間や、Claude Code / Codexの作業�
 | Claude Code | `~/.claude/settings.json` または `./.claude/settings.json` の hooks | 作業完了、`AskUserQuestion` の入力待ち、上限超過・APIエラーによる停止 |
 | Codex | `~/.codex/config.toml` の `notify` | 作業完了、最後の assistant メッセージ |
 
-> Job-FinishはWindows専用ツールです。PowerShellとWindowsのtoast API、Codex Desktop / VS Codeのウィンドウフォーカス処理を利用します。
+> Job-FinishはWindows専用ツールです。PowerShellとWindowsのtoast API、VS Codeのウィンドウフォーカス処理を利用します。
 
 ## インストール
 
@@ -56,7 +62,7 @@ npx job-finish init jp  # 日本語
 | 通知モード | Windowsトースト、タスクバーの点滅 |
 | 点滅時間 | `30s`、`5m`、`10m`、`infinite` |
 | サウンド | Windows標準サウンドを使うかどうか |
-| フォーカス抑制 | すでに対象アプリのウィンドウを見ているときに通知を省略するかどうか |
+| フォーカス抑制 | すでに対象のVS Codeウィンドウを見ているときに通知を省略するかどうか |
 
 インストールが完了すると、すぐにテスト通知を送信できます。
 
@@ -92,11 +98,11 @@ Claude Code Stop / AskUserQuestion
   -> job-finish-notify.ps1 を実行
   -> Windows toast / タスクバーの点滅 / サウンド
   -> toast クリック時に jobfinish-focus://open を起動
-  -> jf-focus-vscode.exe が通知元の Codex Desktop または VS Code ウィンドウを探索
+  -> jf-focus-vscode.exe が既存の VS Code ウィンドウを探索
   -> 該当ウィンドウを前面に出すか、プロジェクトを新しいウィンドウで開く
 ```
 
-Job-Finishは、単に通知を出すだけではありません。Codex Desktopのイベントは起点となったデスクトッププロセスをたどり、VS Codeのイベントはプロジェクト名、cwd、ウィンドウハンドル、プロセスIDから最適なウィンドウを特定します。通知のクリックとタスクバーの点滅は同じウィンドウを指します。
+Job-Finishは、単に通知を出すだけではありません。開いているVS Codeウィンドウが複数あっても、プロジェクト名、cwd、ウィンドウハンドル、プロセスIDを活用して、もっとも適したウィンドウを見つけ出します。通知のクリックとタスクバーの点滅が同じウィンドウを指すように設計されているため、複数のプロジェクトを同時に進めていても迷いません。
 
 ## インストールされるファイル
 
@@ -140,7 +146,7 @@ Job-Finishは、単に通知を出すだけではありません。Codex Desktop
 - Windows
 - Node.js 18+
 - PowerShell
-- VS Code または Codex Desktop
+- VS Code
 
 `jf-focus-vscode.exe` はself-containedバイナリとして配布されるため、別途.NETランタイムをインストールする必要はありません。
 

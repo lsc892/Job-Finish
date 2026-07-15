@@ -1,7 +1,7 @@
 {
   "name": "job-finish",
-  "version": "0.1.5",
-  "description": "Windows toast notifications for Claude Code & Codex with taskbar flashing and Codex Desktop/VS Code focus on click.",
+  "version": "1.0.0",
+  "description": "Windows toast notifications for Claude Code & Codex with taskbar flashing and VS Code focus on click.",
   "type": "module",
   "bin": {
     "job-finish": "dist/index.js"
