@@ -48,9 +48,9 @@ npx job-finish init zh
 安装向导默认使用英语。可在命令末尾添加语言代码，以韩语、中文或日语运行：
 
 ```powershell
-npx job-finish init ko  # 韩语
-npx job-finish init zh  # 中文
+npx job-finish init     # 英语
 npx job-finish init jp  # 日语
+npx job-finish init ko  # 韩语
 ```
 
 在安装向导中可选择以下内容：

@@ -48,7 +48,7 @@ npx job-finish init ko
 설치 마법사는 기본적으로 영어로 표시됩니다. 명령 뒤에 언어 코드를 붙이면 한국어, 중국어 또는 일본어로 실행할 수 있습니다.
 
 ```powershell
-npx job-finish init ko  # 한국어
+npx job-finish init     # 영어
 npx job-finish init zh  # 중국어
 npx job-finish init jp  # 일본어
 ```

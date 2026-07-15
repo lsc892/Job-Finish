@@ -48,9 +48,9 @@ npx job-finish init jp
 インストールウィザードは既定で英語表示です。コマンドの末尾に言語コードを付けると、韓国語、中国語、または日本語で実行できます。
 
 ```powershell
+npx job-finish init     # 英語
 npx job-finish init ko  # 韓国語
 npx job-finish init zh  # 中国語
-npx job-finish init jp  # 日本語
 ```
 
 インストールウィザードでは、次の項目を選択します。
