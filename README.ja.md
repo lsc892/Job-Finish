@@ -7,7 +7,7 @@ Claude Codeが入力を待っている瞬間や、Claude Code / Codexの作業�
 
 | トースト通知 | タスクバーの点滅 |
 | :---: | :---: |
-| ![トースト通知のデモ](resources/Toast.gif) | ![タスクバー点滅のデモ](resources/Flash.gif) |
+| <img src="resources/Toast.gif" alt="トースト通知のデモ" width="420"> | <img src="resources/Flash.gif" alt="タスクバー点滅のデモ" width="420"> |
 | トーストをクリックすると VS Code に復帰 | 戻るまで対象ウィンドウが点滅 |
 
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4)

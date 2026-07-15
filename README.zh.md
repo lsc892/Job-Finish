@@ -7,7 +7,7 @@
 
 | 弹窗通知 | 任务栏闪烁 |
 | :---: | :---: |
-| ![弹窗通知演示](resources/Toast.gif) | ![任务栏闪烁演示](resources/Flash.gif) |
+| <img src="resources/Toast.gif" alt="弹窗通知演示" width="420"> | <img src="resources/Flash.gif" alt="任务栏闪烁演示" width="420"> |
 | 点击弹窗即可跳回 VS Code | 在你回来之前目标窗口持续闪烁 |
 
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4)
