@@ -1,6 +1,6 @@
 {
   "name": "job-finish",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Windows toast notifications for Claude Code & Codex with taskbar flashing and VS Code focus on click.",
   "type": "module",
   "bin": {
