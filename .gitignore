@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.test-dist/
 *.log
 **/Focus-VSCode.ps1
 **/jf-focus-vscode.exe

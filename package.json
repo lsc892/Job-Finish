@@ -15,6 +15,7 @@
     "build": "tsup && node scripts/build-focus-exe.mjs",
     "dev": "tsup --watch",
     "start": "node dist/index.js",
+    "test": "tsup tests/codex-installer.test.ts --format esm --platform node --target node18 --out-dir .test-dist --clean && node .test-dist/codex-installer.test.js",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
