@@ -1,6 +1,6 @@
 # Job-Finish
 
-**English · [한국어](README.ko.md) · [中文](README.zh.md) · [日本語](README.ja.md)**
+**English · [한국어](README.ko.md) · [中文](README.zh.md) · [日本語](README.jp.md)**
 
 Stop staring at your terminal to check whether the AI agent is done.
 The instant Claude Code is waiting for your input or a Claude Code/Codex task finishes, a Windows notification brings you back.

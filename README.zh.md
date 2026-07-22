@@ -1,6 +1,6 @@
 # Job-Finish
 
-**[English](README.md) · [한국어](README.ko.md) · 中文 · [日本語](README.ja.md)**
+**[English](README.md) · [한국어](README.ko.md) · 中文 · [日本語](README.jp.md)**
 
 无需一直盯着终端，确认 AI 智能体是否已经完成。
 当 Claude Code 正在等待输入，或者 Claude Code/Codex 的任务结束时，通过 Windows 通知让你第一时间回到工作。

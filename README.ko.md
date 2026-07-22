@@ -1,6 +1,6 @@
 # Job-Finish
 
-**[English](README.md) · 한국어 · [中文](README.zh.md) · [日本語](README.ja.md)**
+**[English](README.md) · 한국어 · [中文](README.zh.md) · [日本語](README.jp.md)**
 
 AI 에이전트가 끝났는지 확인하려고 터미널을 계속 보고 있을 필요 없습니다.
 Claude Code가 입력을 기다리거나 Claude Code/Codex 작업이 끝나는 순간, Windows 알림으로 돌아오세요.
