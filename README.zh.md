@@ -16,7 +16,7 @@
 
 ## 主要功能
 
-- 同时支持 Claude Code 与 Codex —— 一次性接入 Claude Code 的 `Stop` / `AskUserQuestion` 与 Codex 的 `notify` 事件。
+- 同时支持 Claude Code 与 Codex —— 一次性接入 Claude Code 的 `Stop` / `AskUserQuestion` 与 Codex 的 `Stop` 生命周期事件。
 - Windows 原生通知 —— 以 toast 通知的形式展示任务完成、等待输入以及智能体的最后一条消息。
 - 异常中断提醒 —— 当 Claude Code 因用量/会话额度耗尽或 API 错误而停止时也会通知，并使用不同的标题（`Usage limit reached` / `API error`），一眼即可与正常完成区分开。
 - 点击通知回到 VS Code —— 点击 toast 后，会找到已有的 VS Code 窗口并将其带到前台。
@@ -26,7 +26,7 @@
 - 声音提醒 —— 通过操作系统默认提示音听到任务完成。
 - global / project 两种安装范围 —— 可选择面向整个账户，或仅面向当前项目安装。
 - 安全的配置合并 —— 不会覆盖 Claude/Codex 配置，只追加所需的 hook，并在修改前留下 `.bak` 备份。
-- 防止重复通知 —— 清理旧的 Job-Finish hook 残留，并检测 Codex notify 冲突。
+- 防止重复通知 —— 清理旧的 Job-Finish hook 残留，并将原有 Codex `notify` 安装迁移到即时执行的 `Stop` hook。
 - 诊断与预览 —— 通过 `doctor`、`preview` 命令快速确认当前安装状态与通知效果。
 - 仅在 VS Code 中生效 —— Codex Desktop、Claude Desktop、Orca ADE 等桌面客户端自带通知功能，会与 Job-Finish 冲突。因此通知与任务栏闪烁仅在智能体运行于 VS Code 时触发，从这些其他环境触发的 hook 会被跳过。
 
@@ -35,9 +35,11 @@
 | 对象 | 接入方式 | 通知时机 |
 | --- | --- | --- |
 | Claude Code | `~/.claude/settings.json` 或 `./.claude/settings.json` hooks | 任务完成、`AskUserQuestion` 等待输入、额度耗尽 / API 错误中断 |
-| Codex | `~/.codex/config.toml` 的 `notify` | 任务完成、最后一条 assistant 消息 |
+| Codex | `~/.codex/config.toml` 的 `hooks.Stop` | 任务完成、最后一条 assistant 消息 |
 
 > Job-Finish 是仅面向 Windows 的工具。它使用了 PowerShell、Windows toast API 以及 VS Code 窗口焦点处理。
+>
+> 安装 Codex 支持后，请重启 Codex，并在 `/hooks` 中检查并信任新的 Job-Finish hook。Codex 不会运行未受信任的 command hook。
 
 ## 安装
 
@@ -94,7 +96,7 @@ node dist/index.js init zh
 
 ```text
 Claude Code Stop / AskUserQuestion
-或 Codex notify
+或 Codex Stop
   -> 运行 job-finish-notify.ps1
   -> Windows toast / 任务栏闪烁 / 声音
   -> 点击 toast 时启动 jobfinish-focus://open

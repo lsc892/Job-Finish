@@ -2,7 +2,8 @@
 # Invoked by a hook. Reads choices from job-finish.config.json next to this script.
 #   -Event stop|notify|codex   which agent event fired
 #   -Test                      bypass focus suppression (used by `doctor`)
-# Claude passes a JSON payload on stdin; Codex appends its JSON as the final arg.
+# Claude and current Codex Stop hooks pass JSON on stdin. Legacy Codex notify
+# callbacks append their JSON as the final argument.
 param(
   [string]$Event = "stop",
   [switch]$Test,
@@ -544,43 +545,63 @@ class JfSummary {
   }
 
   # Codex 세션 로그 파일을 최신순으로 훑어 마지막 assistant 메시지를 찾아 토스트 본문으로 요약한다.
+  [string] GetCodexSessionFileSummary([string]$path) {
+    if ([string]::IsNullOrWhiteSpace($path) -or -not (Test-Path -LiteralPath $path)) { return '' }
+
+    try {
+      $fallback = ''
+      $lines = @(Get-Content -LiteralPath $path -Encoding UTF8 -Tail 500)
+      for ($i = $lines.Count - 1; $i -ge 0; $i--) {
+        $line = [string]$lines[$i]
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        if ($line.IndexOf('"role"', [System.StringComparison]::OrdinalIgnoreCase) -lt 0 -and
+            $line.IndexOf('"assistant"', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+
+        try { $entry = $line | ConvertFrom-Json } catch { continue }
+        $payload = [JfUtil]::GetProperty($entry, 'payload', $null)
+        if (-not $payload) { continue }
+        if (([JfUtil]::GetProperty($payload, 'type', '')) -ne 'message') { continue }
+        if (([JfUtil]::GetProperty($payload, 'role', '')) -ne 'assistant') { continue }
+
+        $content = ''
+        if ([JfUtil]::HasProperty($payload, 'content')) {
+          $content = $this.GetContentText($payload.content)
+        }
+
+        $summary = $this.FormatToastSummary($content)
+        if (-not $summary) { continue }
+
+        if (([JfUtil]::GetProperty($payload, 'phase', '')) -eq 'final_answer') {
+          return $summary
+        }
+
+        if (-not $fallback) {
+          $fallback = $summary
+        }
+      }
+
+      if ($fallback) { return $fallback }
+    } catch {}
+
+    return ''
+  }
+
+  # Current Codex Stop hooks provide the exact transcript path on stdin. Using
+  # it avoids scanning other sessions and keeps the completion text tied to the
+  # turn that just stopped.
+  [string] GetCodexHookTranscriptSummary($eventPayload) {
+    $path = [string]([JfUtil]::GetProperty($eventPayload, 'transcript_path', ''))
+    return $this.GetCodexSessionFileSummary($path)
+  }
+
+  # Legacy Codex notify payloads have no transcript_path, so retain the session
+  # lookup as an upgrade compatibility fallback.
   [string] GetCodexSessionSummary() {
     try {
       foreach ($session in @($this.GetCodexSessionFiles())) {
-        if (-not $session -or -not (Test-Path -LiteralPath $session.FullName)) { continue }
-
-        $fallback = ''
-        $lines = @(Get-Content -LiteralPath $session.FullName -Encoding UTF8 -Tail 500)
-        for ($i = $lines.Count - 1; $i -ge 0; $i--) {
-          $line = [string]$lines[$i]
-          if ([string]::IsNullOrWhiteSpace($line)) { continue }
-          if ($line.IndexOf('"role"', [System.StringComparison]::OrdinalIgnoreCase) -lt 0 -and
-              $line.IndexOf('"assistant"', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
-
-          try { $entry = $line | ConvertFrom-Json } catch { continue }
-          $payload = [JfUtil]::GetProperty($entry, 'payload', $null)
-          if (-not $payload) { continue }
-          if (([JfUtil]::GetProperty($payload, 'type', '')) -ne 'message') { continue }
-          if (([JfUtil]::GetProperty($payload, 'role', '')) -ne 'assistant') { continue }
-
-          $content = ''
-          if ([JfUtil]::HasProperty($payload, 'content')) {
-            $content = $this.GetContentText($payload.content)
-          }
-
-          $summary = $this.FormatToastSummary($content)
-          if (-not $summary) { continue }
-
-          if (([JfUtil]::GetProperty($payload, 'phase', '')) -eq 'final_answer') {
-            return $summary
-          }
-
-          if (-not $fallback) {
-            $fallback = $summary
-          }
-        }
-
-        if ($fallback) { return $fallback }
+        if (-not $session) { continue }
+        $summary = $this.GetCodexSessionFileSummary([string]$session.FullName)
+        if ($summary) { return $summary }
       }
     } catch {}
 
@@ -602,8 +623,13 @@ class JfSummary {
         return "$projectName waiting for input"
       }
       'codex' {
-        $last = [JfUtil]::GetProperty($eventPayload, 'last-assistant-message', '')
+        $last = [JfUtil]::GetProperty($eventPayload, 'last_assistant_message', '')
+        if ([string]::IsNullOrWhiteSpace([string]$last)) {
+          $last = [JfUtil]::GetProperty($eventPayload, 'last-assistant-message', '')
+        }
         $summary = $this.FormatToastSummary([string]$last)
+        if ($summary) { return $summary }
+        $summary = $this.GetCodexHookTranscriptSummary($eventPayload)
         if ($summary) { return $summary }
         $summary = $this.GetCodexSessionSummary()
         if ($summary) { return $summary }
@@ -1469,6 +1495,9 @@ $effectiveEvent = [JfSummary]::GetEffectiveEvent($Event)
 $payload = $null
 if ($effectiveEvent -eq 'codex') {
   if ($extraArgs.Count -gt 0) { try { $payload = $extraArgs[-1] | ConvertFrom-Json } catch {} }
+  if ($null -eq $payload -and [Console]::IsInputRedirected) {
+    try { $stdin = [Console]::In.ReadToEnd(); if ($stdin) { $payload = $stdin | ConvertFrom-Json } } catch {}
+  }
 }
 elseif (-not $Test -and [Console]::IsInputRedirected) {
   try { $stdin = [Console]::In.ReadToEnd(); if ($stdin) { $payload = $stdin | ConvertFrom-Json } } catch {}

@@ -16,7 +16,7 @@ The instant Claude Code is waiting for your input or a Claude Code/Codex task fi
 
 ## Features
 
-- Claude Code + Codex support - Hooks up Claude Code's `Stop` / `AskUserQuestion` and Codex's `notify` events in one shot.
+- Claude Code + Codex support - Hooks up Claude Code's `Stop` / `AskUserQuestion` and Codex's `Stop` lifecycle event in one shot.
 - Native Windows notifications - Shows task completions, input prompts, and the last agent message as toast notifications.
 - Abnormal-stop alerts - Also notifies when Claude Code halts on a usage/session limit or an API error, with a distinct title (`Usage limit reached` / `API error`) so you can tell it apart from a normal finish at a glance.
 - Click the notification to return to VS Code - Tapping the toast finds your existing VS Code window and brings it to the front.
@@ -26,7 +26,7 @@ The instant Claude Code is waiting for your input or a Claude Code/Codex task fi
 - Sound alerts - Hear task completions through the OS default notification sound.
 - global / project install - Choose an install scope for your entire account or just the current project.
 - Safe settings merge - Adds only the hooks it needs without overwriting your Claude/Codex settings, and leaves a `.bak` backup before making changes.
-- Duplicate notification prevention - Cleans up leftovers from previous Job-Finish hooks and detects Codex notify conflicts.
+- Duplicate notification prevention - Cleans up previous Job-Finish hooks and migrates legacy Codex `notify` installs to the immediate `Stop` hook.
 - Diagnostics and preview - Use the `doctor` and `preview` commands to quickly check the current install and notification behavior.
 - VS Code only, by design - Desktop clients like Codex Desktop, Claude Desktop, and Orca ADE ship their own built-in alerts, which would collide with Job-Finish. So notifications and taskbar flashing fire only when the agent is running inside VS Code; hooks triggered from those other environments are skipped.
 
@@ -35,9 +35,11 @@ The instant Claude Code is waiting for your input or a Claude Code/Codex task fi
 | Target | Integration | Notification timing |
 | --- | --- | --- |
 | Claude Code | `~/.claude/settings.json` or `./.claude/settings.json` hooks | Task completion, `AskUserQuestion` input prompt, usage-limit / API-error stop |
-| Codex | `~/.codex/config.toml` `notify` | Task completion, last assistant message |
+| Codex | `~/.codex/config.toml` `hooks.Stop` | Task completion, last assistant message |
 
 > Job-Finish is a Windows-only tool. It relies on PowerShell, the Windows toast API, and VS Code window focus handling.
+>
+> After installing Codex support, restart Codex and use `/hooks` to review and trust the new Job-Finish hook. Codex skips untrusted command hooks.
 
 ## Installation
 
@@ -94,7 +96,7 @@ node dist/index.js init
 
 ```text
 Claude Code Stop / AskUserQuestion
-or Codex notify
+or Codex Stop
   -> run job-finish-notify.ps1
   -> Windows toast / taskbar flash / sound
   -> on toast click, launch jobfinish-focus://open

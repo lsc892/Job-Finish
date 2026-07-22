@@ -16,7 +16,7 @@ Claude Code가 입력을 기다리거나 Claude Code/Codex 작업이 끝나는 �
 
 ## 주요 기능
 
-- Claude Code + Codex 지원 - Claude Code의 `Stop` / `AskUserQuestion`, Codex의 `notify` 이벤트를 한 번에 연결합니다.
+- Claude Code + Codex 지원 - Claude Code의 `Stop` / `AskUserQuestion`, Codex의 `Stop` 생명주기 이벤트를 한 번에 연결합니다.
 - Windows 네이티브 알림 - 작업 완료, 입력 대기, 마지막 에이전트 메시지를 토스트 알림으로 보여줍니다.
 - 비정상 종료 알림 - 토큰·세션 한도 소진이나 API 오류로 Claude Code가 멈출 때도 알림을 띄우고, 제목(`Usage limit reached` / `API error`)을 달리해 정상 완료와 한눈에 구분됩니다.
 - 알림 클릭으로 VS Code 복귀 - 토스트를 누르면 기존 VS Code 창을 찾아 전면으로 가져옵니다.
@@ -26,7 +26,7 @@ Claude Code가 입력을 기다리거나 Claude Code/Codex 작업이 끝나는 �
 - 소리 알림 - OS 기본 알림음으로 작업 완료를 들을 수 있습니다.
 - global / project 설치 - 전체 계정용 또는 현재 프로젝트용으로 설치 범위를 선택합니다.
 - 안전한 설정 병합 - Claude/Codex 설정을 덮어쓰지 않고 필요한 hook만 추가하며, 변경 전 `.bak` 백업을 남깁니다.
-- 중복 알림 방지 - 이전 Job-Finish hook 잔여물을 정리하고 Codex notify 충돌을 감지합니다.
+- 중복 알림 방지 - 이전 Job-Finish hook 잔여물을 정리하고 기존 Codex `notify` 설치를 즉시 실행되는 `Stop` hook으로 마이그레이션합니다.
 - 진단과 미리보기 - `doctor`, `preview` 명령으로 현재 설치와 알림 동작을 빠르게 확인합니다.
 - VS Code 환경 전용 - Codex Desktop, Claude Desktop, Orca ADE 같은 데스크톱 클라이언트에는 자체 알림 기능이 있어 Job-Finish와 충돌합니다. 그래서 알림과 작업표시줄 깜빡임은 에이전트가 VS Code 안에서 동작할 때만 뜨고, 그 외 환경에서 실행된 hook은 건너뜁니다.
 
@@ -35,9 +35,11 @@ Claude Code가 입력을 기다리거나 Claude Code/Codex 작업이 끝나는 �
 | 대상 | 연결 방식 | 알림 타이밍 |
 | --- | --- | --- |
 | Claude Code | `~/.claude/settings.json` 또는 `./.claude/settings.json` hooks | 작업 완료, `AskUserQuestion` 입력 대기, 한도 소진·API 오류 중단 |
-| Codex | `~/.codex/config.toml` `notify` | 작업 완료, 마지막 assistant 메시지 |
+| Codex | `~/.codex/config.toml` `hooks.Stop` | 작업 완료, 마지막 assistant 메시지 |
 
 > Job-Finish는 Windows 전용 도구입니다. PowerShell과 Windows toast API, VS Code 창 포커스 처리를 사용합니다.
+>
+> Codex 지원을 설치한 뒤 Codex를 재시작하고 `/hooks`에서 새 Job-Finish hook을 검토해 신뢰해 주세요. Codex는 신뢰하지 않은 command hook을 실행하지 않습니다.
 
 ## 설치
 
@@ -94,7 +96,7 @@ node dist/index.js init ko
 
 ```text
 Claude Code Stop / AskUserQuestion
-또는 Codex notify
+또는 Codex Stop
   -> job-finish-notify.ps1 실행
   -> Windows toast / 작업표시줄 flash / sound
   -> toast 클릭 시 jobfinish-focus://open 실행

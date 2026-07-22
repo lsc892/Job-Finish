@@ -16,7 +16,7 @@ Claude Codeが入力を待っている瞬間や、Claude Code / Codexの作業�
 
 ## 主な機能
 
-- Claude Code + Codex 対応 - Claude Codeの `Stop` / `AskUserQuestion` と、Codexの `notify` イベントをまとめて連携します。
+- Claude Code + Codex 対応 - Claude Codeの `Stop` / `AskUserQuestion` と、Codexの `Stop` ライフサイクルイベントをまとめて連携します。
 - Windowsネイティブ通知 - 作業の完了、入力待ち、エージェントの最後のメッセージをトースト通知で表示します。
 - 異常終了の通知 - トークン・セッション上限の超過やAPIエラーでClaude Codeが停止したときも通知し、タイトル（`Usage limit reached` / `API error`）を変えて通常の完了と一目で見分けられます。
 - 通知クリックでVS Codeに復帰 - トーストを押すと既存のVS Codeウィンドウを探し出し、最前面に持ってきます。
@@ -26,7 +26,7 @@ Claude Codeが入力を待っている瞬間や、Claude Code / Codexの作業�
 - サウンド通知 - OS標準の通知音で作業の完了を耳でも確認できます。
 - global / project インストール - アカウント全体向け、または現在のプロジェクト向けにインストール範囲を選べます。
 - 安全な設定マージ - Claude / Codexの設定を上書きせず、必要なhookだけを追加し、変更前に `.bak` バックアップを残します。
-- 重複通知の防止 - 以前のJob-Finish hookの残骸を整理し、Codexのnotify競合を検知します。
+- 重複通知の防止 - 以前のJob-Finish hookを整理し、従来のCodex `notify` インストールを即時実行される `Stop` hookへ移行します。
 - 診断とプレビュー - `doctor`、`preview` コマンドで、現在のインストール状態と通知動作をすばやく確認できます。
 - VS Code環境専用 - Codex Desktop、Claude Desktop、Orca ADEといったデスクトップクライアントには独自の通知機能があり、Job-Finishと競合します。そのため通知とタスクバーの点滅は、エージェントがVS Code内で動作しているときだけ発火し、それ以外の環境から起動されたhookはスキップされます。
 
@@ -35,9 +35,11 @@ Claude Codeが入力を待っている瞬間や、Claude Code / Codexの作業�
 | 対象 | 連携方式 | 通知タイミング |
 | --- | --- | --- |
 | Claude Code | `~/.claude/settings.json` または `./.claude/settings.json` の hooks | 作業完了、`AskUserQuestion` の入力待ち、上限超過・APIエラーによる停止 |
-| Codex | `~/.codex/config.toml` の `notify` | 作業完了、最後の assistant メッセージ |
+| Codex | `~/.codex/config.toml` の `hooks.Stop` | 作業完了、最後の assistant メッセージ |
 
 > Job-FinishはWindows専用ツールです。PowerShellとWindowsのtoast API、VS Codeのウィンドウフォーカス処理を利用します。
+>
+> Codex対応をインストールした後、Codexを再起動し、`/hooks`で新しいJob-Finish hookを確認して信頼してください。Codexは信頼されていないcommand hookを実行しません。
 
 ## インストール
 
@@ -94,7 +96,7 @@ node dist/index.js init jp
 
 ```text
 Claude Code Stop / AskUserQuestion
-または Codex notify
+または Codex Stop
   -> job-finish-notify.ps1 を実行
   -> Windows toast / タスクバーの点滅 / サウンド
   -> toast クリック時に jobfinish-focus://open を起動

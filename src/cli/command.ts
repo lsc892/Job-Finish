@@ -10,8 +10,8 @@ export function notifierScriptPath(installDir: string, platform: Platform): stri
 }
 
 /**
- * Build the shell command a hook/notify entry should run. The `-Event`/positional
- * arg tells the notifier which event fired so it can pick the right wording.
+ * Build the shell command a lifecycle hook should run. The `-Event` argument
+ * tells the notifier which event fired so it can pick the right wording.
  */
 export function buildCommand(scriptPath: string, platform: Platform, event: EventKind): string {
   void platform;
@@ -20,8 +20,9 @@ export function buildCommand(scriptPath: string, platform: Platform, event: Even
 }
 
 /**
- * Codex's `notify` is an argv array, not a shell string. The agent appends the
- * event JSON as the final argument automatically.
+ * Build the legacy Codex `notify` argv used by older installs. New installs use
+ * the `Stop` lifecycle hook, but keeping this helper lets upgrade/status code
+ * recognize and explain the old configuration shape.
  */
 export function buildCodexNotifyArgv(scriptPath: string, platform: Platform): string[] {
   void platform;

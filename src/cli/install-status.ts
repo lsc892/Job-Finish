@@ -34,7 +34,7 @@ export function installDirHasJobFinish(dir: string, platform: Platform): boolean
   );
 }
 
-// 전역 Claude 설정에 Job-Finish hook이 있는지와, Codex notify가 프로젝트 설치본이 아닌 다른 대상을 가리키는지를 확인해 전역 설치 여부를 판별한다.
+// 전역 Claude 설정에 Job-Finish hook이 있는지와, Codex Stop hook이 프로젝트 설치본이 아닌 다른 대상을 가리키는지를 확인해 전역 설치 여부를 판별한다.
 export function getGlobalInstallStatus(cwd: string, platform: Platform): GlobalInstallStatus {
   const globalClaudeSettings = claudeSettingsPath("global", cwd);
   const codexTarget = codexJobFinishTarget(codexConfigPath());
@@ -54,7 +54,7 @@ export function describeGlobalInstall(
   status: GlobalInstallStatus,
   cwd: string,
   platform: Platform,
-  targetKinds = { globalInstall: "global install", globalCodexNotify: "global Codex notify" },
+  targetKinds = { globalInstall: "global install", globalCodexNotify: "global Codex hook" },
 ): string[] {
   const lines: string[] = [];
   if (status.claude) {
@@ -71,7 +71,7 @@ export function describeGlobalInstall(
   return lines;
 }
 
-// 프로젝트 스코프의 Claude hook, 프로젝트 설치본을 가리키는 Codex notify, 설치 폴더를 차례로 지우고 무엇을 정리했는지 기록해 돌려준다.
+// 프로젝트 스코프의 Claude hook, 프로젝트 설치본을 가리키는 Codex Stop hook, 설치 폴더를 차례로 지우고 무엇을 정리했는지 기록해 돌려준다.
 export function cleanupProjectInstall(cwd: string, platform: Platform): CleanupResult {
   const cleaned = emptyCleanup();
   const projectClaudeSettings = claudeSettingsPath("project", cwd);

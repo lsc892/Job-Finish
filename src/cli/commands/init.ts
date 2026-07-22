@@ -1,7 +1,6 @@
 // 책임: init 명령 - 마법사 실행부터 스크립트/설정 생성·설치·테스트 알림까지 오케스트레이션.
 import { confirm, isCancel, log, note, spinner } from "@clack/prompts";
 import pc from "picocolors";
-import { buildCodexNotifyArgv } from "../command.js";
 import {
   checkDependencies,
   claudeSettingsPath,
@@ -125,16 +124,8 @@ export async function cmdInit(language?: string): Promise<void> {
 
   if (agents.includes("codex")) {
     const r = installCodex(codexConfigPath(), dir, platform);
-    if (r.conflict) {
-      lines.push(pc.yellow(copy.codexConflict));
-      log.warn(
-        `${copy.codexOnlyOne}\n` +
-          `  ${copy.addManually} ${codexConfigPath()}:\n` +
-          `  notify = ${JSON.stringify(buildCodexNotifyArgv(scriptPath, platform))}`,
-      );
-    } else {
-      lines.push(`Codex: ${r.settingsPath}${r.backupPath ? pc.dim(` (${copy.backup})`) : ""}`);
-    }
+    lines.push(`Codex: ${r.settingsPath}${r.backupPath ? pc.dim(` (${copy.backup})`) : ""}`);
+    lines.push(pc.yellow(copy.codexTrust));
   }
 
   note(lines.join("\n"), copy.installComplete);
