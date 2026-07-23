@@ -128,7 +128,8 @@ const COPIES: Record<InstallLocale, InstallCopy> = {
       reset: "Reset",
       previousResidueRemoved: "removed previous install residue",
       backup: "backup ✓",
-      codexTrust: "After restarting Codex, open /hooks and trust the new Job-Finish Stop hook.",
+      codexTrust:
+        "Codex does not run untrusted hooks. Run `codex` in a terminal and pick \"Trust all and continue\" on the startup Hooks need review screen - a one-time step.",
       installComplete: "Installation complete",
       testPrompt: "Send a test notification now?",
       testSent: "Test notification sent. Check the notification and sound.",
@@ -192,7 +193,8 @@ const COPIES: Record<InstallLocale, InstallCopy> = {
       reset: "리셋",
       previousResidueRemoved: "이전 설치 잔여 정리",
       backup: "백업 ✓",
-      codexTrust: "Codex를 다시 시작한 뒤 /hooks를 열어 새 Job-Finish Stop hook을 신뢰해 주세요.",
+      codexTrust:
+        "Codex는 신뢰하지 않은 hook을 실행하지 않습니다. 터미널에서 `codex`를 실행해 시작 시 뜨는 Hooks need review 화면에서 \"Trust all and continue\"를 선택해 주세요. 최초 1회면 끝입니다.",
       installComplete: "설치 완료",
       testPrompt: "지금 테스트 알림을 보내볼까요?",
       testSent: "테스트 알림을 보냈어요. 알림/소리를 확인하세요.",
@@ -256,7 +258,8 @@ const COPIES: Record<InstallLocale, InstallCopy> = {
       reset: "重置",
       previousResidueRemoved: "已清理之前的安装残留",
       backup: "已备份 ✓",
-      codexTrust: "重启 Codex 后，请打开 /hooks 并信任新的 Job-Finish Stop hook。",
+      codexTrust:
+        "Codex 不会运行未受信任的 hook。请在终端运行 `codex`，并在启动时的 Hooks need review 界面选择 \"Trust all and continue\"。只需设置一次。",
       installComplete: "安装完成",
       testPrompt: "现在发送一条测试通知吗？",
       testSent: "测试通知已发送，请检查通知和声音。",
@@ -320,7 +323,8 @@ const COPIES: Record<InstallLocale, InstallCopy> = {
       reset: "リセット",
       previousResidueRemoved: "以前のインストールの残骸を削除",
       backup: "バックアップ ✓",
-      codexTrust: "Codexを再起動した後、/hooksを開いて新しいJob-Finish Stop hookを信頼してください。",
+      codexTrust:
+        "Codexは信頼されていないhookを実行しません。ターミナルで `codex` を起動し、開始時のHooks need review画面で \"Trust all and continue\" を選んでください。設定は初回の1回だけです。",
       installComplete: "インストール完了",
       testPrompt: "今すぐテスト通知を送信しますか？",
       testSent: "テスト通知を送信しました。通知とサウンドを確認してください。",

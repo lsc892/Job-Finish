@@ -39,7 +39,7 @@
 
 > Job-Finish 是仅面向 Windows 的工具。它使用了 PowerShell、Windows toast API 以及 VS Code 窗口焦点处理。
 >
-> 安装 Codex 支持后，请重启 Codex，并在 `/hooks` 中检查并信任新的 Job-Finish hook。Codex 不会运行未受信任的 command hook。
+> Codex 不会运行未受信任的 command hook。在终端中运行 `codex`，启动时会出现 `Hooks need review` 界面，请在这里选择 **Trust all and continue**。只需设置一次，之后不会再询问。
 
 ## 安装
 

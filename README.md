@@ -39,7 +39,7 @@ The instant Claude Code is waiting for your input or a Claude Code/Codex task fi
 
 > Job-Finish is a Windows-only tool. It relies on PowerShell, the Windows toast API, and VS Code window focus handling.
 >
-> After installing Codex support, restart Codex and use `/hooks` to review and trust the new Job-Finish hook. Codex skips untrusted command hooks.
+> Codex does not run command hooks it has not trusted. Start `codex` in a terminal and it shows a `Hooks need review` screen on startup. Pick **Trust all and continue** there. This is a one-time step; Codex will not ask again.
 
 ## Installation
 

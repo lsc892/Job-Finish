@@ -39,7 +39,7 @@ Claude Code가 입력을 기다리거나 Claude Code/Codex 작업이 끝나는 �
 
 > Job-Finish는 Windows 전용 도구입니다. PowerShell과 Windows toast API, VS Code 창 포커스 처리를 사용합니다.
 >
-> Codex 지원을 설치한 뒤 Codex를 재시작하고 `/hooks`에서 새 Job-Finish hook을 검토해 신뢰해 주세요. Codex는 신뢰하지 않은 command hook을 실행하지 않습니다.
+> Codex는 신뢰하지 않은 command hook을 실행하지 않습니다. 터미널에서 `codex`를 실행하면 시작할 때 `Hooks need review` 화면이 뜹니다. 여기서 **Trust all and continue**를 선택해 주세요. 최초 1회면 끝이고, 이후에는 다시 묻지 않습니다.
 
 ## 설치
 
