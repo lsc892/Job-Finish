@@ -197,7 +197,9 @@ class JfConfig {
     try {
       $logPath = Join-Path $this.ScriptRoot 'job-finish.log'
       $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff'
-      Add-Content -LiteralPath $logPath -Value "[$ts] $message"
+      # UTF8: the log carries toast text, which is often non-ASCII. Windows
+      # PowerShell would otherwise append it in the ANSI code page.
+      Add-Content -LiteralPath $logPath -Encoding UTF8 -Value "[$ts] $message"
     } catch {}
   }
 }
@@ -1457,6 +1459,24 @@ function Show-Balloon($title, $text, [string]$launch) {
   }
 }
 
+# ================================================================= stdin
+# Claude/Codex hooks pipe UTF-8 JSON on stdin, but [Console]::In decodes it with
+# the console input code page. A hook launched from VS Code inherits the system
+# ANSI/OEM page (949 on Korean Windows, not 65001), so UTF-8 Korean text comes
+# back as '?��?' mojibake in the toast. Decode the raw stdin bytes as UTF-8
+# ourselves instead of trusting the code page.
+function Read-StdinUtf8 {
+  try {
+    $stream = [Console]::OpenStandardInput()
+    if ($null -eq $stream) { return '' }
+    # detectEncodingFromByteOrderMarks: honor a UTF-8/UTF-16 BOM if one is sent.
+    $reader = New-Object System.IO.StreamReader($stream, (New-Object System.Text.UTF8Encoding($false)), $true)
+    try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+  } catch {
+    try { return [Console]::In.ReadToEnd() } catch { return '' }
+  }
+}
+
 # ================================================================= main
 $config = [JfConfig]::new($PSScriptRoot)
 $summary = [JfSummary]::new($maxToastTextLength)
@@ -1496,11 +1516,11 @@ $payload = $null
 if ($effectiveEvent -eq 'codex') {
   if ($extraArgs.Count -gt 0) { try { $payload = $extraArgs[-1] | ConvertFrom-Json } catch {} }
   if ($null -eq $payload -and [Console]::IsInputRedirected) {
-    try { $stdin = [Console]::In.ReadToEnd(); if ($stdin) { $payload = $stdin | ConvertFrom-Json } } catch {}
+    try { $stdin = Read-StdinUtf8; if ($stdin) { $payload = $stdin | ConvertFrom-Json } } catch {}
   }
 }
 elseif (-not $Test -and [Console]::IsInputRedirected) {
-  try { $stdin = [Console]::In.ReadToEnd(); if ($stdin) { $payload = $stdin | ConvertFrom-Json } } catch {}
+  try { $stdin = Read-StdinUtf8; if ($stdin) { $payload = $stdin | ConvertFrom-Json } } catch {}
 }
 
 # ------------------------------------------------------- compose title/text
@@ -1532,6 +1552,7 @@ if ($effectiveEvent -eq 'stop') {
   $text = $summary.LimitText($summary.GetEventToastText($effectiveEvent, $payload, $project))
 }
 
+$config.Debug("notifier text title=$title text=$text")
 $config.Debug("notifier start event=$effectiveEvent rawEvent=$Event modes=$($config.Modes -join ',') flashTimeout=$($config.Cfg.flashTimeout) sound=$($config.Cfg.sound.enabled) suppressWhenFocused=$($config.Cfg.suppressWhenFocused) project=$project cwdReliable=$cwdIsReliable sessionCwd=$hasSessionCwd")
 
 # A background subagent (Task) makes the main agent yield, firing Stop before the
