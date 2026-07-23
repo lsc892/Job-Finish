@@ -151,11 +151,11 @@ test("uninstall also cleans an old Job-Finish notify entry", (t) => {
   assert.deepEqual(readToml(configPath), { model: "gpt-test" });
 });
 
-test("the notifier accepts the current Codex Stop payload on stdin", (t) => {
+/** Install the notifier plus a quiet, log-everything config in a temp dir. */
+function notifierFixture(t: TestContext): { root: string; scriptPath: string } {
   const root = mkdtempSync(path.join(os.tmpdir(), "job-finish-notifier-test-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const scriptPath = path.join(root, "job-finish-notify.ps1");
-  const transcriptPath = path.join(root, "rollout.jsonl");
   copyFileSync(path.resolve("templates", "notify.win.ps1"), scriptPath);
   writeFileSync(
     path.join(root, "job-finish.config.json"),
@@ -170,6 +170,12 @@ test("the notifier accepts the current Codex Stop payload on stdin", (t) => {
     }),
     "utf8",
   );
+  return { root, scriptPath };
+}
+
+test("the notifier accepts the current Codex Stop payload on stdin", (t) => {
+  const { root, scriptPath } = notifierFixture(t);
+  const transcriptPath = path.join(root, "rollout.jsonl");
   writeFileSync(
     transcriptPath,
     JSON.stringify({
@@ -206,6 +212,47 @@ test("the notifier accepts the current Codex Stop payload on stdin", (t) => {
   assert.match(log, /notifier start event=codex/);
   assert.match(log, new RegExp(`project=${path.basename(root)}`));
   assert.match(log, /notifier exit/);
+});
+
+/** Code page of the console this test run shares with the processes it spawns. */
+function consoleCodePage(): string {
+  const { stdout } = spawnSync("cmd", ["/d", "/c", "chcp"], { encoding: "utf8" });
+  return (stdout ?? "").match(/(\d+)/)?.[1] ?? "";
+}
+
+test("the notifier decodes UTF-8 stdin under a non-UTF-8 console code page", (t) => {
+  const { root, scriptPath } = notifierFixture(t);
+  const message = "한글 알림 테스트 완료";
+
+  // A hook inherits the console code page, which is the ANSI/OEM page (437, 949,
+  // ...) on most Windows installs — not 65001. Decoding the UTF-8 payload with it
+  // used to turn the Codex summary into mojibake, so pin the page here. `chcp`
+  // hits the console shared with this runner, so put it back afterwards.
+  const previousCodePage = consoleCodePage();
+  let child;
+  try {
+    child = spawnSync(
+      `chcp 437 >nul && powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" -Event codex -Test`,
+      {
+        shell: true,
+        input: JSON.stringify({
+          hook_event_name: "Stop",
+          cwd: root,
+          last_assistant_message: message,
+        }),
+        encoding: "utf8",
+        timeout: 30_000,
+      },
+    );
+  } finally {
+    if (previousCodePage) {
+      spawnSync("cmd", ["/d", "/c", `chcp ${previousCodePage}`], { stdio: "ignore" });
+    }
+  }
+
+  assert.equal(child.status, 0, child.stderr || child.stdout);
+  const log = readFileSync(path.join(root, "job-finish.log"), "utf8");
+  assert.match(log, new RegExp(`notifier text title=Codex text=${message}$`, "m"));
 });
 
 if (failures > 0) {
