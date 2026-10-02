@@ -1,0 +1,10 @@
+src/**
+node_modules/**
+.verification/**
+out/test/**
+tsconfig.json
+package-lock.json
+**/*.vsix
+.vscode/**
+.gitignore
+verification-result.json

@@ -1,0 +1,169 @@
+{
+  "verifiedAt": "2026-10-02T15:11:55.147Z",
+  "verifiedAtKst": "2026-10-03 00:11:55 +09:00",
+  "platform": "win32 x64",
+  "vscodeVersion": "1.140.0",
+  "live": true,
+  "profileIsolation": true,
+  "sharedTestCoordination": true,
+  "scenarios": [
+    {
+      "scenario": "same-workspace",
+      "a": {
+        "identity": {
+          "windowInstanceId": "4cf40bfc-0fc5-4201-9ad0-7d01c5e7de38",
+          "vscodeSessionId": "25bb0f29-8a37-46a5-a268-de5b3798b89d1790953887010",
+          "extensionHostPid": 32908
+        },
+        "checks": {
+          "uniqueWindowId": true,
+          "fileWatcher": true,
+          "routing": true,
+          "duplicateSuppression": true,
+          "documentEvents": true,
+          "liveProvider": true,
+          "nativeSessionWatch": true
+        },
+        "runtimeVersion": "codex-cli 0.159.0-alpha.12.1",
+        "liveSignals": [
+          {
+            "provider": "codex",
+            "sessionId": "01a0fd2b-a7cd-7da0-b9af-8c05b13d1b0c",
+            "turnId": "1",
+            "status": "completed",
+            "proof": "turn.completed",
+            "text": "JF_LIVE_A",
+            "windowInstanceId": "4cf40bfc-0fc5-4201-9ad0-7d01c5e7de38"
+          }
+        ],
+        "nativeSignals": [
+          {
+            "provider": "codex",
+            "sessionId": "01a0fd2b-a7cd-7da0-b9af-8c05b13d1b0c",
+            "turnId": "01a0fd2b-bef5-75d2-a72d-572e2ef7b6ff",
+            "status": "completed",
+            "proof": "event_msg/task_complete",
+            "text": "JF_NATIVE_A",
+            "windowInstanceId": "4cf40bfc-0fc5-4201-9ad0-7d01c5e7de38"
+          }
+        ],
+        "watcherEvents": 9,
+        "documentEvents": 2,
+        "focusEvents": 0,
+        "errors": []
+      },
+      "b": {
+        "identity": {
+          "windowInstanceId": "3c30e722-698d-48b2-b4c1-2d9771bcf235",
+          "vscodeSessionId": "1dee5c20-f644-455e-9de5-340268ba7ce11790953887049",
+          "extensionHostPid": 19736
+        },
+        "checks": {
+          "uniqueWindowId": true,
+          "duplicateOwnerRejected": true,
+          "fileWatcher": true,
+          "routing": true,
+          "duplicateSuppression": true,
+          "documentEvents": true,
+          "liveProvider": true,
+          "nativeSessionWatch": true
+        },
+        "runtimeVersion": "2.1.287 (Claude Code)",
+        "liveSignals": [
+          {
+            "provider": "claude",
+            "sessionId": "a93c1a16-1fcd-4ce3-ba77-e051bd65d2cc",
+            "status": "completed",
+            "proof": "result/success",
+            "text": "JF_LIVE_B",
+            "windowInstanceId": "3c30e722-698d-48b2-b4c1-2d9771bcf235"
+          }
+        ],
+        "nativeSignals": [
+          {
+            "provider": "claude",
+            "sessionId": "a93c1a16-1fcd-4ce3-ba77-e051bd65d2cc",
+            "status": "responseObserved",
+            "proof": "assistant/stop_reason=end_turn",
+            "text": "JF_NATIVE_B",
+            "windowInstanceId": "3c30e722-698d-48b2-b4c1-2d9771bcf235"
+          }
+        ],
+        "watcherEvents": 7,
+        "documentEvents": 6,
+        "focusEvents": 0,
+        "errors": []
+      },
+      "restarted": {
+        "identity": {
+          "windowInstanceId": "0376643d-5a43-4551-bce3-ec57ae4becbc",
+          "vscodeSessionId": "a9e86eaa-429d-4cc4-bc15-84c583fe89871790953904155",
+          "extensionHostPid": 24912
+        },
+        "checks": {
+          "noHistoricalReplay": true,
+          "newEventsAfterRestart": true
+        },
+        "watcherEvents": 1,
+        "documentEvents": 0,
+        "focusEvents": 0,
+        "errors": []
+      }
+    },
+    {
+      "scenario": "different-workspaces",
+      "a": {
+        "identity": {
+          "windowInstanceId": "30f46722-136d-4872-a49e-efff7bc04504",
+          "vscodeSessionId": "b04c08cc-1d4b-4bb1-9eea-cbdb9d79c4211790953907645",
+          "extensionHostPid": 34376
+        },
+        "checks": {
+          "uniqueWindowId": true,
+          "fileWatcher": true,
+          "routing": true,
+          "duplicateSuppression": true,
+          "documentEvents": true
+        },
+        "watcherEvents": 3,
+        "documentEvents": 2,
+        "focusEvents": 0,
+        "errors": []
+      },
+      "b": {
+        "identity": {
+          "windowInstanceId": "0bbce68a-d311-44f9-9ae1-80e88fe3da1c",
+          "vscodeSessionId": "3f759e9d-4cfa-4aef-929a-40d3ca9576a41790953907638",
+          "extensionHostPid": 34508
+        },
+        "checks": {
+          "uniqueWindowId": true,
+          "duplicateOwnerRejected": true,
+          "fileWatcher": true,
+          "routing": true,
+          "duplicateSuppression": true,
+          "documentEvents": true
+        },
+        "watcherEvents": 3,
+        "documentEvents": 2,
+        "focusEvents": 0,
+        "errors": []
+      },
+      "restarted": {
+        "identity": {
+          "windowInstanceId": "91042f17-bef2-4e9f-80e1-b3acef8a77cf",
+          "vscodeSessionId": "6d2f0f21-b1b8-4cb8-83ac-5d9ed6b5b2c61790953912921",
+          "extensionHostPid": 34600
+        },
+        "checks": {
+          "noHistoricalReplay": true,
+          "newEventsAfterRestart": true
+        },
+        "watcherEvents": 1,
+        "documentEvents": 0,
+        "focusEvents": 0,
+        "errors": []
+      }
+    }
+  ]
+}
