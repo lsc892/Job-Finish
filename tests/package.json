@@ -15,7 +15,7 @@
     "vscode:prepublish": "npm run build",
     "test": "npm run build && node --test out/test/core.test.js",
     "test:integration": "npm run build && node out/test/launch.js",
-    "package": "vsce package --allow-missing-repository --skip-license --baseContentUrl https://github.com/lsc892/Job-Finish/blob/main/experiments/vscode-extension-mvp"
+    "package": "vsce package --allow-missing-repository --skip-license --baseContentUrl https://github.com/lsc892/Job-Finish/blob/main/tests"
   },
   "contributes": {
     "commands": [

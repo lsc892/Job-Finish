@@ -1,6 +1,6 @@
 # VS Code TypeScript 확장 MVP 실측 검증
 
-검증일: **2026-10-03 00:11 KST**. 설계 기준은 [vscode-extension-migration.md](vscode-extension-migration.md)이며, 구현은 [독립 MVP](../experiments/vscode-extension-mvp/README.md)에 있다.
+검증일: **2026-10-03 00:11 KST**. 구현과 재현 방법은 [MVP README](../tests/README.md)에 있다.
 
 **VS Code Extension Host에서 TypeScript 감시 확장을 실행하고, 실제 Codex·Claude 호출 및 세션 로그의 새 기록을 수신하는 데 성공했다. 같은 폴더를 연 두 창에서도 실행 UUID와 결과가 분리됐다.**
 
@@ -55,17 +55,17 @@ A 재실행 : 0376643d-5a43-4551-bce3-ec57ae4becbc
 
 같은 workspace의 watcher 이벤트는 A에서 9회, B에서 7회였으며 파싱 오류는 없었다. 문서 변경 이벤트는 각각 2회 수신했다. UUID는 VS Code의 운영체제 창 번호나 HWND가 아니라 **해당 창에서 활성화된 확장 실행의 식별자**다. 전체 UUID로 귀속하고 짧은 ID는 표시용으로 쓴다.
 
-요약 증거: [verification-result.json](../experiments/vscode-extension-mvp/verification-result.json). 상세 원본은 MVP의 `.verification/2026-10-02T15-11-25-669Z/summary.json`에 있다. 파일명의 시각은 UTC이고 보고서의 시각은 KST다.
+요약 증거: [verification-result.json](verification-result.json). 최초 실행의 임시 로그와 테스트 프로필은 정리했다. 통합 테스트를 다시 실행하면 `tests/.verification/<실행시각>/summary.json`에 새 상세 결과를 생성한다. 파일명의 시각은 UTC이고 보고서의 시각은 KST다.
 
 ## 검사와 산출물
 
 - MVP TypeScript 빌드 및 핵심 테스트 **5개 통과**.
 - 실제 VS Code 통합 테스트: 같은 workspace, 다른 workspace, 각 종료 후 재실행 **모두 통과**.
 - 각 provider의 새 호출과 원본 로그 감시용 재개 호출 **모두 통과**.
-- 기존 저장소의 `npm run typecheck`, `npm test` 통과.
+- 당시 기존 코드의 타입 검사와 회귀 테스트도 통과했다. 이후 정리 과정에서 해당 실행 코드와 배포 설정을 제거했다.
 - 설치 가능한 `job-finish-mvp-0.0.1.vsix` 생성.
 
-재현 명령과 수동 실행 방법은 [MVP README](../experiments/vscode-extension-mvp/README.md)에 있다.
+재현 명령과 수동 실행 방법은 [MVP README](../tests/README.md)에 있다.
 
 ## 확인하지 않은 범위
 

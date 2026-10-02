@@ -1,6 +1,6 @@
 # Job-Finish VS Code 검증용 MVP
 
-TypeScript 확장이 실제 VS Code에서 에이전트 신호를 받고 창별로 구분할 수 있는지 확인하는 독립 실험이다. 실측 결과와 지원 한계는 [검증 보고서](../../docs/vscode-extension-mvp-verification.md)에 정리했다.
+TypeScript 확장이 실제 VS Code에서 에이전트 신호를 받고 창별로 구분할 수 있는지 확인하는 독립 실험이다. 실측 결과와 지원 한계는 [검증 보고서](../docs/VERIFICATION.md)에 정리했다.
 
 ## 실행
 
@@ -41,7 +41,7 @@ $env:JF_MVP_CLAUDE_EXECUTABLE = 'C:\path\to\claude.exe'
 npm run test:integration -- --live
 ```
 
-테스트는 격리된 VS Code 프로필 두 개와 공통 조정 디렉터리를 사용한다. 같은 workspace / 다른 workspace / 종료 후 재실행을 확인하고 `.verification/<실행시각>/summary.json`에 원본 증거를 남긴다. 이 폴더와 생성된 VSIX는 Git에서 제외한다. 최초 실측의 요약 증거는 [verification-result.json](verification-result.json)에 보관했다.
+테스트는 격리된 VS Code 프로필 두 개와 공통 조정 디렉터리를 사용한다. 같은 workspace / 다른 workspace / 종료 후 재실행을 확인하고 `.verification/<실행시각>/summary.json`에 원본 증거를 남긴다. 이 폴더와 생성된 VSIX는 Git에서 제외한다. 최초 실측의 요약 증거는 [verification-result.json](../docs/verification-result.json)에 보관했다.
 
 ## 판정 범위
 
@@ -50,3 +50,7 @@ npm run test:integration -- --live
 `windowInstanceId`는 창 안에서 활성화된 이 확장의 UUID다. 세션 로그의 `cwd`만으로 원래 창을 추정하지 않으며, 직접 실행한 요청이나 사용자가 연결한 로그를 현재 창에 귀속시킨다. 재실행 시 UUID는 바뀐다.
 
 소유권 lock은 정상 종료 시 해제된다. 비정상 종료 후 lock 자동 만료·이전, 버전별 adapter, 원격 환경, 기존 AI 채팅 화면의 자동 구독은 이 MVP에서 구현하지 않았다. 테스트 모드에서는 팝업을 생략하고 수신 기록을 검사한다.
+
+## 라이선스
+
+[MIT](../README.md#license)
