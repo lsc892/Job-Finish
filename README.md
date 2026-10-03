@@ -18,9 +18,9 @@ Job-Finish brings agent signals into the VS Code window where they belong, so yo
 
 ## Current stage
 
-The VS Code extension is a verified TypeScript MVP. Real agent calls, session-log signals, and window identities have been tested. The product release is in development.
+Real agent calls, session-log signals, and window identities were verified with a TypeScript VS Code extension MVP. This repository now keeps the introduction and a single implementation and verification document; executable MVP and test files have been removed.
 
-Try the [verification MVP](tests/README.md) or read the [test results](docs/VERIFICATION.md).
+Read the [feature algorithms, reference implementation, and verification results](docs/requirements-and-verification.md).
 
 ## License
 

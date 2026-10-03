@@ -18,9 +18,9 @@ Job-Finish는 에이전트의 신호를 해당 VS Code 창에 표시합니다. �
 
 ## 현재 상태
 
-TypeScript 기반 VS Code 확장 MVP를 검증했습니다. 실제 에이전트 호출, 세션 로그 신호 수신, 창별 ID 구분을 테스트했으며 제품 버전을 개발하고 있습니다.
+TypeScript 기반 VS Code 확장 MVP로 실제 에이전트 호출, 세션 로그 신호 수신, 창별 ID 구분을 검증했습니다. 현재 저장소에는 소개 README와 구현·검증 통합 문서만 보관하며, 실행용 MVP와 테스트 파일은 정리했습니다.
 
-[검증용 MVP](tests/README.md)를 실행하거나 [테스트 결과](docs/VERIFICATION.md)를 확인할 수 있습니다.
+[기능·구현 알고리즘과 검증 문서](docs/requirements-and-verification.md)에서 구현 규칙, 참고 코드, 검증 방법과 실측 결과를 확인할 수 있습니다.
 
 ## 라이선스
 

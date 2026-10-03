@@ -18,9 +18,9 @@ Job-Finishはエージェントの通知を対応するVS Codeウィンドウに
 
 ## 現在の状態
 
-TypeScriptによるVS Code拡張のMVPを検証しました。実際のエージェント呼び出し、セッションログの通知、ウィンドウIDの区別をテスト済みです。製品版は開発中です。
+TypeScriptによるVS Code拡張MVPで、実際のエージェント呼び出し、セッションログの通知、ウィンドウIDの区別を検証しました。現在のリポジトリには紹介READMEと実装・検証をまとめた文書を残し、実行用MVPとテストファイルは削除しました。
 
-[検証用MVP](tests/README.md)を実行するか、[テスト結果](docs/VERIFICATION.md)をご覧ください。
+[機能のアルゴリズム、参考実装と検証結果](docs/requirements-and-verification.md)をご覧ください。
 
 ## ライセンス
 

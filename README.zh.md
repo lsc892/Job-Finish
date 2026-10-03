@@ -18,9 +18,9 @@ Job-Finish 将智能体的信号显示在对应的 VS Code 窗口中。即使同
 
 ## 当前状态
 
-TypeScript VS Code 扩展 MVP 已通过验证。测试涵盖真实智能体调用、会话日志信号和窗口标识。产品版本正在开发中。
+已通过 TypeScript VS Code 扩展 MVP 验证真实智能体调用、会话日志信号和窗口标识。目前仓库仅保留项目介绍和一份实现与验证文档，已移除可执行 MVP 和测试文件。
 
-可以运行[验证用 MVP](tests/README.md)，或查看[测试结果](docs/VERIFICATION.md)。
+请查看[功能算法、参考实现与验证结果](docs/requirements-and-verification.md)。
 
 ## 许可证
 
