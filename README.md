@@ -18,9 +18,9 @@ Job-Finish brings agent signals into the VS Code window where they belong, so yo
 
 ## Current stage
 
-Real agent calls, session-log signals, and window identities were verified with a TypeScript VS Code extension MVP. This repository now keeps the introduction and a single implementation and verification document; executable MVP and test files have been removed.
+Real agent calls, session-log signals, and window identities were verified with a TypeScript VS Code extension MVP. This repository now keeps the introduction, a development document, and a decision and verification journal; executable MVP and test files have been removed.
 
-Read the [feature algorithms, reference implementation, and verification results](docs/requirements-and-verification.md).
+Read the [development document](docs/requirements-and-verification.md) for features, implementation algorithms, and acceptance criteria. The [journal](docs/일지.md) contains the rationale, historical implementations, and measured results.
 
 ## License
 

@@ -18,9 +18,9 @@ Job-Finish 将智能体的信号显示在对应的 VS Code 窗口中。即使同
 
 ## 当前状态
 
-已通过 TypeScript VS Code 扩展 MVP 验证真实智能体调用、会话日志信号和窗口标识。目前仓库仅保留项目介绍和一份实现与验证文档，已移除可执行 MVP 和测试文件。
+已通过 TypeScript VS Code 扩展 MVP 验证真实智能体调用、会话日志信号和窗口标识。目前仓库保留项目介绍、开发文档以及决策与验证日志，已移除可执行 MVP 和测试文件。
 
-请查看[功能算法、参考实现与验证结果](docs/requirements-and-verification.md)。
+[开发文档](docs/requirements-and-verification.md)说明功能、实现算法和完成条件；[日志](docs/일지.md)保存选择依据、历史实现和实测结果。
 
 ## 许可证
 
