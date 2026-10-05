@@ -1,0 +1,21 @@
+{
+  "source": "actual-runtime",
+  "capturedDateKst": "2026-10-05",
+  "provider": "claude",
+  "expectedStatus": "error",
+  "sessionId": "captured-session",
+  "turnId": "captured-turn",
+  "events": [
+    {
+      "type": "result",
+      "subtype": "error_max_turns",
+      "is_error": true,
+      "session_id": "captured-session",
+      "uuid": "d07c8fe6-0ded-4c06-8453-7a36d5d18e68",
+      "user_message_uuid": "captured-turn",
+      "errors": [
+        "Reached maximum number of turns (1)"
+      ]
+    }
+  ]
+}
