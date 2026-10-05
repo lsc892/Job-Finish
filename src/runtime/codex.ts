@@ -2,6 +2,7 @@ import type { InitializeParams } from '../protocol/InitializeParams';
 import type { Thread } from '../protocol/v2/Thread';
 import type { Turn } from '../protocol/v2/Turn';
 import type { ThreadStartParams } from '../protocol/v2/ThreadStartParams';
+import type { ThreadResumeParams } from '../protocol/v2/ThreadResumeParams';
 import type { TurnStartParams } from '../protocol/v2/TurnStartParams';
 import type { PermissionsRequestApprovalParams } from '../protocol/v2/PermissionsRequestApprovalParams';
 import type { PermissionsRequestApprovalResponse } from '../protocol/v2/PermissionsRequestApprovalResponse';
@@ -10,6 +11,7 @@ import { Diagnostics, LIMITS, TerminalStatus } from '../core/model';
 import { EventQueue, RpcError, RpcMessage, StdioRpc } from './transport';
 import { codexCommand } from './executable';
 import { randomUUID } from 'node:crypto';
+import { CodexHistory } from './codex-history';
 
 export function codexStatus(value: string): TerminalStatus | undefined {
   switch (value) { case 'completed': return 'completed'; case 'failed': return 'error'; case 'interrupted': return 'cancelled'; default: return undefined; }
@@ -96,19 +98,32 @@ export class CodexExecution {
   private ready = false;
   private starting = false;
   private disposed = false;
+  private connecting?: Promise<void>;
+  private recoveryTimer?: NodeJS.Timeout;
+  private recoveryAttempts = 0;
   private answered = new Map<string, unknown>();
   private answeredBytes = 0;
+  private reconcilingConflict = false;
   private effectiveModel?: string;
   constructor(private options: CodexOptions) {}
-  async open(): Promise<void> {
+  async open(sessionId?: string): Promise<void> {
     try {
       await this.connect();
-      const p: ThreadStartParams = { cwd: this.options.cwd, approvalPolicy: 'on-request', approvalsReviewer: 'user', sandbox: this.options.sandbox ?? 'workspace-write',
-        ...(this.options.permissionRequests ? { config: { 'features.request_permissions_tool': true } } : {}), ...(this.options.model ? { model: this.options.model } : {}) };
-      const result = await this.rpc!.request<{ thread: Thread; model?: string }>('thread/start', p);
-      this.effectiveModel = result.model;
-      this.session = this.options.createSession(id(result.thread?.id), this.rpc!.connectionId);
-      this.adapter = new CodexAdapter(this.session);
+      if (sessionId) {
+        this.session = this.options.createSession(sessionId, this.rpc!.connectionId);
+        this.adapter = new CodexAdapter(this.session);
+        const p: ThreadResumeParams = { threadId: sessionId, cwd: this.options.cwd, approvalsReviewer: 'user', excludeTurns: true };
+        const result = await this.rpc!.request<{ thread: Thread; model?: string }>('thread/resume', p);
+        this.effectiveModel = result.model;
+        await this.reconcile(result.thread, this.rpc!);
+      } else {
+        const p: ThreadStartParams = { cwd: this.options.cwd, approvalPolicy: 'on-request', approvalsReviewer: 'user', sandbox: this.options.sandbox ?? 'workspace-write',
+          ...(this.options.permissionRequests ? { config: { 'features.request_permissions_tool': true } } : {}), ...(this.options.model ? { model: this.options.model } : {}) };
+        const result = await this.rpc!.request<{ thread: Thread; model?: string }>('thread/start', p);
+        this.effectiveModel = result.model;
+        this.session = this.options.createSession(id(result.thread?.id), this.rpc!.connectionId);
+        this.adapter = new CodexAdapter(this.session);
+      }
       this.ready = true; this.queue.drain(message => this.handle(message));
     } catch (e) { this.rpc?.dispose(); this.queue.clear(); throw e; }
   }
@@ -119,7 +134,7 @@ export class CodexExecution {
       if (this.ready) this.handle(message); else this.queue.push(message);
     }, error => {
       if (rpc !== this.rpc || this.disposed) return;
-      this.ready = false; this.queue.clear(); this.session?.disconnected(error); this.options.diagnostic.add(error);
+      this.ready = false; this.queue.clear(); this.session?.disconnected(error); this.options.diagnostic.add(error); this.scheduleRecovery();
     }, message => this.options.diagnostic.add(message));
     this.rpc = rpc;
     const command = codexCommand(this.options.executable); rpc.start(command.executable, command.args, this.options.cwd);
@@ -171,19 +186,88 @@ export class CodexExecution {
       this.answeredBytes -= Buffer.byteLength(JSON.stringify(this.answered.get(oldest))); this.answered.delete(oldest);
     }
   }
+  async reconnect(): Promise<void> {
+    if (this.connecting) return this.connecting;
+    if (this.recoveryTimer) clearTimeout(this.recoveryTimer); this.recoveryTimer = undefined;
+    this.connecting = this.recover();
+    try { await this.connecting; } finally { this.connecting = undefined; }
+  }
+  private async recover(): Promise<void> {
+    if (!this.session || this.disposed) throw new Error('No session to recover');
+    if (!this.session.valid(this.session.binding.connectionId)) throw new Error('Session ownership lost');
+    this.session.disconnected('Reconnecting; active outcomes require reconciliation'); this.rpc?.dispose();
+    try {
+      await this.connect(); this.session.reconnect(this.rpc!.connectionId);
+      const rpc = this.rpc!;
+      const p: ThreadResumeParams = { threadId: this.session.binding.sessionId, cwd: this.options.cwd, approvalsReviewer: 'user', excludeTurns: true };
+      const result = await rpc.request<{ thread: Thread; model?: string }>('thread/resume', p);
+      this.effectiveModel = result.model;
+      await this.reconcile(result.thread, rpc); this.ready = true; this.queue.drain(message => this.handle(message));
+    } catch (error) { this.rpc?.dispose(); this.queue.clear(); this.session.disconnected(error); throw error; }
+  }
+  private scheduleRecovery(): void {
+    if (!this.session || this.disposed || this.recoveryTimer || this.recoveryAttempts >= 3) return;
+    const delay = 1000 * 2 ** this.recoveryAttempts++;
+    this.recoveryTimer = setTimeout(() => {
+      this.recoveryTimer = undefined;
+      void this.reconnect().catch(error => { this.options.diagnostic.add(error); this.scheduleRecovery(); });
+    }, delay);
+  }
+  private history(rpc: StdioRpc): CodexHistory {
+    return new CodexHistory(rpc, this.session!.binding.sessionId, () => {
+      if (this.disposed || rpc !== this.rpc || !rpc.connected || !this.session!.valid(rpc.connectionId)) throw new Error('History lookup connection or ownership changed');
+    });
+  }
+  private async reconcile(thread: Thread, rpc: StdioRpc): Promise<void> {
+    if (id(thread?.id) !== this.session!.binding.sessionId) throw new Error('Invalid thread recovery response');
+    const history = this.history(rpc); const { turns, truncated } = await history.turns();
+    if (truncated) this.options.diagnostic.add('History baseline limited to the latest 512 turns; older unobserved turns cannot notify');
+    const pending = this.session!.pendingStart;
+    if (pending) {
+      for (const turn of turns) if (await history.matchesStart(turn.id, pending)) { history.assertCurrent(); this.session!.start(turn.id, rpc.connectionId); break; }
+    }
+    history.assertCurrent();
+    if (turns.some(turn => turn.status === 'inProgress' && !this.session!.turns.has(turn.id)) ||
+        (thread.status?.type === 'active' && !turns.some(turn => turn.status === 'inProgress'))) throw new Error('Cannot establish ownership of an unobserved active execution');
+    for (const turn of turns) {
+      if (turn.status === 'inProgress' && thread.status?.type !== 'active') {
+        this.session!.disconnected('Stored turn is incomplete but the resumed runtime does not confirm an active execution'); continue;
+      }
+      if (this.session!.turns.has(turn.id) && codexStatus(turn.status)) {
+        const text = await history.finalText(turn.id); history.assertCurrent(); if (text !== undefined) this.session!.body(turn.id, text, rpc.connectionId);
+      }
+      this.adapter!.reconcileTurn(turn, rpc.connectionId);
+    }
+    history.assertCurrent(); this.session!.baseline([...turns].reverse().flatMap(turn => { const status = codexStatus(turn.status); return status ? [{ id: turn.id, status }] : []; }));
+  }
   private handle(message: RpcMessage): void {
     if (!this.session?.valid(this.rpc!.connectionId)) return;
     this.options.onEvent?.(message);
     if (message.id !== undefined && message.method && this.answered.has(JSON.stringify(message.id))) {
       this.rpc!.respond(message.id, this.answered.get(JSON.stringify(message.id))); return;
     }
+    if (message.method === 'turn/completed') {
+      const p = object(message.params); const turn = object(p.turn);
+      const previous = this.session!.completed.get(String(turn.id));
+      if (p.threadId === this.session!.binding.sessionId && previous && codexStatus(String(turn.status)) !== previous && !this.reconcilingConflict) {
+        this.reconcilingConflict = true;
+        // Read-only reconciliation does not create a turn or redeliver a conflicting result.
+        const rpc = this.rpc!;
+        void rpc.request<{ thread: Thread }>('thread/read', { threadId: p.threadId, includeTurns: false })
+          .then(result => this.reconcile(result.thread, rpc)).catch(error => this.options.diagnostic.add(error)).finally(() => { this.reconcilingConflict = false; });
+      }
+    }
     this.adapter!.handle(message, this.rpc!.connectionId, this.starting);
     if (message.id !== undefined && message.method && !this.session!.requests.has(JSON.stringify(message.id))) {
       this.rpc!.reject(message.id, 'Unsupported or unbound Job-Finish request'); this.options.diagnostic.add(`Unsupported server request: ${message.method}`);
     }
   }
+  async readResult(turnId: string): Promise<string | undefined> {
+    if (!this.ready) return undefined;
+    const history = this.history(this.rpc!); const text = await history.finalText(turnId); history.assertCurrent(); return text;
+  }
   dispose(): void {
-    this.disposed = true;
+    this.disposed = true; if (this.recoveryTimer) clearTimeout(this.recoveryTimer); this.recoveryTimer = undefined;
     try { this.session?.disconnected('Session released'); }
     finally { this.rpc?.dispose(); this.queue.clear(); this.answered.clear(); this.answeredBytes = 0; }
   }
