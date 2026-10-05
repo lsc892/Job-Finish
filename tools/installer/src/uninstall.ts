@@ -28,7 +28,12 @@ function notifierPath(value: unknown): boolean {
 function notifierCommand(value: unknown): boolean {
   if (typeof value !== 'string') return false;
   const file = value.match(/(?:^|\s)-File\s+(?:"([^"]+)"|'([^']+)'|(\S+))/i);
-  return notifierPath(file?.[1] ?? file?.[2] ?? file?.[3]);
+  const script = file?.[1] ?? file?.[2] ?? file?.[3];
+  if (notifierPath(script)) return true;
+  // The shared timer also runs other tools; only Job-Finish's two targets belong to us.
+  if (!script || !/(?:^|[\\/])\.claude-hooklog[\\/]hook-timer\.ps1$/i.test(script)) return false;
+  const target = value.match(/(?:^|\s)-Target\s+(?:"([^"]+)"|'([^']+)'|(\S+))/i);
+  return /^(?:jfstop|jfnotify)$/i.test(target?.[1] ?? target?.[2] ?? target?.[3] ?? '');
 }
 
 // Remove individual handlers, since user hooks can share the same matcher group.

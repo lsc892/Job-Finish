@@ -56,6 +56,31 @@ test('Legacy removal preserves mixed Claude/Codex hooks and user settings, with 
   assert.deepEqual(planLegacyUninstall(f), { configs: [], directories: [] });
 });
 
+test('Legacy timer wrappers are removed while other timer targets and scripts are preserved', t => {
+  const f = fixture(t); const claude = join(f.home, '.claude', 'settings.json');
+  const timer = 'powershell -NoProfile -ExecutionPolicy Bypass -File "C:\\Users\\user\\.claude-hooklog\\hook-timer.ps1"';
+  const stop = { type: 'command', command: `${timer} -Event Stop -Target jfstop`, timeout: 30 };
+  const notify = { type: 'command', command: `${timer} -Event PreToolUse-Ask -Target 'jfnotify'` };
+  const orca = { type: 'command', command: `${timer} -Event Stop -Target orca` };
+  const lookalikeTarget = { type: 'command', command: `${timer} -Target jfnotify-other` };
+  const otherScript = { type: 'command', command: 'powershell -File "C:/other/hook-timer.ps1" -Target jfstop' };
+  const original = { permissions: { allow: ['Read'] }, hooks: {
+    Stop: [{ matcher: '*', hooks: [stop, orca] }],
+    PreToolUse: [{ matcher: 'AskUserQuestion', hooks: [notify] }],
+    Notification: [{ hooks: [lookalikeTarget, otherScript, userHandler] }] } };
+  const text = JSON.stringify(original); f.write(claude, text);
+  const plan = planLegacyUninstall(f);
+  assert.equal(plan.configs.length, 1);
+  assert.equal(readFileSync(claude, 'utf8'), text, 'Preview must not change settings');
+  const backups = applyLegacyUninstall(plan);
+  assert.equal(backups.length, 1); assert.equal(readFileSync(backups[0]!, 'utf8'), text);
+  assert.deepEqual(JSON.parse(readFileSync(claude, 'utf8')), {
+    permissions: original.permissions, hooks: {
+      Stop: [{ matcher: '*', hooks: [orca] }],
+      Notification: original.hooks.Notification } });
+  assert.deepEqual(planLegacyUninstall(f), { configs: [], directories: [] });
+});
+
 test('Keep-files removes legacy notify and hooks but preserves installation files and unmarked directories', t => {
   const f = fixture(t); const custom = join(f.root, 'custom codex'); mkdirSync(custom);
   const codex = join(custom, 'config.toml');
