@@ -18,7 +18,9 @@ Job-Finish brings agent signals into the VS Code window where they belong, so yo
 
 ## Current stage
 
-The repository contains a Windows x64 desktop VS Code extension, bounded event/state processing, exclusive session ownership, Codex App Server and Claude Agent SDK execution controls, native toasts, and HWND-specific flash. Completion detection uses runtime events directly. Only executions started or resumed through Job-Finish are supported; existing agent extensions are not implicitly connected.
+The Windows x64 extension automatically observes the existing Codex and Claude extensions' stdio runtime events in the same Extension Host, then routes completion, errors, and input requests to this window's toasts and flash. `jobFinish.enabled` defaults to `true` and changes immediately. Existing and newly spawned agent processes are observed without provider hooks, transcript scans, additional App Servers, or model calls. Direct Job-Finish execution remains available.
+
+Observation uses Node's internal process discovery/spawn methods and checks installed provider paths and stream arguments. Provider or VS Code changes can affect compatibility. Separate Extension Hosts, WSL/remote agents, and external terminal processes are outside automatic observation. Use **Job-Finish: Show Diagnostics** to inspect `automatic.connections`; approvals and answers for existing chats stay in their original UI.
 
 Use Node.js 22+ and run `npm ci`, `npm run check`, then `npm run package`. Install `job-finish-win32-x64.vsix` with **Extensions: Install from VSIX…**, or press F5 for a development window. Codex needs an installed, authenticated compatible CLI (live-tested with 0.160.0). The bundled Claude SDK CLI also needs valid authentication.
 
@@ -28,7 +30,7 @@ Run **Job-Finish: Run Codex** or **Run Claude** from the command palette. Use **
 
 Set `jobFinish.codexMode` to `plan` for structured planning questions in newly connected Codex sessions. Permission approvals grant only the requested permissions for the current turn. Recovery reads bounded history pages and preserves unknown outcomes when the runtime cannot confirm them.
 
-See the [Korean usage guide](README.ko.md) for configuration defaults and the [verification report](docs/verification.md) for evidence and outstanding acceptance checks. The extension supports local desktop execution; remote workspaces and web hosts are outside this release. Toast callbacks are limited to the live toast process, not delayed Action Center activation after shutdown.
+See the [Korean usage guide](README.ko.md) for configuration defaults and the [verification report](docs/verification.md) for evidence and outstanding acceptance checks. The extension supports local desktop execution; remote workspaces and web hosts are outside this release. Clicking a toast stops its flash and activates the verified originating window, restoring it if minimized. Missing window bindings or refused foreground activation appear in **Show Diagnostics**. Toast callbacks are limited to the live toast process, not delayed Action Center activation after shutdown.
 
 Read the [development document](docs/requirements-and-verification.md) for features, implementation algorithms, and acceptance criteria. The [journal](docs/일지.md) contains the rationale, historical implementations, and measured results.
 

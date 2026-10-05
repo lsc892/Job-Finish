@@ -135,7 +135,7 @@ interface ToastRequest {
 }
 ```
 
-앱 ID 등록과 전송 ID를 일치시킨다. WinRT adapter를 사용하면 시작 메뉴 바로가기의 AppUserModelID 설정과 토스트 활성화를 구현하고, SnoreToast adapter를 사용하면 제공되는 등록·전송 기능을 호출한다. 토스트 클릭 callback은 해당 `notificationId`의 flash를 정지한다. 알림 센터에서 나중에 클릭하거나 확장이 종료된 상황까지 지원하려면 별도 활성화 경로를 구성한다.
+앱 ID 등록과 전송 ID를 일치시킨다. WinRT adapter를 사용하면 시작 메뉴 바로가기의 AppUserModelID 설정과 토스트 활성화를 구현하고, SnoreToast adapter를 사용하면 제공되는 등록·전송 기능을 호출한다. SnoreToast의 native pipe는 `action=clicked`를 사용한다. 토스트 클릭 callback은 해당 `notificationId`의 flash를 정지하고, HWND·PID·실행 파일을 재검증한 해당 창을 활성화한다. 최소화된 창만 복원하며 최대화 상태는 유지한다. 창 연결이 없거나 Windows가 전경 전환을 거부하면 진단을 기록한다. 알림 센터에서 나중에 클릭하거나 확장이 종료된 상황까지 지원하려면 별도 활성화 경로를 구성한다.
 
 ## 2. 여러 창의 식별과 해당 HWND만 flash
 
