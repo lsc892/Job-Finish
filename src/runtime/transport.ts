@@ -69,7 +69,7 @@ export class StdioRpc {
   }
   start(executable: string, args: string[], cwd: string): void {
     if (this.child) throw new Error('Connection already started');
-    this.child = spawn(executable, args, { cwd, windowsHide: true, shell: false, stdio: 'pipe', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } });
+    this.child = spawn(executable, args, { cwd, windowsHide: true, shell: false, stdio: 'pipe', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', JOB_FINISH_OWNED_EXECUTION: '1' } });
     this.child.stdout.on('data', (chunk: Buffer) => { try { this.decoder.push(chunk); } catch (e) { this.fail(e); } });
     this.child.stdout.on('end', () => { try { this.decoder.end(); } catch (e) { this.fail(e); } this.fail(new Error('App Server EOF')); });
     this.child.stderr.on('data', (chunk: Buffer) => this.diagnostic(chunk.toString('utf8')));

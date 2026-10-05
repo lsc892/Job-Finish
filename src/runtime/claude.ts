@@ -49,6 +49,7 @@ export class ClaudeExecution {
     try {
       this.query = createQuery({ prompt: input(), options: {
         cwd: this.options.cwd, maxTurns: this.options.maxTurns, permissionMode: 'default',
+        env: { JOB_FINISH_OWNED_EXECUTION: '1' },
         ...(this.options.model ? { model: this.options.model } : {}),
         ...(this.resume ? { resume: this.session.binding.sessionId } : { sessionId: this.session.binding.sessionId }),
         ...(this.options.executable ? { pathToClaudeCodeExecutable: this.options.executable } : {}),
