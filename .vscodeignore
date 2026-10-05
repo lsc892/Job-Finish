@@ -4,9 +4,11 @@
 src/**
 tests/**
 scripts/**
+tools/**
 docs/일지.md
 tsconfig.json
 *.vsix
+*.tgz
 *.log
 test-artifacts/**
 node_modules/**/test/**

@@ -14,6 +14,10 @@
   "capabilities": { "untrustedWorkspaces": { "supported": false }, "virtualWorkspaces": false },
   "scripts": {
     "build": "node scripts/build.mjs",
+    "install:extension": "npm --prefix tools/installer run install:extension --",
+    "update:extension": "npm --prefix tools/installer run update:extension --",
+    "uninstall:legacy": "npm --prefix tools/installer run uninstall:legacy --",
+    "build:installer": "npm --prefix tools/installer run build -- --vsix ../../job-finish-win32-x64.vsix",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "check": "npm run typecheck && npm test && npm run build",

@@ -22,6 +22,8 @@ The repository contains a Windows x64 desktop VS Code extension, bounded event/s
 
 Use Node.js 22+ and run `npm ci`, `npm run check`, then `npm run package`. Install `job-finish-win32-x64.vsix` with **Extensions: Install from VSIX…**, or press F5 for a development window. Codex needs an installed, authenticated compatible CLI (live-tested with 0.160.0). The bundled Claude SDK CLI also needs valid authentication.
 
+For automatic legacy migration and version-aware installation, install the independent CLI dependencies with `npm --prefix tools/installer ci`, then run `npm run install:extension -- --vsix ./job-finish-win32-x64.vsix`. `npm run update:extension` uses the same reconciliation flow. Add `--dry-run` to preview or `--profile <name>` to select a VS Code profile. The tool backs up and removes legacy PowerShell/C# hooks/files before installing, updates older extensions, and preserves equal or newer versions. It compares the VSIX's extension version, preserves current extension settings/data, and checks VSIX validity and VS Code compatibility before cleanup. Direct VSIX installation through VS Code bypasses this migration step. See [installer instructions](tools/installer/README.md) for npm/npx packaging.
+
 Run **Job-Finish: Run Codex** or **Run Claude** from the command palette. Use **Answer Pending Request** for tool approvals/questions and **Show Results** for recent responses. Commands also support continuing, cancellation, saved-session resumption, reconnection, releasing ownership, and native window binding. The status bar opens pending requests when present.
 
 Set `jobFinish.codexMode` to `plan` for structured planning questions in newly connected Codex sessions. Permission approvals grant only the requested permissions for the current turn. Recovery reads bounded history pages and preserves unknown outcomes when the runtime cannot confirm them.
@@ -29,6 +31,22 @@ Set `jobFinish.codexMode` to `plan` for structured planning questions in newly c
 See the [Korean usage guide](README.ko.md) for configuration defaults and the [verification report](docs/verification.md) for evidence and outstanding acceptance checks. The extension supports local desktop execution; remote workspaces and web hosts are outside this release. Toast callbacks are limited to the live toast process, not delayed Action Center activation after shutdown.
 
 Read the [development document](docs/requirements-and-verification.md) for features, implementation algorithms, and acceptance criteria. The [journal](docs/일지.md) contains the rationale, historical implementations, and measured results.
+
+## Remove the old PowerShell/C# installation
+
+The installer is an independent package in [tools/installer](tools/installer/README.md), with its own dependencies and tests. Its uninstall command can also remove legacy installations separately. From the repository root:
+
+```powershell
+npm --prefix tools/installer ci
+npm run uninstall:legacy -- --dry-run
+npm run uninstall:legacy
+npm run uninstall:legacy -- --keep-files
+npm run uninstall:legacy -- --project "C:\Projects\MyProject"
+```
+
+The root command forwards arguments to the standalone package. You can also run `npm --prefix tools/installer run uninstall:legacy -- --dry-run` directly. The default project and relative paths use the directory from which the command was invoked. The tool is excluded from the VSIX.
+
+The command removes Job-Finish hooks from user and selected project settings, backs up changed settings beside their originals, and removes verified legacy installation folders, the focus protocol and its Start Menu shortcut. It also checks `CLAUDE_CONFIG_DIR` and `CODEX_HOME` when set. `--dry-run` only previews changes; `--keep-files` removes hooks while retaining files and Windows registrations. Changed Codex TOML is reformatted without comments; its original text remains in the backup. Run with `--project` for each additional project installation. C# source projects and the current VS Code extension are preserved. If the old npm package was installed globally, remove it separately with `npm rm -g job-finish`.
 
 ## License
 

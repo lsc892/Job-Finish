@@ -6,3 +6,4 @@ dist/
 .generated/
 test-artifacts/
 *.vsix
+*.tgz
