@@ -1,7 +1,13 @@
+import type { InitializeParams } from '../protocol/InitializeParams';
+import type { Thread } from '../protocol/v2/Thread';
 import type { Turn } from '../protocol/v2/Turn';
+import type { ThreadStartParams } from '../protocol/v2/ThreadStartParams';
+import type { TurnStartParams } from '../protocol/v2/TurnStartParams';
 import { Session } from '../core/session';
-import { TerminalStatus } from '../core/model';
-import { RpcMessage } from './transport';
+import { Diagnostics, TerminalStatus } from '../core/model';
+import { EventQueue, RpcError, RpcMessage, StdioRpc } from './transport';
+import { codexCommand } from './executable';
+import { randomUUID } from 'node:crypto';
 
 export function codexStatus(value: string): TerminalStatus | undefined {
   switch (value) { case 'completed': return 'completed'; case 'failed': return 'error'; case 'interrupted': return 'cancelled'; default: return undefined; }
@@ -56,5 +62,85 @@ export class CodexAdapter {
       detail = `${code || 'Codex error'}: ${typeof error.message === 'string' ? error.message : 'No error message received'}`;
     }
     this.session.finish(turnId, status, connectionId, detail);
+  }
+}
+
+export interface CodexOptions { cwd: string; executable?: string; model?: string; sandbox?: 'read-only' | 'workspace-write'; onEvent?: (message: RpcMessage) => void; diagnostic: Diagnostics; createSession: (sessionId: string, connectionId: string) => Session }
+export class CodexExecution {
+  session?: Session;
+  private adapter?: CodexAdapter;
+  private rpc?: StdioRpc;
+  private readonly queue = new EventQueue();
+  private ready = false;
+  private starting = false;
+  private disposed = false;
+  constructor(private options: CodexOptions) {}
+  async open(): Promise<void> {
+    try {
+      await this.connect();
+      const p: ThreadStartParams = { cwd: this.options.cwd, approvalPolicy: 'on-request', approvalsReviewer: 'user', sandbox: this.options.sandbox ?? 'workspace-write',
+        ...(this.options.model ? { model: this.options.model } : {}) };
+      const result = await this.rpc!.request<{ thread: Thread; model?: string }>('thread/start', p);
+      this.session = this.options.createSession(id(result.thread?.id), this.rpc!.connectionId);
+      this.adapter = new CodexAdapter(this.session);
+      this.ready = true; this.queue.drain(message => this.handle(message));
+    } catch (e) { this.rpc?.dispose(); this.queue.clear(); throw e; }
+  }
+  private async connect(): Promise<void> {
+    this.ready = false; this.queue.clear();
+    const rpc = new StdioRpc(message => {
+      if (rpc !== this.rpc || this.disposed) return;
+      if (this.ready) this.handle(message); else this.queue.push(message);
+    }, error => {
+      if (rpc !== this.rpc || this.disposed) return;
+      this.ready = false; this.queue.clear(); this.session?.disconnected(error); this.options.diagnostic.add(error);
+    }, message => this.options.diagnostic.add(message));
+    this.rpc = rpc;
+    const command = codexCommand(this.options.executable); rpc.start(command.executable, command.args, this.options.cwd);
+    const p: InitializeParams = { clientInfo: { name: 'job_finish', title: 'Job-Finish', version: '0.1.0' },
+      capabilities: { experimentalApi: true, requestAttestation: false, optOutNotificationMethods: ['item/agentMessage/delta', 'item/reasoning/textDelta', 'item/reasoning/summaryTextDelta', 'item/commandExecution/outputDelta', 'turn/diff/updated'] } };
+    await rpc.request('initialize', p); rpc.notify('initialized');
+  }
+  async run(prompt: string): Promise<void> {
+    if (!this.ready || !this.session) throw new Error('Reconnect the Codex session first');
+    if (this.starting || this.session.turns.size || this.session.pendingStart) throw new Error('Session has an active or unresolved turn/start request');
+    this.starting = true;
+    const rpc = this.rpc!;
+    const startRequestId = randomUUID();
+    try {
+      this.session.beginStart(startRequestId, rpc.connectionId);
+      const p: TurnStartParams = { threadId: this.session.binding.sessionId, clientUserMessageId: startRequestId, input: [{ type: 'text', text: prompt, text_elements: [] }] };
+      const result = await rpc.request<{ turn: Turn }>('turn/start', p);
+      if (rpc !== this.rpc || !rpc.connected || !this.session.valid(rpc.connectionId)) throw new Error('Start response connection changed; reconcile the saved request');
+      this.session.start(id(result.turn?.id), rpc.connectionId);
+      this.adapter!.reconcileTurn(result.turn, rpc.connectionId);
+    } catch (e) {
+      if (rpc !== this.rpc || !this.session.valid(rpc.connectionId)) this.options.diagnostic.add(e);
+      else if (e instanceof RpcError) {
+        // Request failure has its own identity, never invent a provider turn ID.
+        this.options.diagnostic.add(`turn/start rejected (${e.code}): ${e.message}`);
+        this.session.startRejected(startRequestId, e.message, rpc.connectionId);
+      } else this.session.disconnected(e);
+      throw e;
+    } finally { this.starting = false; }
+  }
+  async cancel(): Promise<void> {
+    if (!this.ready || !this.rpc?.connected || !this.session?.valid(this.rpc.connectionId)) throw new Error('No active owned Codex connection');
+    const turn = [...this.session?.turns.values() ?? []].find(t => t.status !== 'unknown');
+    if (!turn) throw new Error('No confirmed active Codex turn');
+    await this.rpc!.request('turn/interrupt', { threadId: this.session!.binding.sessionId, turnId: turn.id });
+  }
+  private handle(message: RpcMessage): void {
+    if (!this.session?.valid(this.rpc!.connectionId)) return;
+    this.options.onEvent?.(message);
+    this.adapter!.handle(message, this.rpc!.connectionId, this.starting);
+    if (message.id !== undefined && message.method && !this.session!.requests.has(JSON.stringify(message.id))) {
+      this.rpc!.reject(message.id, 'Unsupported or unbound Job-Finish request'); this.options.diagnostic.add(`Unsupported server request: ${message.method}`);
+    }
+  }
+  dispose(): void {
+    this.disposed = true;
+    try { this.session?.disconnected('Session released'); }
+    finally { this.rpc?.dispose(); this.queue.clear(); }
   }
 }
