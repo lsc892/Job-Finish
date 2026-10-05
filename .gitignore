@@ -2,3 +2,7 @@ node_modules/
 *.log
 .DS_Store
 *.bak
+dist/
+.generated/
+test-artifacts/
+*.vsix
