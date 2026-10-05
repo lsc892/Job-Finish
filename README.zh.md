@@ -1,5 +1,7 @@
 # Job-Finish
 
+现已实现 Windows x64 VS Code 扩展和基于运行时事件的测试。最新安装方法与支持范围请参阅 [English](README.md)，验证结果见[验证报告](docs/verification.md)。以下 MVP 描述为历史验证记录。
+
 **[English](README.md) · [한국어](README.ko.md) · 中文 · [日本語](README.jp.md)**
 
 Claude Code 或 Codex 完成回复后，回到你的任务。

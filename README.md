@@ -7,10 +7,10 @@ Get back to your task when Claude Code or Codex finishes a response.
 Job-Finish brings agent signals into the VS Code window where they belong, so you can keep moving between projects and see which task is ready.
 
 ![VS Code](https://img.shields.io/badge/platform-VS%20Code-0078D4)
-![Status](https://img.shields.io/badge/status-verified%20MVP-orange)
+![Status](https://img.shields.io/badge/status-implementation%20%2B%20verification-orange)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-## What we're building
+## Features
 
 - Claude Code and Codex signals in VS Code.
 - Results tied to their own window, including windows sharing the same project.
@@ -18,7 +18,15 @@ Job-Finish brings agent signals into the VS Code window where they belong, so yo
 
 ## Current stage
 
-Real agent calls, session-log signals, and window identities were verified with a TypeScript VS Code extension MVP. This repository now keeps the introduction, a development document, and a decision and verification journal; executable MVP and test files have been removed.
+The repository contains a Windows x64 desktop VS Code extension, bounded event/state processing, exclusive session ownership, Codex App Server and Claude Agent SDK execution controls, native toasts, and HWND-specific flash. Completion detection uses runtime events directly. Only executions started or resumed through Job-Finish are supported; existing agent extensions are not implicitly connected.
+
+Use Node.js 22+ and run `npm ci`, `npm run check`, then `npm run package`. Install `job-finish-win32-x64.vsix` with **Extensions: Install from VSIX…**, or press F5 for a development window. Codex needs an installed, authenticated compatible CLI (live-tested with 0.160.0). The bundled Claude SDK CLI also needs valid authentication.
+
+Run **Job-Finish: Run Codex** or **Run Claude** from the command palette. Use **Answer Pending Request** for tool approvals/questions and **Show Results** for recent responses. Commands also support continuing, cancellation, saved-session resumption, reconnection, releasing ownership, and native window binding. The status bar opens pending requests when present.
+
+Set `jobFinish.codexMode` to `plan` for structured planning questions in newly connected Codex sessions. Permission approvals grant only the requested permissions for the current turn. Recovery reads bounded history pages and preserves unknown outcomes when the runtime cannot confirm them.
+
+See the [Korean usage guide](README.ko.md) for configuration defaults and the [verification report](docs/verification.md) for evidence and outstanding acceptance checks. The extension supports local desktop execution; remote workspaces and web hosts are outside this release. Toast callbacks are limited to the live toast process, not delayed Action Center activation after shutdown.
 
 Read the [development document](docs/requirements-and-verification.md) for features, implementation algorithms, and acceptance criteria. The [journal](docs/일지.md) contains the rationale, historical implementations, and measured results.
 

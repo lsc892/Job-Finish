@@ -1,5 +1,7 @@
 # Job-Finish
 
+実行可能な Windows x64 VS Code 拡張とイベントベースのテストを実装しました。最新のインストール手順と対応範囲は [English](README.md)、検証結果は [検証レポート](docs/verification.md) を参照してください。以下の MVP の説明は過去の検証記録です。
+
 **[English](README.md) · [한국어](README.ko.md) · [中文](README.zh.md) · 日本語**
 
 Claude CodeやCodexの応答が終わったら、作業に戻りましょう。
