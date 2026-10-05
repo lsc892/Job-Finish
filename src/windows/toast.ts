@@ -44,8 +44,9 @@ export class WindowsToast {
       const parse = (complete: boolean) => {
         if (clicked || this.active?.id !== request.notificationId || received.length % 2) return;
         const text = received.toString('utf16le');
-        // Do not mistake the partial prefix "activate" in a longer, split action for a click.
-        const match = /(?:^|;)action=activate(?:d)?(?:;|\u0000)/.test(text) || complete && /(?:^|;)action=activate(?:d)?$/.test(text);
+        // The native pipe sends "clicked"; node-notifier normalizes it to "activate".
+        // Require a complete field so a split, longer action cannot be mistaken for a click.
+        const match = /(?:^|;)action=(?:clicked|activate(?:d)?)(?:;|\u0000)/.test(text) || complete && /(?:^|;)action=(?:clicked|activate(?:d)?)$/.test(text);
         if (match) { clicked = true; try { request.onClick?.(); } catch (error) { this.diagnostics.add(error); } }
       };
       socket.on('end', () => parse(true));

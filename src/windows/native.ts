@@ -5,6 +5,7 @@ export interface NativeWindow { hwnd: bigint; pid: number; title: string; execut
 export interface NativeApi {
   foreground(): bigint;
   inspect(hwnd: bigint): NativeWindow | undefined;
+  activate(hwnd: bigint): boolean;
   flash(hwnd: bigint, invert: boolean): void;
   flashEx(hwnd: bigint, flags: number): void;
 }
@@ -13,6 +14,12 @@ export class Win32 implements NativeApi {
   private readonly user = this.koffi.load('user32.dll');
   private readonly kernel = this.koffi.load('kernel32.dll');
   private readonly getForeground = this.user.func('__stdcall', 'GetForegroundWindow', 'uintptr_t', []);
+  private readonly setForeground = this.user.func('__stdcall', 'SetForegroundWindow', 'int32', ['uintptr_t']);
+  private readonly isIconic = this.user.func('__stdcall', 'IsIconic', 'int32', ['uintptr_t']);
+  private readonly showWindowAsync = this.user.func('__stdcall', 'ShowWindowAsync', 'int32', ['uintptr_t', 'int32']);
+  private readonly attachInput = this.user.func('__stdcall', 'AttachThreadInput', 'int32', ['uint32', 'uint32', 'int32']);
+  private readonly peekMessage = this.user.func('__stdcall', 'PeekMessageW', 'int32', ['void *', 'uintptr_t', 'uint32', 'uint32', 'uint32']);
+  private readonly currentThread = this.kernel.func('__stdcall', 'GetCurrentThreadId', 'uint32', []);
   private readonly isWindow = this.user.func('__stdcall', 'IsWindow', 'int32', ['uintptr_t']);
   private readonly visible = this.user.func('__stdcall', 'IsWindowVisible', 'int32', ['uintptr_t']);
   private readonly getPid = this.user.func('__stdcall', 'GetWindowThreadProcessId', 'uint32', ['uintptr_t', this.koffi.out(this.koffi.pointer('uint32'))]);
@@ -27,6 +34,22 @@ export class Win32 implements NativeApi {
   private readonly flashWindowEx = this.user.func('__stdcall', 'FlashWindowEx', 'int32', [this.koffi.pointer(this.info)]);
   readonly structSize = this.koffi.sizeof(this.info);
   foreground(): bigint { return BigInt(this.getForeground()); }
+  activate(hwnd: bigint): boolean {
+    if (!hwnd || !this.isWindow(hwnd)) return false;
+    // Restore only minimized windows, preserving a maximized window's layout.
+    if (this.isIconic(hwnd)) this.showWindowAsync(hwnd, 9 /* SW_RESTORE */);
+    if (this.setForeground(hwnd)) return true;
+    if (this.foreground() === hwnd) return true;
+    // The Extension Host has no focused UI thread. On an explicit toast click,
+    // briefly share the foreground input queue, then always detach it.
+    const thread = this.currentThread(); const pid = [0];
+    const foregroundThread = this.getPid(this.foreground(), pid);
+    if (!foregroundThread || foregroundThread === thread) return false;
+    this.peekMessage(Buffer.alloc(64), 0, 0, 0, 0 /* PM_NOREMOVE: create an input queue */);
+    if (!this.attachInput(thread, foregroundThread, 1)) return false;
+    try { return !!this.setForeground(hwnd); }
+    finally { this.attachInput(thread, foregroundThread, 0); }
+  }
   enumerate(includeHidden = false): NativeWindow[] {
     const windows: NativeWindow[] = [];
     const callback = this.koffi.register((hwnd: number | bigint) => { const window = this.inspect(BigInt(hwnd), includeHidden); if (window) windows.push(window); return 1; }, this.koffi.pointer(this.enumCallback));
@@ -74,6 +97,11 @@ export class WindowIdentity {
     const current = this.native.inspect(binding.hwnd);
     if (!current || current.pid !== binding.pid || !this.isCode(current)) { this.binding = undefined; return; }
     return binding;
+  }
+  activate(): boolean {
+    // Revalidate HWND, PID and executable immediately before changing focus.
+    const binding = this.valid();
+    return !!binding && this.native.activate(binding.hwnd);
   }
   dispose(): void { this.epoch++; this.binding = undefined; }
   private isCode(window: NativeWindow): boolean { return resolve(window.executable).toLowerCase() === resolve(this.codeExecutable).toLowerCase(); }

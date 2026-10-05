@@ -60,6 +60,9 @@ class Application {
       focused: () => vscode.window.state.focused,
       owns: signal => signal.source === 'verifiedIntegration' ? this.observer.owns(signal) : this.entries.get(signal.sessionId)?.lease.valid() === true,
       stopFlash: id => this.flash?.stop(id),
+      activate: () => {
+        if (!this.identity?.activate()) this.diagnostics.add('Toast click could not activate this window: no valid HWND binding or Windows refused foreground activation.');
+      },
       flash: signal => {
         const binding = this.identity?.valid();
         if (this.config('flash', true) && binding) this.flash?.start(binding, signal.notificationId, this.config('flashMode', 'manual'), this.config('flashTimeoutSeconds', 300) * 1000);

@@ -34,7 +34,8 @@ test('Toast click survives split UTF-16 bytes and helper exit, fires once, and b
   const helper = f.launched[0]!; assert.equal(Array.from(helper.args[helper.args.indexOf('-m') + 1]!).length, 180);
   const socket = connect(helper.pipe); t.after(() => socket.destroy()); await new Promise<void>(resolve => socket.once('connect', resolve));
   helper.process.emit('exit', 0);
-  const bytes = Buffer.from('notificationId=split;action=activated\0', 'utf16le');
+  // SnoreToast's native pipe protocol uses "clicked"; node-notifier maps it to "activate".
+  const bytes = Buffer.from('action=clicked;notificationId=split;pipe=test;application=;\0', 'utf16le');
   socket.write(bytes.subarray(0, 33)); await pause(); assert.equal(f.clicks(), 0); socket.end(bytes.subarray(33));
   await until(() => f.clicks() === 1); await pause(275); assert.equal(f.clicks(), 1); assert.equal(helper.killed, true);
 });
@@ -49,6 +50,22 @@ test('Toast rejects a split action prefix and oversized callback; stale helper e
   const huge = connect(next.pipe); t.after(() => huge.destroy()); huge.on('error', () => {});
   await new Promise<void>(resolve => huge.once('connect', resolve)); huge.end(Buffer.alloc(9000));
   await until(() => f.diagnostics.entries.some(d => d.message.includes('8 KiB'))); assert.equal(f.clicks(), 0);
+});
+
+test('Native clicked fields are exact, fire once, and ignore timeout or dismissal', { skip: process.platform !== 'win32' }, async t => {
+  const f = setup(); t.after(() => f.toast.dispose()); await f.toast.show(f.request('native')); await until(() => f.launched.length === 1);
+  const pipe = f.launched[0]!.pipe;
+  for (const action of ['timedout', 'dismissed', 'clickedUnrelated']) {
+    const socket = connect(pipe); t.after(() => socket.destroy());
+    await new Promise<void>(resolve => socket.once('connect', resolve));
+    socket.end(Buffer.from(`notificationId=native;action=${action};`, 'utf16le'));
+    await new Promise<void>(resolve => socket.once('close', resolve)); assert.equal(f.clicks(), 0);
+  }
+  const socket = connect(pipe); t.after(() => socket.destroy());
+  await new Promise<void>(resolve => socket.once('connect', resolve));
+  socket.write(Buffer.from('action=clicked', 'utf16le')); await pause(); assert.equal(f.clicks(), 0);
+  socket.end(Buffer.from(';notificationId=native;action=clicked;\0', 'utf16le'));
+  await until(() => f.clicks() === 1); await pause(); assert.equal(f.clicks(), 1);
 });
 
 test('Toast records native unsigned error codes and registration failures permit a later retry', { skip: process.platform !== 'win32' }, async t => {

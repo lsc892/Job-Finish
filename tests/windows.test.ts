@@ -9,7 +9,7 @@ import { Signal } from '../src/core/model';
 test('The master switch suppresses delivery immediately, including a toast still being registered', async () => {
   let enabled = true; let flashes = 0; let allowed!: () => boolean;
   const notifications = new Notifications({ enabled: () => enabled, focused: () => false, owns: () => true,
-    stopFlash: () => {}, flash: () => { flashes++; }, toast: async (_signal, _text, _click, canShow) => { allowed = canShow; } });
+    stopFlash: () => {}, flash: () => { flashes++; }, activate: () => {}, toast: async (_signal, _text, _click, canShow) => { allowed = canShow; } });
   const signal: Signal = { ...binding(), notificationId: 'n', turnId: 't', status: 'completed', text: 'done', truncated: false, at: '' };
   await notifications.deliver(signal); assert.equal(allowed(), true); enabled = false; assert.equal(allowed(), false);
   await notifications.deliver(signal); assert.equal(flashes, 1); assert.equal(notifications.results.length, 2);
@@ -20,6 +20,7 @@ class FakeNative implements NativeApi {
   calls: unknown[][] = [];
   foreground(): bigint { return this.front; }
   inspect(hwnd: bigint): NativeWindow | undefined { return this.windows.get(hwnd); }
+  activate(hwnd: bigint): boolean { this.calls.push(['activate', hwnd]); this.front = hwnd; return true; }
   flash(hwnd: bigint, invert: boolean): void { this.calls.push(['flash', hwnd, invert]); }
   flashEx(hwnd: bigint, flags: number): void { this.calls.push(['ex', hwnd, flags]); }
 }
@@ -60,9 +61,79 @@ test('Same title and PID windows bind from stable focus; fast switches remain un
   const pending = b.observe(); native.front = 1n; b.changed(); assert.equal(await pending, false); assert.equal(b.binding, undefined);
   native.front = 2n; assert.equal(await b.observe(), true); assert.equal(b.valid()?.hwnd, 2n);
 });
+
+test('Toast activation uses the verified window, rejecting missing, closed or reused HWNDs', async () => {
+  const native = new FakeNative(); native.front = 1n;
+  const identity = new WindowIdentity('A', native, () => true, 'C:\\Code.exe');
+  assert.equal(identity.activate(), false);
+  assert.equal(await identity.observe(), true);
+  native.front = 2n; assert.equal(identity.activate(), true);
+  assert.equal(native.foreground(), 1n); assert.deepEqual(native.calls, [['activate', 1n]]);
+  for (const reason of ['closed', 'pid', 'executable']) {
+    native.windows.set(1n, { hwnd: 1n, pid: 123, title: 'changed title', executable: 'C:\\Code.exe' });
+    native.front = 1n; assert.equal(await identity.observe(), true);
+    native.calls = []; native.front = 2n;
+    if (reason === 'closed') native.windows.delete(1n);
+    else native.windows.set(1n, { ...native.windows.get(1n)!, ...(reason === 'pid' ? { pid: 999 } : { executable: 'C:\\Other.exe' }) });
+    assert.equal(identity.activate(), false, reason); assert.equal(native.calls.length, 0, reason);
+    assert.equal(identity.binding, undefined, reason);
+  }
+});
+
+test('Click stops its flash and activates the originating window only while delivery remains owned and enabled', async () => {
+  let enabled = true; let owns = true; let click!: () => void; const calls: string[] = [];
+  const notifications = new Notifications({ enabled: () => enabled, focused: () => false, owns: () => owns,
+    stopFlash: id => { calls.push(`stop:${id}`); }, flash: () => {},
+    activate: signal => { calls.push(`activate:${signal.windowInstanceId}`); },
+    toast: async (_signal, _message, onClick) => { click = onClick; } });
+  const signal: Signal = { ...binding(), notificationId: 'n', turnId: 't', status: 'completed', text: 'done', truncated: false, at: '' };
+  await notifications.deliver(signal); click();
+  assert.deepEqual(calls, ['stop:n', `activate:${signal.windowInstanceId}`]);
+  calls.length = 0; owns = false; click(); assert.deepEqual(calls, ['stop:n']);
+  calls.length = 0; owns = true; enabled = false; click(); assert.deepEqual(calls, ['stop:n']);
+});
+
+function activationBoundary(options: { minimized?: boolean; direct?: boolean; attached?: boolean; retry?: boolean | Error } = {}) {
+  const calls: unknown[][] = []; let attempts = 0;
+  // Replace only the FFI boundary so these cases never move a real desktop window.
+  const native = Object.assign(Object.create(Win32.prototype), {
+    isWindow: () => 1, isIconic: () => options.minimized ? 1 : 0,
+    showWindowAsync: (hwnd: bigint, mode: number) => { calls.push(['restore', hwnd, mode]); return 1; },
+    setForeground: (hwnd: bigint) => {
+      calls.push(['foreground', hwnd]);
+      if (++attempts === 1) return options.direct ? 1 : 0;
+      if (options.retry instanceof Error) throw options.retry;
+      return options.retry === false ? 0 : 1;
+    },
+    getForeground: () => 2n, currentThread: () => 10, getPid: () => 20,
+    peekMessage: () => 0,
+    attachInput: (from: number, to: number, attach: number) => {
+      calls.push(['attach', from, to, attach]); return options.attached === false ? 0 : 1;
+    },
+  }) as Win32;
+  return { native, calls };
+}
+
+test('Window activation restores minimized windows and preserves the layout of visible windows', () => {
+  for (const minimized of [false, true]) {
+    const f = activationBoundary({ minimized, direct: true }); assert.equal(f.native.activate(1n), true);
+    assert.deepEqual(f.calls, minimized ? [['restore', 1n, 9], ['foreground', 1n]] : [['foreground', 1n]]);
+  }
+});
+
+test('Foreground retry releases its input attachment after success, refusal or an exception', () => {
+  for (const retry of [true, false, new Error('Native focus failed')]) {
+    const f = activationBoundary({ retry });
+    if (retry instanceof Error) assert.throws(() => f.native.activate(1n), /Native focus failed/);
+    else assert.equal(f.native.activate(1n), retry);
+    assert.deepEqual(f.calls.at(-1), ['attach', 10, 20, 0]);
+  }
+  const denied = activationBoundary({ attached: false }); assert.equal(denied.native.activate(1n), false);
+  assert.equal(denied.calls.filter(call => call[0] === 'foreground').length, 1);
+});
 test('Notification policy stores focused results, rechecks ownership and bounds result count', async () => {
   let focused = true; let owns = true; const calls: string[] = [];
-  const notifications = new Notifications({ focused: () => focused, owns: () => owns, stopFlash: () => { calls.push('stop'); }, flash: () => { calls.push('flash'); }, toast: async (_s, message, _click, allowed) => { assert.ok(Array.from(message).length <= 180); if (allowed()) calls.push('toast'); } });
+  const notifications = new Notifications({ focused: () => focused, owns: () => owns, stopFlash: () => { calls.push('stop'); }, flash: () => { calls.push('flash'); }, activate: () => {}, toast: async (_s, message, _click, allowed) => { assert.ok(Array.from(message).length <= 180); if (allowed()) calls.push('toast'); } });
   const signal: Signal = { ...binding(), notificationId: 'n', turnId: 't', status: 'completed', text: 'x'.repeat(300), truncated: false, at: '' };
   await notifications.deliver(signal); assert.deepEqual(calls, ['stop']);
   focused = false; await notifications.deliver(signal); assert.deepEqual(calls, ['stop', 'flash', 'toast']);
@@ -72,4 +143,5 @@ test('Notification policy stores focused results, rechecks ownership and bounds 
 test('Win32 native ABI and read-only foreground inspection', { skip: process.platform !== 'win32' }, () => {
   const native = new Win32(); assert.equal(native.structSize, process.arch === 'ia32' ? 20 : 32);
   assert.equal(typeof native.foreground(), 'bigint'); assert.equal(native.inspect(0n), undefined);
+  assert.equal(native.activate(0n), false);
 });

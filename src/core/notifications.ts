@@ -4,6 +4,7 @@ export interface NotificationPorts {
   focused(): boolean; owns(signal: Signal): boolean;
   stopFlash(id?: string): void;
   flash(signal: Signal): void;
+  activate(signal: Signal): void;
   toast(signal: Signal, message: string, click: () => void, allowed: () => boolean): Promise<void>;
 }
 export class Notifications {
@@ -15,6 +16,9 @@ export class Notifications {
     if (this.ports.enabled?.() === false || this.ports.focused()) { this.ports.stopFlash(); return; }
     this.ports.flash(signal);
     await this.ports.toast(signal, toastText(signal.text || signal.detail || signal.status),
-      () => this.ports.stopFlash(signal.notificationId), () => this.ports.enabled?.() !== false && !this.ports.focused() && this.ports.owns(signal));
+      () => {
+        this.ports.stopFlash(signal.notificationId);
+        if (this.ports.enabled?.() !== false && this.ports.owns(signal)) this.ports.activate(signal);
+      }, () => this.ports.enabled?.() !== false && !this.ports.focused() && this.ports.owns(signal));
   }
 }
