@@ -6,6 +6,15 @@ import { Notifications } from '../src/core/notifications';
 import { binding } from './helpers';
 import { Signal } from '../src/core/model';
 
+test('The master switch suppresses delivery immediately, including a toast still being registered', async () => {
+  let enabled = true; let flashes = 0; let allowed!: () => boolean;
+  const notifications = new Notifications({ enabled: () => enabled, focused: () => false, owns: () => true,
+    stopFlash: () => {}, flash: () => { flashes++; }, toast: async (_signal, _text, _click, canShow) => { allowed = canShow; } });
+  const signal: Signal = { ...binding(), notificationId: 'n', turnId: 't', status: 'completed', text: 'done', truncated: false, at: '' };
+  await notifications.deliver(signal); assert.equal(allowed(), true); enabled = false; assert.equal(allowed(), false);
+  await notifications.deliver(signal); assert.equal(flashes, 1); assert.equal(notifications.results.length, 2);
+});
+
 class FakeNative implements NativeApi {
   front = 2n; windows = new Map<bigint, NativeWindow>([1n, 2n].map(hwnd => [hwnd, { hwnd, pid: 123, title: 'same folder - Code', executable: 'C:\\Code.exe' }]));
   calls: unknown[][] = [];

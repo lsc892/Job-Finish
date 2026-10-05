@@ -9,7 +9,7 @@ const root = mkdtempSync(join(tmpdir(), 'job-finish-host-'));
 const profile = join(root, 'profile'); const workspace = join(root, 'workspace'); mkdirSync(join(profile, 'User'), { recursive: true }); mkdirSync(workspace);
 writeFileSync(join(profile, 'User', 'settings.json'), JSON.stringify({ 'jobFinish.codexExecutable': resolve('tests/fixtures/app-server.cjs'), 'jobFinish.toast': false, 'jobFinish.flash': dual, 'security.workspace.trust.enabled': false, 'workbench.startupEditor': 'none', 'window.restoreWindows': 'none', 'extensions.autoUpdate': false }));
 const executable = process.env.JOB_FINISH_CODE_EXECUTABLE ?? join(process.env.LOCALAPPDATA, 'Programs/Microsoft VS Code/Code.exe');
-const env = { ...process.env, JOB_FINISH_HOST_ARTIFACTS: root }; delete env.ELECTRON_RUN_AS_NODE;
+const env = { ...process.env, JOB_FINISH_HOST_ARTIFACTS: root, JOB_FINISH_TEST_AGENT_ROOT: resolve('tests/fixtures') }; delete env.ELECTRON_RUN_AS_NODE;
 if (dual) {
   env.JOB_FINISH_TEST_SHARED_STORAGE = join(root, 'shared-storage');
   const profileB = join(root, 'profile-B'); mkdirSync(join(profileB, 'User'), { recursive: true });

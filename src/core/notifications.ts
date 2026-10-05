@@ -1,5 +1,6 @@
 import { LIMITS, Signal, toastText } from './model';
 export interface NotificationPorts {
+  enabled?(): boolean;
   focused(): boolean; owns(signal: Signal): boolean;
   stopFlash(id?: string): void;
   flash(signal: Signal): void;
@@ -11,9 +12,9 @@ export class Notifications {
   async deliver(signal: Signal): Promise<void> {
     if (!this.ports.owns(signal)) return;
     this.results.push(signal); if (this.results.length > LIMITS.results) this.results.shift();
-    if (this.ports.focused()) { this.ports.stopFlash(); return; }
+    if (this.ports.enabled?.() === false || this.ports.focused()) { this.ports.stopFlash(); return; }
     this.ports.flash(signal);
     await this.ports.toast(signal, toastText(signal.text || signal.detail || signal.status),
-      () => this.ports.stopFlash(signal.notificationId), () => !this.ports.focused() && this.ports.owns(signal));
+      () => this.ports.stopFlash(signal.notificationId), () => this.ports.enabled?.() !== false && !this.ports.focused() && this.ports.owns(signal));
   }
 }

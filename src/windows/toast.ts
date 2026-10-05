@@ -79,5 +79,6 @@ export class WindowsToast {
     const active = this.active; if (!active || (id && active.id !== id)) return;
     this.active = undefined; clearTimeout(active.timer); clearTimeout(active.exitTimer); for (const socket of active.sockets) socket.destroy(); active.server.close(); active.child?.kill();
   }
-  dispose(): void { this.disposed = true; this.generation++; this.clear(); }
+  stop(): void { this.generation++; this.clear(); }
+  dispose(): void { this.disposed = true; this.stop(); }
 }

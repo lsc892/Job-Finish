@@ -8,6 +8,7 @@ import { Notifications } from './core/notifications';
 import { CodexExecution, codexApprovalResponse } from './runtime/codex';
 import { ClaudeExecution } from './runtime/claude';
 import { runtimeId } from './runtime/executable';
+import { AgentStreamObserver, AgentRoot } from './runtime/observe';
 import { Win32, WindowIdentity } from './windows/native';
 import { FlashController } from './windows/flash';
 import { WindowsToast } from './windows/toast';
@@ -38,6 +39,7 @@ class Application {
   private flash?: FlashController;
   private toast = new WindowsToast(process.execPath, this.diagnostics);
   private notifications: Notifications;
+  private observer: AgentStreamObserver;
   private disposed = false;
   private opening = 0;
   private readonly busy = new Set<string>();
@@ -46,14 +48,17 @@ class Application {
       ? process.env.JOB_FINISH_TEST_SHARED_STORAGE : context.globalStorageUri.fsPath;
     mkdirSync(storage, { recursive: true });
     this.ownership = new Ownership(storage);
+    this.observer = new AgentStreamObserver(this.windowInstanceId, () => this.agentRoots(), signal => this.onSignal(signal),
+      this.diagnostics, (provider, id) => this.entries.get(id)?.provider === provider);
     try {
       this.native = new Win32();
       this.identity = new WindowIdentity(this.windowInstanceId, this.native, () => vscode.window.state.focused, process.execPath);
       this.flash = new FlashController(this.native, () => vscode.window.state.focused);
     } catch (e) { this.diagnostics.add(`Native flash unavailable: ${e}`); }
     this.notifications = new Notifications({
+      enabled: () => this.config('enabled', true),
       focused: () => vscode.window.state.focused,
-      owns: signal => this.entries.get(signal.sessionId)?.lease.valid() === true,
+      owns: signal => signal.source === 'verifiedIntegration' ? this.observer.owns(signal) : this.entries.get(signal.sessionId)?.lease.valid() === true,
       stopFlash: id => this.flash?.stop(id),
       flash: signal => {
         const binding = this.identity?.valid();
@@ -67,7 +72,7 @@ class Application {
   }
   get api() { return {
     identity: () => ({ windowInstanceId: this.windowInstanceId, vscodeSessionId: vscode.env.sessionId, extensionHostPid: process.pid, workspaceUris: vscode.workspace.workspaceFolders?.map(f => f.uri.toString()) ?? [] }),
-    snapshot: () => ({ results: this.notifications.results, sessions: [...this.entries.values()].map(e => ({ binding: e.session.binding, state: e.session.checkpoint(), pending: e.session.requests.size })), diagnostics: this.diagnostics.entries, native: this.identity?.binding }),
+    snapshot: () => ({ enabled: this.config('enabled', true), automatic: this.observer.snapshot(), results: this.notifications.results, sessions: [...this.entries.values()].map(e => ({ binding: e.session.binding, state: e.session.checkpoint(), pending: e.session.requests.size })), diagnostics: this.diagnostics.entries, native: this.identity?.binding }),
     // The same product path is available to Extension Host tests without automating prompt UI.
     ...(this.context.extensionMode === vscode.ExtensionMode.Test ? {
       test: {
@@ -81,7 +86,23 @@ class Application {
     } : {}),
   }; }
   private config<T>(key: string, fallback: T): T { return vscode.workspace.getConfiguration('jobFinish').get<T>(key, fallback); }
+  private agentRoots(): AgentRoot[] {
+    if (this.context.extensionMode === vscode.ExtensionMode.Test && process.env.JOB_FINISH_TEST_AGENT_ROOT) {
+      return ['codex', 'claude'].map(provider => ({ provider: provider as Provider, path: process.env.JOB_FINISH_TEST_AGENT_ROOT! }));
+    }
+    return [{ provider: 'codex' as const, id: 'openai.chatgpt' }, { provider: 'claude' as const, id: 'anthropic.claude-code' }].flatMap(({ provider, id }) => {
+      const extension = vscode.extensions.getExtension(id); return extension ? [{ provider, path: extension.extensionPath }] : [];
+    });
+  }
+  private configureNotifications(): void {
+    if (this.config('enabled', true)) this.observer.start();
+    else { this.observer.stop(); this.flash?.stop(); this.toast.stop(); }
+    if (!this.config('toast', true)) this.toast.stop();
+    if (!this.config('flash', true)) this.flash?.stop();
+    this.updateStatus();
+  }
   async activate(): Promise<void> {
+    this.configureNotifications();
     this.status.command = 'jobFinish.results'; this.updateStatus(); this.status.show();
     const commands: Record<string, () => unknown> = {
       runCodex: () => this.runNew('codex'), runClaude: () => this.runNew('claude'),
@@ -103,6 +124,8 @@ class Application {
     this.context.subscriptions.push(this.output, this.status, vscode.window.onDidChangeWindowState(state => {
       this.identity?.changed();
       if (state.focused) { this.flash?.stop(); void this.identity?.observe().catch(e => this.diagnostics.add(e)); }
+    }), vscode.workspace.onDidChangeConfiguration(event => {
+      if (event.affectsConfiguration('jobFinish')) this.configureNotifications();
     }), { dispose: () => this.dispose() });
     await this.identity?.observe();
   }
@@ -227,9 +250,9 @@ class Application {
   }
   private updateStatus(): void {
     const waiting = [...this.entries.values()].reduce((n, e) => n + e.session.requests.size, 0);
-    this.status.text = `${waiting ? '$(question)' : '$(bell)'} JF ${this.windowInstanceId.slice(0, 8)} · ${waiting ? `${waiting} input` : `${this.entries.size} sessions`}`;
+    this.status.text = `${!this.config('enabled', true) ? '$(bell-slash)' : waiting ? '$(question)' : '$(bell)'} JF ${this.windowInstanceId.slice(0, 8)} · ${!this.config('enabled', true) ? 'off' : waiting ? `${waiting} input` : 'on'}`;
     this.status.command = waiting ? 'jobFinish.respond' : 'jobFinish.results';
-    this.status.tooltip = 'Job-Finish · commands: Run Codex / Run Claude / Answer Pending Request / Show Results';
+    this.status.tooltip = 'Job-Finish · automatic notifications · Settings: Job-Finish Enabled · Show Results';
   }
   private detach(entry: Entry): void {
     try { entry.execution.dispose(); }
@@ -241,6 +264,7 @@ class Application {
   private report(error: unknown): void { this.diagnostics.add(error); void vscode.window.showErrorMessage(`Job-Finish: ${error}`); }
   dispose(): void {
     if (this.disposed) return; this.disposed = true;
+    this.observer.dispose();
     this.flash?.dispose(); this.identity?.dispose(); this.toast.dispose();
     for (const entry of [...this.entries.values()]) { try { this.detach(entry); } catch (e) { this.diagnostics.add(e); } }
     this.entries.clear();
