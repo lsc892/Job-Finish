@@ -26,6 +26,7 @@
     "test:live:codex-input": "tsx scripts/live-codex-input.ts",
     "test:live:codex-history": "tsx scripts/live-codex-history.ts",
     "test:load": "tsx --expose-gc scripts/load.ts",
+    "test:router-load": "tsx --expose-gc scripts/router-load.ts",
     "test:extension": "npm run build && node scripts/extension-host.mjs",
     "test:windows": "npm run build && node scripts/extension-host.mjs --dual",
     "test:profile": "node scripts/profile-host.mjs",
@@ -52,6 +53,7 @@
     "configuration": {
       "title": "Job-Finish",
       "properties": {
+        "jobFinish.enabled": { "type": "boolean", "default": true, "description": "Automatically detect Codex and Claude activity in this VS Code window and show notifications. Changes apply immediately." },
         "jobFinish.toast": { "type": "boolean", "default": true, "description": "Show native Windows toasts while this window is unfocused." },
         "jobFinish.flash": { "type": "boolean", "default": true, "description": "Flash a verified native window." },
         "jobFinish.flashMode": { "type": "string", "enum": ["manual", "system"], "default": "manual" },
