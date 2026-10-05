@@ -18,3 +18,14 @@ for (const name of ['codex-success', 'codex-api-error', 'claude-auth-error', 'cl
   }
   assert.equal(f.signals.length, 1); assert.equal(f.signals[0]!.status, captured.expectedStatus);
 });
+
+for (const scenario of ['question', 'approval', 'permissions', 'cancel', 'usage-limit']) test(`Captured actual Codex ${scenario} lifecycle`, () => {
+  const captured = JSON.parse(readFileSync(`tests/fixtures/codex-${scenario}.json`, 'utf8'));
+  const f = fixture({ sessionId: captured.sessionId }); const adapter = new CodexAdapter(f.session);
+  for (const message of captured.events as RpcMessage[]) adapter.handle(message, 'connection-1', true);
+  assert.deepEqual(f.signals.map(s => s.status), captured.expectedStatuses);
+  assert.equal(f.signals.at(-1)!.status, captured.expectedStatus); assert.equal(f.session.requests.size, 0);
+  if (scenario === 'usage-limit') assert.match(f.signals.at(-1)!.detail!, /^usageLimitExceeded:/);
+  for (const message of captured.events as RpcMessage[]) adapter.handle(message, 'connection-1', false);
+  assert.deepEqual(f.signals.map(s => s.status), captured.expectedStatuses, 'Replayed history cannot notify again');
+});

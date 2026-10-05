@@ -3,8 +3,10 @@ import type { Thread } from '../protocol/v2/Thread';
 import type { Turn } from '../protocol/v2/Turn';
 import type { ThreadStartParams } from '../protocol/v2/ThreadStartParams';
 import type { TurnStartParams } from '../protocol/v2/TurnStartParams';
+import type { PermissionsRequestApprovalParams } from '../protocol/v2/PermissionsRequestApprovalParams';
+import type { PermissionsRequestApprovalResponse } from '../protocol/v2/PermissionsRequestApprovalResponse';
 import { Session } from '../core/session';
-import { Diagnostics, TerminalStatus } from '../core/model';
+import { Diagnostics, LIMITS, TerminalStatus } from '../core/model';
 import { EventQueue, RpcError, RpcMessage, StdioRpc } from './transport';
 import { codexCommand } from './executable';
 import { randomUUID } from 'node:crypto';
@@ -18,12 +20,25 @@ function object(value: unknown): Record<string, unknown> {
 }
 function id(value: unknown): string { if (typeof value !== 'string' || !value) throw new Error('Missing Codex identifier'); return value; }
 
+export function codexApprovalResponse(message: RpcMessage, allow: boolean): unknown {
+  if (message.method === 'item/permissions/requestApproval') {
+    const { permissions } = message.params as PermissionsRequestApprovalParams;
+    object(permissions);
+    return { scope: 'turn', permissions: allow ? {
+      ...(permissions.network ? { network: permissions.network } : {}),
+      ...(permissions.fileSystem ? { fileSystem: permissions.fileSystem } : {}),
+    } : {} } satisfies PermissionsRequestApprovalResponse;
+  }
+  return { decision: allow ? 'accept' : 'decline' };
+}
+
 /** Shared by live execution and protocol fixture verification. */
 export class CodexAdapter {
   constructor(readonly session: Session) {}
   handle(message: RpcMessage, connectionId: string, admitStarted = false): void {
     if (!this.session.valid(connectionId)) return;
-    const methods = ['turn/started', 'turn/completed', 'item/completed', 'error'];
+    const methods = ['turn/started', 'turn/completed', 'item/completed', 'serverRequest/resolved', 'error',
+      'item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'item/permissions/requestApproval', 'item/tool/requestUserInput'];
     if (!methods.includes(message.method ?? '')) return;
     const p = object(message.params);
     if (id(p.threadId) !== this.session.binding.sessionId) return;
@@ -39,9 +54,16 @@ export class CodexAdapter {
       }
     } else if (message.method === 'turn/completed') {
       this.reconcileTurn(p.turn as Turn, connectionId);
+    } else if (message.method === 'serverRequest/resolved') {
+      this.session.resolve(JSON.stringify(p.requestId), connectionId);
     } else if (message.method === 'error') {
       this.session.diagnostics.add(`Codex non-terminal error: ${JSON.stringify(p.error)}`);
-
+    } else if (message.id !== undefined) {
+      const turnId = id(p.turnId);
+      const question = message.method === 'item/tool/requestUserInput';
+      this.session.waiting({ id: JSON.stringify(message.id), turnId, connectionId,
+        kind: question ? 'question' : 'approval', payload: message,
+        title: question ? JSON.stringify(p.questions) : String(p.command ?? p.reason ?? 'File change approval') });
     }
   }
   reconcileTurn(value: Turn, connectionId: string): void {
@@ -65,7 +87,7 @@ export class CodexAdapter {
   }
 }
 
-export interface CodexOptions { cwd: string; executable?: string; model?: string; sandbox?: 'read-only' | 'workspace-write'; onEvent?: (message: RpcMessage) => void; diagnostic: Diagnostics; createSession: (sessionId: string, connectionId: string) => Session }
+export interface CodexOptions { cwd: string; executable?: string; model?: string; mode?: 'default' | 'plan'; sandbox?: 'read-only' | 'workspace-write'; permissionRequests?: boolean; onEvent?: (message: RpcMessage) => void; diagnostic: Diagnostics; createSession: (sessionId: string, connectionId: string) => Session }
 export class CodexExecution {
   session?: Session;
   private adapter?: CodexAdapter;
@@ -74,20 +96,24 @@ export class CodexExecution {
   private ready = false;
   private starting = false;
   private disposed = false;
+  private answered = new Map<string, unknown>();
+  private answeredBytes = 0;
+  private effectiveModel?: string;
   constructor(private options: CodexOptions) {}
   async open(): Promise<void> {
     try {
       await this.connect();
       const p: ThreadStartParams = { cwd: this.options.cwd, approvalPolicy: 'on-request', approvalsReviewer: 'user', sandbox: this.options.sandbox ?? 'workspace-write',
-        ...(this.options.model ? { model: this.options.model } : {}) };
+        ...(this.options.permissionRequests ? { config: { 'features.request_permissions_tool': true } } : {}), ...(this.options.model ? { model: this.options.model } : {}) };
       const result = await this.rpc!.request<{ thread: Thread; model?: string }>('thread/start', p);
+      this.effectiveModel = result.model;
       this.session = this.options.createSession(id(result.thread?.id), this.rpc!.connectionId);
       this.adapter = new CodexAdapter(this.session);
       this.ready = true; this.queue.drain(message => this.handle(message));
     } catch (e) { this.rpc?.dispose(); this.queue.clear(); throw e; }
   }
   private async connect(): Promise<void> {
-    this.ready = false; this.queue.clear();
+    this.ready = false; this.queue.clear(); this.answered.clear(); this.answeredBytes = 0;
     const rpc = new StdioRpc(message => {
       if (rpc !== this.rpc || this.disposed) return;
       if (this.ready) this.handle(message); else this.queue.push(message);
@@ -104,12 +130,15 @@ export class CodexExecution {
   async run(prompt: string): Promise<void> {
     if (!this.ready || !this.session) throw new Error('Reconnect the Codex session first');
     if (this.starting || this.session.turns.size || this.session.pendingStart) throw new Error('Session has an active or unresolved turn/start request');
+    const model = this.options.model || this.effectiveModel;
+    if (this.options.mode && !model) throw new Error('Codex did not provide model metadata for the selected mode');
     this.starting = true;
     const rpc = this.rpc!;
     const startRequestId = randomUUID();
     try {
       this.session.beginStart(startRequestId, rpc.connectionId);
-      const p: TurnStartParams = { threadId: this.session.binding.sessionId, clientUserMessageId: startRequestId, input: [{ type: 'text', text: prompt, text_elements: [] }] };
+      const p: TurnStartParams = { threadId: this.session.binding.sessionId, clientUserMessageId: startRequestId, input: [{ type: 'text', text: prompt, text_elements: [] }],
+        ...(this.options.mode ? { collaborationMode: { mode: this.options.mode, settings: { model: model!, reasoning_effort: null, developer_instructions: null } } } : {}) };
       const result = await rpc.request<{ turn: Turn }>('turn/start', p);
       if (rpc !== this.rpc || !rpc.connected || !this.session.valid(rpc.connectionId)) throw new Error('Start response connection changed; reconcile the saved request');
       this.session.start(id(result.turn?.id), rpc.connectionId);
@@ -130,9 +159,24 @@ export class CodexExecution {
     if (!turn) throw new Error('No confirmed active Codex turn');
     await this.rpc!.request('turn/interrupt', { threadId: this.session!.binding.sessionId, turnId: turn.id });
   }
+  respond(requestId: string, result: unknown): void {
+    const request = this.session?.requests.get(requestId);
+    if (!request || !this.session!.valid(request.connectionId)) throw new Error('Request no longer pending');
+    const message = request.payload as RpcMessage;
+    this.rpc!.respond(message.id!, result); this.session!.resolve(requestId, request.connectionId);
+    this.answered.set(requestId, result);
+    this.answeredBytes += Buffer.byteLength(JSON.stringify(result));
+    while (this.answered.size > LIMITS.dedup || this.answeredBytes > LIMITS.queueBytes) {
+      const oldest = this.answered.keys().next().value!;
+      this.answeredBytes -= Buffer.byteLength(JSON.stringify(this.answered.get(oldest))); this.answered.delete(oldest);
+    }
+  }
   private handle(message: RpcMessage): void {
     if (!this.session?.valid(this.rpc!.connectionId)) return;
     this.options.onEvent?.(message);
+    if (message.id !== undefined && message.method && this.answered.has(JSON.stringify(message.id))) {
+      this.rpc!.respond(message.id, this.answered.get(JSON.stringify(message.id))); return;
+    }
     this.adapter!.handle(message, this.rpc!.connectionId, this.starting);
     if (message.id !== undefined && message.method && !this.session!.requests.has(JSON.stringify(message.id))) {
       this.rpc!.reject(message.id, 'Unsupported or unbound Job-Finish request'); this.options.diagnostic.add(`Unsupported server request: ${message.method}`);
@@ -141,6 +185,6 @@ export class CodexExecution {
   dispose(): void {
     this.disposed = true;
     try { this.session?.disconnected('Session released'); }
-    finally { this.rpc?.dispose(); this.queue.clear(); }
+    finally { this.rpc?.dispose(); this.queue.clear(); this.answered.clear(); this.answeredBytes = 0; }
   }
 }
