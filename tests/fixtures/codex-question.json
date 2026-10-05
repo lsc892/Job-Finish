@@ -1,0 +1,116 @@
+{
+  "source": "actual-runtime",
+  "cliVersion": "0.160.0",
+  "capturedDateKst": "2026-10-05",
+  "provider": "codex",
+  "scenario": "question",
+  "sessionId": "captured-session",
+  "turnId": "captured-turn",
+  "expectedStatus": "completed",
+  "expectedStatuses": [
+    "waitingForInput",
+    "completed"
+  ],
+  "events": [
+    {
+      "method": "turn/started",
+      "params": {
+        "threadId": "captured-session",
+        "turn": {
+          "id": "captured-turn",
+          "items": [],
+          "itemsView": "notLoaded",
+          "status": "inProgress",
+          "error": null,
+          "startedAt": 1791132436,
+          "completedAt": null,
+          "durationMs": null
+        }
+      },
+      "emittedAtMs": 1791132436449
+    },
+    {
+      "method": "item/tool/requestUserInput",
+      "id": 0,
+      "params": {
+        "threadId": "captured-session",
+        "turnId": "captured-turn",
+        "itemId": "call_lDrW6Z3i2c8CkE4QEy9v6bMu",
+        "questions": [
+          {
+            "id": "color",
+            "header": "Color",
+            "question": "Which color should I use?",
+            "isOther": true,
+            "isSecret": false,
+            "options": [
+              {
+                "label": "Blue",
+                "description": "Use blue."
+              },
+              {
+                "label": "Green",
+                "description": "Use green."
+              }
+            ]
+          }
+        ],
+        "isBlocking": true,
+        "autoResolutionMs": null
+      }
+    },
+    {
+      "method": "serverRequest/resolved",
+      "params": {
+        "threadId": "captured-session",
+        "requestId": 0
+      },
+      "emittedAtMs": 1791132442994
+    },
+    {
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "agentMessage",
+          "id": "msg_086623325fd4a986016ac2831ded0887d0adf66382062332eb",
+          "text": "JOB_FINISH_CODEX_INPUT_OK Blue",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "captured-session",
+        "turnId": "captured-turn",
+        "completedAtMs": 1791132447929
+      },
+      "emittedAtMs": 1791132447940
+    },
+    {
+      "method": "turn/completed",
+      "params": {
+        "threadId": "captured-session",
+        "turn": {
+          "id": "captured-turn",
+          "items": [
+            {
+              "type": "agentMessage",
+              "id": "msg_086623325fd4a986016ac2831ded0887d0adf66382062332eb",
+              "text": "JOB_FINISH_CODEX_INPUT_OK Blue",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            }
+          ],
+          "itemsView": "summary",
+          "status": "completed",
+          "error": null,
+          "startedAt": 1791132436,
+          "completedAt": 1791132457,
+          "durationMs": 20992
+        }
+      },
+      "emittedAtMs": 1791132457407
+    }
+  ]
+}
