@@ -16,6 +16,8 @@ test('The master switch suppresses delivery immediately, including a toast still
 });
 
 class FakeNative implements NativeApi {
+  input = 1;
+  lastInput(): number { return this.input; }
   front = 2n; windows = new Map<bigint, NativeWindow>([1n, 2n].map(hwnd => [hwnd, { hwnd, pid: 123, title: 'same folder - Code', executable: 'C:\\Code.exe' }]));
   calls: unknown[][] = [];
   foreground(): bigint { return this.front; }
@@ -93,6 +95,49 @@ test('Click stops its flash and activates the originating window only while deli
   calls.length = 0; owns = true; enabled = false; click(); assert.deepEqual(calls, ['stop:n']);
 });
 
+test('Toast focus retries a refused or not-yet-completed activation and verifies the foreground', async () => {
+  const native = new FakeNative(); const identity = new WindowIdentity('A', native, () => false, 'C:\\Code.exe');
+  identity.binding = { ...native.inspect(1n)!, windowInstanceId: 'A', verifiedAt: '', method: 'focused-observation' };
+  let attempts = 0;
+  native.activate = hwnd => { if (++attempts === 3) native.front = hwnd; return attempts !== 1; };
+  assert.equal(await identity.activateWithRetry(), true);
+  assert.equal(attempts, 3); assert.equal(native.front, 1n);
+});
+
+test('Toast focus retries stop on new input, lost ownership, disposal, cancellation or an invalid target', async () => {
+  for (const reason of ['input', 'ownership', 'dispose', 'cancel', 'pid']) {
+    const native = new FakeNative(); const identity = new WindowIdentity('A', native, () => false, 'C:\\Code.exe');
+    identity.binding = { ...native.inspect(1n)!, windowInstanceId: 'A', verifiedAt: '', method: 'focused-observation' };
+    let attempts = 0; let allowed = true;
+    native.activate = () => { attempts++; return false; };
+    const pending = identity.activateWithRetry(() => allowed);
+    if (reason === 'input') native.input++;
+    if (reason === 'ownership') allowed = false;
+    if (reason === 'dispose') identity.dispose();
+    if (reason === 'cancel') identity.cancelActivation();
+    if (reason === 'pid') native.windows.set(1n, { ...native.windows.get(1n)!, pid: 999 });
+    assert.equal(await pending, false, reason); assert.equal(attempts, 1, reason);
+  }
+});
+
+test('Toast focus retries are bounded when Windows keeps refusing foreground activation', async () => {
+  const native = new FakeNative(); const identity = new WindowIdentity('A', native, () => false, 'C:\\Code.exe');
+  identity.binding = { ...native.inspect(1n)!, windowInstanceId: 'A', verifiedAt: '', method: 'focused-observation' };
+  let attempts = 0; native.activate = () => { attempts++; return false; };
+  assert.equal(await identity.activateWithRetry(), false); assert.equal(attempts, 4);
+});
+
+test('A newer activation cancels old retries and unavailable input tracking disables retries', async () => {
+  const native = new FakeNative(); const identity = new WindowIdentity('A', native, () => false, 'C:\\Code.exe');
+  identity.binding = { ...native.inspect(1n)!, windowInstanceId: 'A', verifiedAt: '', method: 'focused-observation' };
+  let attempts = 0; native.activate = hwnd => { if (++attempts === 2) native.front = hwnd; return false; };
+  const first = identity.activateWithRetry();
+  assert.equal(await identity.activateWithRetry(), true); assert.equal(await first, false); assert.equal(attempts, 2);
+  native.front = 2n; attempts = 0; native.activate = () => { attempts++; return false; };
+  Object.assign(native, { lastInput: () => undefined });
+  assert.equal(await identity.activateWithRetry(), false); assert.equal(attempts, 1);
+});
+
 function activationBoundary(options: { minimized?: boolean; direct?: boolean; attached?: boolean; retry?: boolean | Error } = {}) {
   const calls: unknown[][] = []; let attempts = 0;
   // Replace only the FFI boundary so these cases never move a real desktop window.
@@ -143,5 +188,6 @@ test('Notification policy stores focused results, rechecks ownership and bounds 
 test('Win32 native ABI and read-only foreground inspection', { skip: process.platform !== 'win32' }, () => {
   const native = new Win32(); assert.equal(native.structSize, process.arch === 'ia32' ? 20 : 32);
   assert.equal(typeof native.foreground(), 'bigint'); assert.equal(native.inspect(0n), undefined);
+  assert.equal(typeof native.lastInput(), 'number');
   assert.equal(native.activate(0n), false);
 });

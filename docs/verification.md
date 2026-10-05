@@ -1,6 +1,6 @@
 # 구현 및 검증 기록
 
-검증일: 2026-10-05 (Asia/Seoul). 원래 인수 기준은 [requirements-and-verification.md](requirements-and-verification.md)에 유지한다. 이 문서는 구현된 경로와 확인한 증거를 구분한다. 모든 실제 런타임·Windows 시각 검증이 완료되었다고 주장하지 않는다.
+검증일: 2026-10-05, 토스트 클릭 추가 검증 2026-10-06 (Asia/Seoul). 원래 인수 기준은 [requirements-and-verification.md](requirements-and-verification.md)에 유지한다. 이 문서는 구현된 경로와 확인한 증거를 구분한다. 모든 실제 런타임·Windows 시각 검증이 완료되었다고 주장하지 않는다.
 
 ## 구현
 
@@ -28,7 +28,7 @@ Codex 복구는 `thread/resume(excludeTurns: true)` 이후 `thread/turns/list`�
 
 | 검증 | 결과 |
 | --- | --- |
-| `npm run check` | 타입 검사, 88개 단위·stdio 연결·SDK 경계·실제 이벤트·Windows pipe 테스트, 번들 빌드 통과 |
+| 타입 검사·테스트·빌드 | 2026-10-06에 `npm run typecheck`, `npm test`(97개), `npm run build` 통과. 단위·stdio 연결·SDK 경계·실제 이벤트·Windows pipe·클릭 종료 신호·포커스 재시도 검증 |
 | 기존 확장 이벤트 라우팅 | 실제 Codex·Claude 이벤트 fixture와 합성 자식 프로세스의 실제 stdio로 검증. 기존/새 연결 감지, 원본 바이트 보존, 설정 전환, 중복 결과·소유 실행 제외, 파싱 실패 시 원본 프로세스 유지, 프로세스 종료 뒤 남은 stdout 수신 통과 |
 | 실제 Codex 0.160.0 | 정상 완료, 계획 모드 질문 답변, 명령 승인 거절, 추가 권한 승인 거절, 질문 대기 중 취소 통과. 실제 usageLimitExceeded 오류를 성공과 구분. 완료 세션의 페이지별 원문 조회와 재연결 뒤 과거 결과 재알림 없음 |
 | 실제 Codex 0.152.0 | 설정된 모델의 CLI 버전 미지원 API 오류를 `error`로 분류; 성공으로 오판하지 않음 |
@@ -40,7 +40,7 @@ Codex 복구는 `thread/resume(excludeTurns: true)` 이후 `thread/turns/list`�
 | Windows gate 강제 종료 | 실제 자식 프로세스가 gate 핸들을 가진 동안 다른 진입 거부, 강제 종료 후 즉시 재획득. 이전 버전의 닫힌 gate 파일도 회수하고 살아 있는 핸들은 배제 |
 | 큰 Codex 이력·복구 경합 | 합성 600턴/2 MiB 이상 저장 이력을 페이지별로 재개, 최근 512키 유지, 20 KiB 결과 원문 조회, 미확정 시작 요청 대응, 오래된 연결 응답 배제·조회 예산 초과 처리 검증 |
 | Windows toast pipe | 실제 named pipe에 SnoreToast 형식의 합성 `action=clicked` callback을 전송해 분할 UTF-16·중복 클릭·helper 종료 경합·잘못된 action·8 KiB 상한·재등록 검증. 클릭 후 해당 알림 정지·창 활성화 전달과 HWND 폐쇄/PID·실행 파일 변경 거부도 검증. 제어된 helper 경계 사용이며 시각 클릭 증거와 구분 |
-| Native toast smoke | 실제 SnoreToast 앱 ID 등록·토스트 전달 호출에 오류 진단 없음. 실제 시각 표시와 클릭은 관측하지 않았으므로 성공 판정에서 제외 |
+| Native toast smoke | 2026-10-06에 실제 토스트 표시·마우스 클릭·콜백 1회·명시한 실제 VS Code HWND의 전경 활성화 확인. 아래 추가 검증 참조. 실행 중인 확장 자동 바인딩과 알림 센터 클릭은 이 실험 범위 밖 |
 | Win32 native ABI | 실제 user32/kernel32 로딩, 전경 핸들 조회, FLASHWINFO x64 32byte 확인 |
 | 10만 턴 / 8세션 부하 | GC 후 감지 상태 heap 증가 606,496 bytes. 진단 100개·종료 키 세션별 512개 이하·활성 턴 0. 이 수치는 SDK/런타임 자식 프로세스 사용량을 포함하지 않음 |
 | 자동 라우터 10만 턴 / 8연결 부하 | GC 후 기준 대비 유지 heap +361,536 bytes(약 0.35 MiB), 파서 버퍼 합계 64 KiB, 활성 턴 0. 추가 런타임 프로세스·폴링 타이머 0. 워밍업 대비 전체 프로브 RSS +114 MiB이며 위 heap 수치는 전체 메모리 증가가 아님. 합성 데이터 생성·전송과 fixture 핸들 비용을 포함하며 자식 프로세스 메모리는 제외 |
@@ -50,6 +50,12 @@ Codex 복구는 `thread/resume(excludeTurns: true)` 이후 `thread/turns/list`�
 실제 런타임 이벤트에서 가져온 fixture는 `tests/fixtures/codex-*.json`, `claude-auth-error.json`, `claude-success.json`, `claude-turn-limit.json`, `claude-input-contracts.json`이다. Codex question·approval·permissions·cancel·usage-limit도 실제 수신 이벤트다. 세션·턴 식별자 또는 임시 파일 경로를 치환했으며, stderr·계정 설정·인증 정보와 reasoning 항목은 포함하지 않는다. Claude 취소는 실제 SDK interrupt 응답으로 확인했고, 존재하지 않는 취소 result를 만들어 저장하지 않았다. 다른 상태·대형 메시지·동시 실행 입력은 합성 fixture임을 테스트 파일에서 구분한다.
 
 토스트 클릭 수정에서는 기존 테스트의 `activated` 입력을 실제 SnoreToast 형식의 `clicked`로 바꾸자 클릭 timeout이 발생하는 것을 먼저 확인했다. native action 인식과 창 활성화 호출을 연결한 뒤 회귀 테스트가 통과했다. 최소화 여부에 따른 복원 호출과 전경 전환 재시도 후 입력 큐 해제는 FFI 경계를 대체해 검증했으며, 실제 데스크톱 포커스 성공으로 집계하지 않는다.
+
+2026-10-06 추가 진단에서는 실제 토스트 클릭 시 SnoreToast가 종료 코드 0을 반환하지만 파이프의 `clicked` 메시지는 오지 않는 현상을 재현했다. 제품은 파이프 메시지만 처리하고 종료 250ms 뒤 수신 연결을 닫아 창 활성화 호출이 누락됐다. 이제 파이프 응답을 기다린 뒤, 데이터가 전혀 없고 종료 코드가 0인 경우 Windows의 `ToastNotifier.Setting`이 Enabled인지 확인해 클릭을 한 번 전달한다. 숨김·시간 초과·사용자 취소·프로세스 종료 신호·Windows 알림 차단·상태 조회 실패는 클릭으로 처리하지 않는다. 늦은 파이프 클릭과 중복되지 않으며, 대기 중 알림 교체·설정 해제·확장 종료 시 취소한다.
+
+창 활성화는 HWND·PID·실행 파일·알림 소유권을 재검증하고 실제 전경 창을 확인한다. OS가 전환을 거부하거나 최소화 복원이 아직 반영되지 않았으면 최대 850ms 동안 총 4회 시도한다. 새 사용자 입력, 알림 비활성화, 대상 창 소멸, 새 활성화 요청, 확장 종료는 재시도를 중단한다. 실패한 전경 전환을 성공으로 집계하지 않는다.
+
+수정 후 2026-10-06 01:58 KST에 실제 SnoreToast를 표시하고 Windows 마우스 입력으로 클릭했다. 제품의 `WindowsToast` → `WindowIdentity.activateWithRetry` 경로에서 콜백 1회, 실제 전경 HWND `853872` → 대상 Job-Finish HWND `1444962`, `activated: true`, 진단 오류 없음으로 확인했다. 원자료는 `test-artifacts/fixed-1791219492316.json`에 있다. 별도 진단 프로세스에서 명시한 실제 HWND를 사용했으며, 실행 중인 확장의 자동 HWND 바인딩·최소화 복원·알림 센터 클릭을 모두 실측했다는 뜻은 아니다. 설치된 확장은 이 검증으로 교체하지 않았다.
 
 ## 재실행
 
@@ -71,6 +77,8 @@ npm run test:live:codex-input -- permissions
 npm run test:live:codex-history
 npm run package
 npm run test:package
+# 실제 알림을 클릭하고 명시한 VS Code 창의 전경 전환을 검증(현재 HWND로 변경)
+npm run test:toast -- --activate-hwnd 1444962 --expect-click
 ```
 
 `test:extension`과 `test:windows`는 임시 디렉터리의 VS Code 프로필을 사용한다. VS Code 테스트 인스턴스 격리 때문에 `test:windows`는 별도 A/B 프로필과 공유 소유권 저장소를 사용한다(테스트 모드에서만 storage override 허용). 같은 폴더를 가리키는 A/B workspace를 열며 테스트 창의 포커스를 전환하려고 한다. Windows가 포커스 전환을 거부하면 native 시각 검증을 `SKIPPED`로 기록하며 flash 성공으로 집계하지 않는다.
@@ -87,7 +95,7 @@ npm run test:package
 
 ## 남은 인수 확인 및 제약
 
-- 기존 확장 자동 감지는 공개 vendor 구독 API가 아닌 Node의 내부 `ChildProcess.prototype.spawn` 및 `_getActiveHandles()`에 의존한다. 같은 Extension Host의 stdio 프로세스만 관찰하며, 실행 인수·확장 경로가 바뀌면 진단 후 관찰을 중단할 수 있다. 파싱 실패는 관찰자만 해제하고 원래 프로세스·입출력은 유지한다. 현재 대화의 실제 Windows 토스트 시각 표시는 사용자 확인이 필요하다.
+- 기존 확장 자동 감지는 공개 vendor 구독 API가 아닌 Node의 내부 `ChildProcess.prototype.spawn` 및 `_getActiveHandles()`에 의존한다. 같은 Extension Host의 stdio 프로세스만 관찰하며, 실행 인수·확장 경로가 바뀌면 진단 후 관찰을 중단할 수 있다. 파싱 실패는 관찰자만 해제하고 원래 프로세스·입출력은 유지한다.
 - 자동 감지 상태는 메모리에만 보관한다. 켠 직후 이미 실행 중인 턴의 실제 종료 통지는 수신할 수 있지만, 꺼져 있는 동안의 결과와 닫힌 연결의 결과는 다시 조회하지 않는다. Codex 임시·하위 에이전트 thread는 관측한 메타데이터를 기준으로 제외한다. 연결 최대 16개, 연결별 세션 최대 32개, 파서 버퍼는 방향별 1 MiB로 제한한다.
 
 - Claude의 실제 rate-limit advisory는 `allowed`였으며 quota 오류로 오판하지 않았다. 계정 한도 오류의 실제 증거는 Codex usageLimitExceeded로 확보했다. Claude 계정 quota 오류는 별도 실측하지 않았고, `error_max_turns`를 계정 quota로 분류하지 않는다.
@@ -96,7 +104,7 @@ npm run test:package
 - Codex는 전체 이력 대신 페이지별 조회를 사용한다. 단일 항목/페이지가 1 MiB를 넘거나 64페이지 조회 예산을 초과하면 원문 조회가 실패하거나 미확정 복구 상태를 유지할 수 있다. 최근 512턴보다 오래된 미확정 턴은 자동으로 새 실행과 연결하지 않는다.
 - 소유권 lock 본문 자체가 손상되면 소유자를 확인할 수 없어 연결을 거부한다. Windows gate 핸들은 프로세스 종료 시 자동 회수하지만 손상된 lock 기록을 임의로 덮어쓰지 않는다.
 - 토스트 클릭 callback은 살아 있는 전달 프로세스/pipe 동안만 지원한다(최대 30초). 늦은 알림 센터 클릭과 확장 종료 후 재활성화는 별도 기능이다.
-- 토스트 클릭 시 `SetForegroundWindow`를 호출하고, 거부되면 전경 스레드의 입력 큐를 잠시 연결해 재시도한 뒤 항상 해제한다. 최소화 복원은 `ShowWindowAsync(SW_RESTORE)`를 사용한다. 실제 OS 토스트를 마우스로 클릭한 뒤 올바른 창이 복원·활성화되는 시각 결과는 직접 확인해야 한다.
+- 토스트 클릭 시 `SetForegroundWindow`를 호출하고, 거부되면 전경 스레드의 입력 큐를 잠시 연결해 재시도한 뒤 항상 해제한다. 최소화 복원은 `ShowWindowAsync(SW_RESTORE)`를 사용한다. 현재 보이는 실제 창의 클릭 후 활성화는 위 추가 검증에서 확인했으며, 최소화 복원과 모든 Windows 전경 제한 조건의 성공을 보장하지 않는다.
 - Windows x64 VSIX를 제공한다. 원격 workspace, 브라우저 host, ARM64/x86 패키지는 이번 검증 범위 밖이다.
 
 ## 확인한 계약

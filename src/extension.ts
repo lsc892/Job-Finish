@@ -58,11 +58,9 @@ class Application {
     this.notifications = new Notifications({
       enabled: () => this.config('enabled', true),
       focused: () => vscode.window.state.focused,
-      owns: signal => signal.source === 'verifiedIntegration' ? this.observer.owns(signal) : this.entries.get(signal.sessionId)?.lease.valid() === true,
+      owns: signal => this.owns(signal),
       stopFlash: id => this.flash?.stop(id),
-      activate: () => {
-        if (!this.identity?.activate()) this.diagnostics.add('Toast click could not activate this window: no valid HWND binding or Windows refused foreground activation.');
-      },
+      activate: signal => { void this.activateWindow(signal); },
       flash: signal => {
         const binding = this.identity?.valid();
         if (this.config('flash', true) && binding) this.flash?.start(binding, signal.notificationId, this.config('flashMode', 'manual'), this.config('flashTimeoutSeconds', 300) * 1000);
@@ -89,6 +87,17 @@ class Application {
     } : {}),
   }; }
   private config<T>(key: string, fallback: T): T { return vscode.workspace.getConfiguration('jobFinish').get<T>(key, fallback); }
+  private owns(signal: Signal): boolean {
+    return signal.source === 'verifiedIntegration' ? this.observer.owns(signal) : this.entries.get(signal.sessionId)?.lease.valid() === true;
+  }
+  private async activateWindow(signal: Signal): Promise<void> {
+    const allowed = () => !this.disposed && this.config('enabled', true) && this.owns(signal);
+    try {
+      if (!await this.identity?.activateWithRetry(allowed) && allowed()) {
+        this.diagnostics.add('Toast click could not activate this window: missing/invalid HWND, newer user input, or Windows refused foreground activation after bounded retries.');
+      }
+    } catch (error) { this.diagnostics.add(error); }
+  }
   private agentRoots(): AgentRoot[] {
     if (this.context.extensionMode === vscode.ExtensionMode.Test && process.env.JOB_FINISH_TEST_AGENT_ROOT) {
       return ['codex', 'claude'].map(provider => ({ provider: provider as Provider, path: process.env.JOB_FINISH_TEST_AGENT_ROOT! }));
@@ -99,7 +108,7 @@ class Application {
   }
   private configureNotifications(): void {
     if (this.config('enabled', true)) this.observer.start();
-    else { this.observer.stop(); this.flash?.stop(); this.toast.stop(); }
+    else { this.observer.stop(); this.flash?.stop(); this.toast.stop(); this.identity?.cancelActivation(); }
     if (!this.config('toast', true)) this.toast.stop();
     if (!this.config('flash', true)) this.flash?.stop();
     this.updateStatus();
