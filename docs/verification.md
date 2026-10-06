@@ -2,6 +2,18 @@
 
 검증일: 2026-10-05, 토스트 클릭 추가 검증 2026-10-06 (Asia/Seoul). 원래 인수 기준은 [requirements-and-verification.md](requirements-and-verification.md)에 유지한다. 이 문서는 구현된 경로와 확인한 증거를 구분한다. 모든 실제 런타임·Windows 시각 검증이 완료되었다고 주장하지 않는다.
 
+2026-10-06 실제 Extension Host의 toast 클릭 재현에서는 기존 수정 후에도 실패가 남는 것을 확인했다. 이전 C#의 protocol 활성화·알림 셸 처리와 현재 경로의 차이, HWND 미연결 조건과 알림 셸 전경 유지 조건은 [원인 비교 보고서](ToastActivationInvestigation.md)에 기록했다. 아래 별도 프로세스의 성공 실험은 당시 확인한 범위로 보존하며, 이 재현의 해결 증거로 사용하지 않는다.
+
+현재 구현은 확장의 메모리 observe와 UUID/HWND 관리를 유지하고 C# WinRT toast·protocol 클릭·전경 활성화로 책임을 분리했다. SnoreToast와 종료 코드 클릭 추정, Extension Host의 포커스 재시도 코드는 제거했다. 등록/전송 분리 후 `npm run check`의 95개 테스트·타입 검사·빌드가 통과했다. `npm run test:native`는 컴파일된 C# 실행 파일과 실제 pipe의 미연결 HWND·무효 HWND·소유권 거부뿐 아니라 격리 폴더에서 바로가기 원본 백업·이관·반복 등록·다른 앱 보존을 검사한다. 포커스 통지가 실제 HWND 전환보다 먼저 오는 경우와 초기 stale focus 상태도 회귀 테스트로 검사한다.
+
+등록은 초기화 시 `--register`로 먼저 완료하고 전송은 `--show`로 분리한다. 실제 사용자 시작 메뉴의 이전 바로가기가 백업·제거되고 새 stub CLSID의 바로가기 하나로 정리된 것을 확인했다. 이번 단독 toast와 격리 Extension Host의 합성 App Server 완료 건 모두 `toast.submitted`·`toast.history.confirmed`가 기록됐고 native protocol 클릭도 수신했다. 이력 확인은 배너 표시 성공을 의미하지 않는다. HWND 없는 단독 테스트의 클릭은 의도대로 `missing-binding`을 반환하므로 이를 창 활성화 성공으로 집계하지 않는다.
+
+등록 변경 후 클릭 검사에서는 최소화 복원·최대화 유지가 성공한 건과 `ShellExperienceHost`가 전경에 남아 `foreground-refused`가 발생한 건이 함께 있었다. 다른 UI 검사 없이 순차 실행한 protocol URI 검사도 일반 창·최소화는 성공했지만 최대화에서 한 번 실패했다. 따라서 팝업 전달과 등록 이관의 확인을 클릭 후 전경 전환의 완전한 해결로 확대하지 않는다. 원자료는 `test-artifacts/native-toast-registration-migration.json`, `toast-routing-registration-mouse.json`, `toast-protocol-routing.json`에 보존한다.
+
+`foreground-refused`는 Windows가 반환한 오류 코드가 아니라, 활성화 처리 후 60ms 뒤의 전경 HWND가 목표와 다를 때 helper가 붙이는 결과 이름이다. 현재 기록만으로 API 요청 거부·전환 후 포커스 재탈취·판정 시점 지연을 구분할 수 없다.
+
+실제 생성된 toast의 protocol URI를 실행한 격리 A/B 창에서 C#의 실제 전경 전환·최소화 복원·최대화 유지를 확인했다(`test-artifacts/toast-protocol-routing.json`). 당시 HWND는 실제 포커스로 관측했고, 최종 관측 시점 수정 후에는 테스트가 수동 observe 호출 없이 자동 바인딩을 확인하도록 변경했다. 후속 실행에서는 Windows 이력에서 새 toast를 찾지 못해 protocol 검증을 완료하지 못한 경우도 있다. UI Automation으로 실제 토스트 마우스 클릭은 확인하지 못했으므로, 사용자 설치 환경의 클릭 해결까지 완료했다고 집계하지 않는다.
+
 ## 구현
 
 | 구성 | 파일 / 동작 |
@@ -14,7 +26,7 @@
 | 소유권 | `src/core/ownership.ts`, `src/windows/gate.ts` — SHA-256 키, wx lock, PID 생존 확인, token 검증, 다른 runtime의 같은 저장 세션도 별도 lock으로 배제. Windows gate는 공유를 금지한 native 파일 핸들과 delete-on-close로 중단 시 자동 정리 |
 | 자동 감지 | `src/runtime/observe.ts`, `src/runtime/event-router.ts` — 같은 Extension Host의 기존/새 Codex·Claude stdio 연결 관찰, 창별 이벤트 라우팅, 기본 활성화와 즉시 설정 전환. 추가 런타임/모델 호출·폴링·훅 없음 |
 | 알림 | `src/core/notifications.ts` — 전체 활성화 설정·창 포커스·소유권 검사, 결과 20개·16 KiB, toast 180자 |
-| Windows | `src/windows/*` — Koffi Win32 ABI, 안정된 포커스 관측, HWND/PID/실행 파일 검증, 500ms manual 또는 OS flash, 5분 만료, SnoreToast 등록·전송·native `clicked` 처리, 클릭 시 검증된 창 활성화·최소화 복원 |
+| Windows | `src/windows/*` — Koffi로 포커스 관측·HWND/PID/실행 파일 검증·flash. `tools/windows-toast/*` — C# WinRT toast·protocol 클릭·원래 확장의 pipe 승인·실제 전경 확인·최소화 복원·최대화 유지. 클릭 유효기간 5분 |
 
 세션 상태는 최대 32개 활성/미확정 턴, 최근 종료 키 512개, 진단 100개를 유지한다. 활성 연결·세션 수도 설정값으로 제한한다. 미관측 턴의 종료는 오래된 키가 제거되었더라도 새 알림으로 만들지 않는다. 체크포인트를 알림 전달 전에 기록하므로 충돌·재시작 중 중복을 줄이지만, 기록 직후 프로세스가 죽으면 알림이 누락될 수 있다. 무제한 exactly-once 전달을 보장하지 않는다.
 
@@ -28,7 +40,7 @@ Codex 복구는 `thread/resume(excludeTurns: true)` 이후 `thread/turns/list`�
 
 | 검증 | 결과 |
 | --- | --- |
-| 타입 검사·테스트·빌드 | 2026-10-06에 `npm run typecheck`, `npm test`(97개), `npm run build` 통과. 단위·stdio 연결·SDK 경계·실제 이벤트·Windows pipe·클릭 종료 신호·포커스 재시도 검증 |
+| 타입 검사·테스트·빌드 | 등록/전송 분리 후 `npm run check` 통과(95개). 단위·stdio 연결·SDK 경계·실제 이벤트·UTF-8 pipe·ID 대응·소유권과 설정·등록 대기 중 포커스/취소·실패 후 재등록·동시 요청·진단 없는 종료 거부 검증 |
 | 기존 확장 이벤트 라우팅 | 실제 Codex·Claude 이벤트 fixture와 합성 자식 프로세스의 실제 stdio로 검증. 기존/새 연결 감지, 원본 바이트 보존, 설정 전환, 중복 결과·소유 실행 제외, 파싱 실패 시 원본 프로세스 유지, 프로세스 종료 뒤 남은 stdout 수신 통과 |
 | 실제 Codex 0.160.0 | 정상 완료, 계획 모드 질문 답변, 명령 승인 거절, 추가 권한 승인 거절, 질문 대기 중 취소 통과. 실제 usageLimitExceeded 오류를 성공과 구분. 완료 세션의 페이지별 원문 조회와 재연결 뒤 과거 결과 재알림 없음 |
 | 실제 Codex 0.152.0 | 설정된 모델의 CLI 버전 미지원 API 오류를 `error`로 분류; 성공으로 오판하지 않음 |
@@ -39,15 +51,21 @@ Codex 복구는 `thread/resume(excludeTurns: true)` 이후 `thread/turns/list`�
 | 창 reload·강제 종료 복구 | 위 동일 프로필에서 A 창 reload 후 새 UUID·연결 ID, 관측 중인 턴 복구·취소 확인. 이어 해당 Extension Host PID를 강제 종료하고 자동 재시작 후 죽은 소유자 회수·새 UUID·중복 없는 상태 복구 통과. 런타임은 이력을 보존하는 stdio fixture |
 | Windows gate 강제 종료 | 실제 자식 프로세스가 gate 핸들을 가진 동안 다른 진입 거부, 강제 종료 후 즉시 재획득. 이전 버전의 닫힌 gate 파일도 회수하고 살아 있는 핸들은 배제 |
 | 큰 Codex 이력·복구 경합 | 합성 600턴/2 MiB 이상 저장 이력을 페이지별로 재개, 최근 512키 유지, 20 KiB 결과 원문 조회, 미확정 시작 요청 대응, 오래된 연결 응답 배제·조회 예산 초과 처리 검증 |
-| Windows toast pipe | 실제 named pipe에 SnoreToast 형식의 합성 `action=clicked` callback을 전송해 분할 UTF-16·중복 클릭·helper 종료 경합·잘못된 action·8 KiB 상한·재등록 검증. 클릭 후 해당 알림 정지·창 활성화 전달과 HWND 폐쇄/PID·실행 파일 변경 거부도 검증. 제어된 helper 경계 사용이며 시각 클릭 증거와 구분 |
-| Native toast smoke | 2026-10-06에 실제 토스트 표시·마우스 클릭·콜백 1회·명시한 실제 VS Code HWND의 전경 활성화 확인. 아래 추가 검증 참조. 실행 중인 확장 자동 바인딩과 알림 센터 클릭은 이 실험 범위 밖 |
+| Windows toast pipe | 실제 named pipe로 UTF-8 분할·중복 클릭·sender 종료 후 승인·ID 불일치·미승인 결과·설정/소유권 해제·8 KiB 상한·교체/종료를 검증. 전송 프로세스 종료를 클릭으로 집계하지 않음 |
+| 컴파일된 C# 클릭 경로 | `npm run test:native` 통과. 실제 실행 파일 → 실제 pipe 승인 → HWND 미연결/무효 및 소유권 거부 결과 확인. 이 검증은 전경 창을 변경하지 않음 |
+| C# 실제 전경 전환 | `node scripts/toast-routing.mjs --bound-only --protocol`에서 세 조건 모두 성공한 실행도 있었으나, 등록 변경 후 순차 실행에서는 일반 창·최소화 성공 및 최대화 실패를 확인. 실제 등록된 toast의 URI 실행이며 마우스 클릭 검증과 구분. 전체 통과로 집계하지 않음 |
+| 이전 SnoreToast smoke | 2026-10-06의 별도 프로세스와 명시적 HWND 실험. 아래 과거 기록 참조. 현재 C# 경로의 실제 클릭 증거로 사용하지 않음 |
 | Win32 native ABI | 실제 user32/kernel32 로딩, 전경 핸들 조회, FLASHWINFO x64 32byte 확인 |
 | 10만 턴 / 8세션 부하 | GC 후 감지 상태 heap 증가 606,496 bytes. 진단 100개·종료 키 세션별 512개 이하·활성 턴 0. 이 수치는 SDK/런타임 자식 프로세스 사용량을 포함하지 않음 |
 | 자동 라우터 10만 턴 / 8연결 부하 | GC 후 기준 대비 유지 heap +361,536 bytes(약 0.35 MiB), 파서 버퍼 합계 64 KiB, 활성 턴 0. 추가 런타임 프로세스·폴링 타이머 0. 워밍업 대비 전체 프로브 RSS +114 MiB이며 위 heap 수치는 전체 메모리 증가가 아님. 합성 데이터 생성·전송과 fixture 핸들 비용을 포함하며 자식 프로세스 메모리는 제외 |
-| 의존성 | `npm audit` 취약점 0개. node-notifier가 가져오는 uuid는 11.1.1 이상으로 override |
-| VSIX 패키지 검증 | 임시 사용자 프로필에 설치 성공. 패키지 안의 Koffi native 로드·Claude SDK import·SnoreToast 및 Claude 실행 파일 포함 여부 확인. 이 검증은 사용자 확장 목록을 변경하지 않음 |
+| 의존성 | `npm audit --omit=dev` 취약점 0개. node-notifier와 해당 uuid override 제거 |
+| VSIX 패키지 검증 | C# helper 포함 Windows x64 VSIX 생성. `npm run test:package`에서 격리 프로필 설치·Koffi native 로드·Claude SDK import·C# helper 실제 실행 통과. 사용자 프로필의 확장은 변경하지 않음 |
 
 실제 런타임 이벤트에서 가져온 fixture는 `tests/fixtures/codex-*.json`, `claude-auth-error.json`, `claude-success.json`, `claude-turn-limit.json`, `claude-input-contracts.json`이다. Codex question·approval·permissions·cancel·usage-limit도 실제 수신 이벤트다. 세션·턴 식별자 또는 임시 파일 경로를 치환했으며, stderr·계정 설정·인증 정보와 reasoning 항목은 포함하지 않는다. Claude 취소는 실제 SDK interrupt 응답으로 확인했고, 존재하지 않는 취소 result를 만들어 저장하지 않았다. 다른 상태·대형 메시지·동시 실행 입력은 합성 fixture임을 테스트 파일에서 구분한다.
+
+### 이전 SnoreToast 수정 검증 기록
+
+아래는 이전 구현을 검증했던 기록이다. 현재 C# 구현의 완료 증거와 구분한다.
 
 토스트 클릭 수정에서는 기존 테스트의 `activated` 입력을 실제 SnoreToast 형식의 `clicked`로 바꾸자 클릭 timeout이 발생하는 것을 먼저 확인했다. native action 인식과 창 활성화 호출을 연결한 뒤 회귀 테스트가 통과했다. 최소화 여부에 따른 복원 호출과 전경 전환 재시도 후 입력 큐 해제는 FFI 경계를 대체해 검증했으며, 실제 데스크톱 포커스 성공으로 집계하지 않는다.
 
@@ -62,6 +80,10 @@ Codex 복구는 `thread/resume(excludeTurns: true)` 이후 `thread/turns/list`�
 ```powershell
 npm ci
 npm run check
+npm run test:native
+node scripts/toast-routing.mjs --bound-only --protocol
+# 실제 토스트 UI 클릭 검증; 찾지 못하면 실패를 기록
+node scripts/toast-routing.mjs --bound-only --debug
 npm run test:load
 npm run test:router-load
 npm run test:extension
@@ -103,8 +125,8 @@ npm run test:toast -- --activate-hwnd 1444962 --expect-click
 - SDK는 끊긴 Claude 실행의 종료를 검증하는 API 계약이 확인되지 않아 `unknown`을 보존한다. 기록 조회의 일반 assistant 응답을 성공으로 대체하지 않는다.
 - Codex는 전체 이력 대신 페이지별 조회를 사용한다. 단일 항목/페이지가 1 MiB를 넘거나 64페이지 조회 예산을 초과하면 원문 조회가 실패하거나 미확정 복구 상태를 유지할 수 있다. 최근 512턴보다 오래된 미확정 턴은 자동으로 새 실행과 연결하지 않는다.
 - 소유권 lock 본문 자체가 손상되면 소유자를 확인할 수 없어 연결을 거부한다. Windows gate 핸들은 프로세스 종료 시 자동 회수하지만 손상된 lock 기록을 임의로 덮어쓰지 않는다.
-- 토스트 클릭 callback은 살아 있는 전달 프로세스/pipe 동안만 지원한다(최대 30초). 늦은 알림 센터 클릭과 확장 종료 후 재활성화는 별도 기능이다.
-- 토스트 클릭 시 `SetForegroundWindow`를 호출하고, 거부되면 전경 스레드의 입력 큐를 잠시 연결해 재시도한 뒤 항상 해제한다. 최소화 복원은 `ShowWindowAsync(SW_RESTORE)`를 사용한다. 현재 보이는 실제 창의 클릭 후 활성화는 위 추가 검증에서 확인했으며, 최소화 복원과 모든 Windows 전경 제한 조건의 성공을 보장하지 않는다.
+- 토스트 클릭은 전송 프로세스가 종료돼도 원래 확장의 승인 pipe가 유지되는 5분 동안 처리한다. 알림 교체·설정 해제·확장 종료 후에는 거부한다.
+- C# protocol 프로세스가 전달받은 HWND를 재검증하고 알림 셸 닫기·입력 스레드 연결·Alt 입력·최소화 복원 후 전경 활성화를 한 번 시도한다. 스레드 연결은 항상 해제하고 실제 전경 HWND로 성공을 판정한다. 모든 Windows 전경 제한 조건의 성공을 보장하지 않는다.
 - Windows x64 VSIX를 제공한다. 원격 workspace, 브라우저 host, ARM64/x86 패키지는 이번 검증 범위 밖이다.
 
 ## 확인한 계약

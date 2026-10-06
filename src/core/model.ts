@@ -34,6 +34,14 @@ export const isTerminal = (s: Status): s is TerminalStatus => s === 'completed' 
 
 export class Diagnostics {
   readonly entries: { at: string; message: string }[] = [];
+  readonly events: { at: string; event: string; [key: string]: unknown }[] = [];
+  constructor(private log?: (entry: { at: string; event: string; [key: string]: unknown }) => void) {}
+  trace(event: string, fields: Record<string, unknown> = {}): void {
+    const entry = { ...fields, at: new Date().toISOString(), event };
+    this.events.push(entry);
+    if (this.events.length > LIMITS.diagnostics) this.events.shift();
+    this.log?.(entry);
+  }
   add(message: unknown): void {
     this.entries.push({ at: new Date().toISOString(), message: boundedText(String(message), 2048).text });
     if (this.entries.length > LIMITS.diagnostics) this.entries.shift();

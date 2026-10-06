@@ -32,6 +32,7 @@
     "test:profile": "node scripts/profile-host.mjs",
     "test:package": "node scripts/verify-package.mjs",
     "test:toast": "tsx scripts/native-toast.ts",
+    "test:native": "node scripts/native-toast-contract.mjs",
     "vscode:prepublish": "npm run build",
     "package": "vsce package --target win32-x64 --out job-finish-win32-x64.vsix"
   },
@@ -70,13 +71,10 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.289",
-    "koffi": "3.3.2",
-    "node-notifier": "10.0.1"
+    "koffi": "3.3.2"
   },
-  "overrides": { "node-notifier": { "uuid": "^11.1.1" } },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "@types/node-notifier": "^8.0.5",
     "@types/vscode": "^1.99.0",
     "@vscode/vsce": "4.0.0",
     "esbuild": "^0.25.0",

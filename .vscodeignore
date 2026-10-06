@@ -28,9 +28,6 @@ node_modules/koffi/**/*.c
 node_modules/koffi/**/*.h
 node_modules/koffi/**/*.hh
 node_modules/koffi/**/*.py
-node_modules/node-notifier/vendor/mac.noindex/**
-node_modules/node-notifier/vendor/notifu/**
-node_modules/node-notifier/vendor/snoreToast/snoretoast-x86.exe
 node_modules/**/*.map
 node_modules/**/*.d.ts
 node_modules/**/CHANGELOG*

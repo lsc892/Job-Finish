@@ -1,12 +1,11 @@
 type Koffi = typeof import('koffi', { with: { 'resolution-mode': 'import' } });
 import { resolve } from 'node:path';
+import { Diagnostics } from '../core/model';
 
 export interface NativeWindow { hwnd: bigint; pid: number; title: string; executable: string }
 export interface NativeApi {
   foreground(): bigint;
-  lastInput(): number | undefined;
   inspect(hwnd: bigint): NativeWindow | undefined;
-  activate(hwnd: bigint): boolean;
   flash(hwnd: bigint, invert: boolean): void;
   flashEx(hwnd: bigint, flags: number): void;
 }
@@ -15,13 +14,6 @@ export class Win32 implements NativeApi {
   private readonly user = this.koffi.load('user32.dll');
   private readonly kernel = this.koffi.load('kernel32.dll');
   private readonly getForeground = this.user.func('__stdcall', 'GetForegroundWindow', 'uintptr_t', []);
-  private readonly setForeground = this.user.func('__stdcall', 'SetForegroundWindow', 'int32', ['uintptr_t']);
-  private readonly isIconic = this.user.func('__stdcall', 'IsIconic', 'int32', ['uintptr_t']);
-  private readonly showWindowAsync = this.user.func('__stdcall', 'ShowWindowAsync', 'int32', ['uintptr_t', 'int32']);
-  private readonly attachInput = this.user.func('__stdcall', 'AttachThreadInput', 'int32', ['uint32', 'uint32', 'int32']);
-  private readonly peekMessage = this.user.func('__stdcall', 'PeekMessageW', 'int32', ['void *', 'uintptr_t', 'uint32', 'uint32', 'uint32']);
-  private readonly currentThread = this.kernel.func('__stdcall', 'GetCurrentThreadId', 'uint32', []);
-  private readonly getLastInput = this.user.func('__stdcall', 'GetLastInputInfo', 'int32', ['void *']);
   private readonly isWindow = this.user.func('__stdcall', 'IsWindow', 'int32', ['uintptr_t']);
   private readonly visible = this.user.func('__stdcall', 'IsWindowVisible', 'int32', ['uintptr_t']);
   private readonly getPid = this.user.func('__stdcall', 'GetWindowThreadProcessId', 'uint32', ['uintptr_t', this.koffi.out(this.koffi.pointer('uint32'))]);
@@ -36,26 +28,6 @@ export class Win32 implements NativeApi {
   private readonly flashWindowEx = this.user.func('__stdcall', 'FlashWindowEx', 'int32', [this.koffi.pointer(this.info)]);
   readonly structSize = this.koffi.sizeof(this.info);
   foreground(): bigint { return BigInt(this.getForeground()); }
-  lastInput(): number | undefined {
-    const info = Buffer.alloc(8); info.writeUInt32LE(8);
-    return this.getLastInput(info) ? info.readUInt32LE(4) : undefined;
-  }
-  activate(hwnd: bigint): boolean {
-    if (!hwnd || !this.isWindow(hwnd)) return false;
-    // Restore only minimized windows, preserving a maximized window's layout.
-    if (this.isIconic(hwnd)) this.showWindowAsync(hwnd, 9 /* SW_RESTORE */);
-    if (this.setForeground(hwnd)) return true;
-    if (this.foreground() === hwnd) return true;
-    // The Extension Host has no focused UI thread. On an explicit toast click,
-    // briefly share the foreground input queue, then always detach it.
-    const thread = this.currentThread(); const pid = [0];
-    const foregroundThread = this.getPid(this.foreground(), pid);
-    if (!foregroundThread || foregroundThread === thread) return false;
-    this.peekMessage(Buffer.alloc(64), 0, 0, 0, 0 /* PM_NOREMOVE: create an input queue */);
-    if (!this.attachInput(thread, foregroundThread, 1)) return false;
-    try { return !!this.setForeground(hwnd); }
-    finally { this.attachInput(thread, foregroundThread, 0); }
-  }
   enumerate(includeHidden = false): NativeWindow[] {
     const windows: NativeWindow[] = [];
     const callback = this.koffi.register((hwnd: number | bigint) => { const window = this.inspect(BigInt(hwnd), includeHidden); if (window) windows.push(window); return 1; }, this.koffi.pointer(this.enumCallback));
@@ -83,8 +55,7 @@ export interface WindowBinding extends NativeWindow { windowInstanceId: string; 
 export class WindowIdentity {
   binding?: WindowBinding;
   private epoch = 0;
-  private activation = 0;
-  constructor(readonly windowInstanceId: string, private native: NativeApi, private focused: () => boolean, private codeExecutable: string) {}
+  constructor(readonly windowInstanceId: string, private native: NativeApi, private focused: () => boolean, private codeExecutable: string, private diagnostics?: Diagnostics) {}
   changed(): void { this.epoch++; }
   async observe(settleMs = 400): Promise<boolean> {
     const epoch = ++this.epoch;
@@ -100,6 +71,7 @@ export class WindowIdentity {
     const after = this.native.inspect(hwnd);
     if (!after || after.pid !== before.pid || !this.isCode(after)) return false;
     this.binding = { ...after, windowInstanceId: this.windowInstanceId, verifiedAt: new Date().toISOString(), method: 'focused-observation' };
+    this.diagnostics?.trace('window.bound', { windowInstanceId: this.windowInstanceId, hwnd: hwnd.toString(), pid: after.pid });
     return true;
   }
   valid(): WindowBinding | undefined {
@@ -109,31 +81,6 @@ export class WindowIdentity {
     if (!current || current.pid !== binding.pid || !this.isCode(current)) { this.binding = undefined; return; }
     return binding;
   }
-  activate(): boolean {
-    // Revalidate HWND, PID and executable immediately before changing focus.
-    const binding = this.valid();
-    return !!binding && this.native.activate(binding.hwnd);
-  }
-  async activateWithRetry(stillAllowed: () => boolean = () => true): Promise<boolean> {
-    const activation = ++this.activation;
-    const target = this.valid(); if (!target) return false;
-    const input = this.native.lastInput();
-    // A toast can still own the foreground while its click callback is draining.
-    // Retry briefly after it closes, revalidating both ownership and the HWND.
-    for (const delay of [0, 100, 250, 500]) {
-      if (delay) await new Promise(resolve => setTimeout(resolve, delay));
-      if (activation !== this.activation || !stillAllowed()) return false;
-      const binding = this.valid();
-      if (!binding || binding.hwnd !== target.hwnd || binding.pid !== target.pid) return false;
-      if (this.native.foreground() === target.hwnd) return true;
-      // Do not steal focus back after the user has moved on to another input.
-      if (delay && (input === undefined || this.native.lastInput() !== input)) return false;
-      this.native.activate(target.hwnd);
-      if (this.native.foreground() === target.hwnd) return true;
-    }
-    return false;
-  }
-  cancelActivation(): void { this.activation++; }
-  dispose(): void { this.epoch++; this.cancelActivation(); this.binding = undefined; }
+  dispose(): void { this.epoch++; this.binding = undefined; }
   private isCode(window: NativeWindow): boolean { return resolve(window.executable).toLowerCase() === resolve(this.codeExecutable).toLowerCase(); }
 }

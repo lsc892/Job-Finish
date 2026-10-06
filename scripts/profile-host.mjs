@@ -8,7 +8,8 @@ const manifest = JSON.parse(readFileSync('package.json', 'utf8'));
 writeFileSync(join(harness, 'package.json'), JSON.stringify({ name: 'job-finish-profile-test', publisher: 'job-finish-tests', version: '0.0.1', engines: manifest.engines,
   main: './extension.cjs', activationEvents: ['onStartupFinished'], contributes: manifest.contributes }));
 await build({ entryPoints: ['tests/profile-host.ts'], outfile: join(harness, 'extension.cjs'), platform: 'node', target: 'node22', format: 'cjs', bundle: true,
-  external: ['vscode', 'koffi', 'node-notifier', '@anthropic-ai/claude-agent-sdk'] });
+  external: ['vscode', 'koffi', '@anthropic-ai/claude-agent-sdk'] });
+if (!existsSync(join(harness, 'dist'))) symlinkSync(resolve('dist'), join(harness, 'dist'), 'junction');
 const root = mkdtempSync(join(tmpdir(), 'job-finish-profile-')); const profile = join(root, 'profile');
 const different = process.argv.includes('--different-projects');
 const native = process.argv.includes('--native');

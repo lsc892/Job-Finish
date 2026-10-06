@@ -29,7 +29,7 @@ export function deactivate(): void { active?.dispose(); active = undefined; }
 
 class Application {
   readonly windowInstanceId = randomUUID();
-  private readonly diagnostics = new Diagnostics();
+  private readonly diagnostics = new Diagnostics(entry => this.output.appendLine(JSON.stringify(entry)));
   private readonly entries = new Map<string, Entry>();
   private readonly output = vscode.window.createOutputChannel('Job-Finish');
   private readonly status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
@@ -37,13 +37,14 @@ class Application {
   private native?: Win32;
   private identity?: WindowIdentity;
   private flash?: FlashController;
-  private toast = new WindowsToast(process.execPath, this.diagnostics);
+  private toast: WindowsToast;
   private notifications: Notifications;
   private observer: AgentStreamObserver;
   private disposed = false;
   private opening = 0;
   private readonly busy = new Set<string>();
   constructor(private context: vscode.ExtensionContext) {
+    this.toast = new WindowsToast(WindowsToast.binary(context.extensionPath), this.diagnostics);
     const storage = context.extensionMode === vscode.ExtensionMode.Test && process.env.JOB_FINISH_TEST_SHARED_STORAGE
       ? process.env.JOB_FINISH_TEST_SHARED_STORAGE : context.globalStorageUri.fsPath;
     mkdirSync(storage, { recursive: true });
@@ -52,7 +53,7 @@ class Application {
       this.diagnostics, (provider, id) => this.entries.get(id)?.provider === provider);
     try {
       this.native = new Win32();
-      this.identity = new WindowIdentity(this.windowInstanceId, this.native, () => vscode.window.state.focused, process.execPath);
+      this.identity = new WindowIdentity(this.windowInstanceId, this.native, () => vscode.window.state.focused, process.execPath, this.diagnostics);
       this.flash = new FlashController(this.native, () => vscode.window.state.focused);
     } catch (e) { this.diagnostics.add(`Native flash unavailable: ${e}`); }
     this.notifications = new Notifications({
@@ -60,20 +61,23 @@ class Application {
       focused: () => vscode.window.state.focused,
       owns: signal => this.owns(signal),
       stopFlash: id => this.flash?.stop(id),
-      activate: signal => { void this.activateWindow(signal); },
+      activate: signal => { this.diagnostics.trace('notification.click.handled', { notificationId: signal.notificationId, windowInstanceId: this.windowInstanceId }); },
       flash: signal => {
         const binding = this.identity?.valid();
         if (this.config('flash', true) && binding) this.flash?.start(binding, signal.notificationId, this.config('flashMode', 'manual'), this.config('flashTimeoutSeconds', 300) * 1000);
       },
       toast: async (signal, message, click, allowed) => {
+        const binding = this.identity?.valid();
         if (this.config('toast', true)) await this.toast.show({ notificationId: signal.notificationId, windowInstanceId: this.windowInstanceId,
-          title: `${signal.provider} · ${signal.status} · ${this.windowInstanceId.slice(0, 8)}`, message, appId: WindowsToast.appId, onClick: click }, allowed);
+          title: `${signal.provider} · ${signal.status} · ${this.windowInstanceId.slice(0, 8)}`, message, appId: WindowsToast.appId, onClick: click,
+          target: binding ? { hwnd: binding.hwnd.toString(), pid: binding.pid, executable: binding.executable } : undefined,
+          canActivate: () => !this.disposed && this.config('enabled', true) && this.owns(signal) }, allowed);
       },
     });
   }
   get api() { return {
     identity: () => ({ windowInstanceId: this.windowInstanceId, vscodeSessionId: vscode.env.sessionId, extensionHostPid: process.pid, workspaceUris: vscode.workspace.workspaceFolders?.map(f => f.uri.toString()) ?? [] }),
-    snapshot: () => ({ enabled: this.config('enabled', true), automatic: this.observer.snapshot(), results: this.notifications.results, sessions: [...this.entries.values()].map(e => ({ binding: e.session.binding, state: e.session.checkpoint(), pending: e.session.requests.size })), diagnostics: this.diagnostics.entries, native: this.identity?.binding }),
+    snapshot: () => ({ enabled: this.config('enabled', true), automatic: this.observer.snapshot(), results: this.notifications.results, sessions: [...this.entries.values()].map(e => ({ binding: e.session.binding, state: e.session.checkpoint(), pending: e.session.requests.size })), diagnostics: this.diagnostics.entries, events: this.diagnostics.events, native: this.identity?.binding }),
     // The same product path is available to Extension Host tests without automating prompt UI.
     ...(this.context.extensionMode === vscode.ExtensionMode.Test ? {
       test: {
@@ -83,20 +87,13 @@ class Application {
         release: (sessionId: string) => this.detach(this.entries.get(sessionId)!),
         bind: () => this.identity?.observe(),
         flashId: () => this.flash?.activeNotificationId,
+        unbind: () => { if (this.identity) this.identity.binding = undefined; },
       },
     } : {}),
   }; }
   private config<T>(key: string, fallback: T): T { return vscode.workspace.getConfiguration('jobFinish').get<T>(key, fallback); }
   private owns(signal: Signal): boolean {
     return signal.source === 'verifiedIntegration' ? this.observer.owns(signal) : this.entries.get(signal.sessionId)?.lease.valid() === true;
-  }
-  private async activateWindow(signal: Signal): Promise<void> {
-    const allowed = () => !this.disposed && this.config('enabled', true) && this.owns(signal);
-    try {
-      if (!await this.identity?.activateWithRetry(allowed) && allowed()) {
-        this.diagnostics.add('Toast click could not activate this window: missing/invalid HWND, newer user input, or Windows refused foreground activation after bounded retries.');
-      }
-    } catch (error) { this.diagnostics.add(error); }
   }
   private agentRoots(): AgentRoot[] {
     if (this.context.extensionMode === vscode.ExtensionMode.Test && process.env.JOB_FINISH_TEST_AGENT_ROOT) {
@@ -107,8 +104,9 @@ class Application {
     });
   }
   private configureNotifications(): void {
+    if (this.config('enabled', true) && this.config('toast', true)) void this.toast.initialize().catch(error => this.diagnostics.add(error));
     if (this.config('enabled', true)) this.observer.start();
-    else { this.observer.stop(); this.flash?.stop(); this.toast.stop(); this.identity?.cancelActivation(); }
+    else { this.observer.stop(); this.flash?.stop(); this.toast.stop(); }
     if (!this.config('toast', true)) this.toast.stop();
     if (!this.config('flash', true)) this.flash?.stop();
     this.updateStatus();
@@ -134,6 +132,7 @@ class Application {
       try { await handler(); } catch (e) { this.report(e); } finally { this.updateStatus(); }
     }));
     this.context.subscriptions.push(this.output, this.status, vscode.window.onDidChangeWindowState(state => {
+      this.diagnostics.trace('window.focus', { windowInstanceId: this.windowInstanceId, focused: state.focused, foreground: this.native?.foreground().toString() });
       this.identity?.changed();
       if (state.focused) { this.flash?.stop(); void this.identity?.observe().catch(e => this.diagnostics.add(e)); }
     }), vscode.workspace.onDidChangeConfiguration(event => {
@@ -259,6 +258,8 @@ class Application {
     await vscode.window.showTextDocument(doc, { preview: true });
   }
   private onSignal(signal: Signal): void {
+    this.diagnostics.trace('signal.received', { windowInstanceId: signal.windowInstanceId, notificationId: signal.notificationId,
+      provider: signal.provider, status: signal.status, owned: this.owns(signal), focused: vscode.window.state.focused });
     void this.notifications.deliver(signal).catch(e => this.diagnostics.add(e)); this.updateStatus();
   }
   private updateStatus(): void {
