@@ -82,6 +82,25 @@ test('Toast activation uses the verified window, rejecting missing, closed or re
   }
 });
 
+test('HWND observation waits for the native transition after an early VS Code focus event', async () => {
+  const native = new FakeNative(); native.front = 3n;
+  native.windows.set(3n, { hwnd: 3n, pid: 321, title: 'Other app', executable: 'C:\\Other.exe' });
+  const identity = new WindowIdentity('A', native, () => true, 'C:\\Code.exe');
+  const observed = identity.observe();
+  const transition = setTimeout(() => { native.front = 1n; }, 100);
+  try { assert.equal(await observed, true); assert.equal(identity.binding?.hwnd, 1n); }
+  finally { clearTimeout(transition); identity.dispose(); }
+});
+
+test('An initial stale focus flag cannot bind a previous Code window after focus is lost', async () => {
+  const native = new FakeNative(); let focused = true;
+  const identity = new WindowIdentity('A', native, () => focused, 'C:\\Code.exe');
+  const observed = identity.observe();
+  const transition = setTimeout(() => { focused = false; identity.changed(); }, 100);
+  try { assert.equal(await observed, false); assert.equal(identity.binding, undefined); }
+  finally { clearTimeout(transition); identity.dispose(); }
+});
+
 test('Click stops its flash and activates the originating window only while delivery remains owned and enabled', async () => {
   let enabled = true; let owns = true; let click!: () => void; const calls: string[] = [];
   const notifications = new Notifications({ enabled: () => enabled, focused: () => false, owns: () => owns,

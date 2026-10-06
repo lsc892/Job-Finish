@@ -139,7 +139,8 @@ class Application {
     }), vscode.workspace.onDidChangeConfiguration(event => {
       if (event.affectsConfiguration('jobFinish')) this.configureNotifications();
     }), { dispose: () => this.dispose() });
-    await this.identity?.observe();
+    // Initial Extension Host focus state can precede the first real window-state event.
+    await this.identity?.observe(750);
   }
   private async prompt(): Promise<string | undefined> {
     return vscode.window.showInputBox({ title: 'Job-Finish · Agent task', prompt: 'Run in this workspace. Tool approvals will appear in Answer Pending Request.', ignoreFocusOut: true, validateInput: value => value.trim() ? undefined : 'Enter a task' });

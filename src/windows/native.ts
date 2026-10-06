@@ -86,9 +86,13 @@ export class WindowIdentity {
   private activation = 0;
   constructor(readonly windowInstanceId: string, private native: NativeApi, private focused: () => boolean, private codeExecutable: string) {}
   changed(): void { this.epoch++; }
-  async observe(): Promise<boolean> {
+  async observe(settleMs = 400): Promise<boolean> {
     const epoch = ++this.epoch;
     if (!this.focused()) return false;
+    // VS Code can publish focused=true before Windows changes its foreground HWND.
+    // Settle that event first, then verify one stable native handle; never activate here.
+    await new Promise(resolve => setTimeout(resolve, settleMs));
+    if (epoch !== this.epoch || !this.focused()) return false;
     const hwnd = this.native.foreground(); const before = this.native.inspect(hwnd);
     if (!before || !this.isCode(before)) return false;
     await new Promise(resolve => setTimeout(resolve, 150));
