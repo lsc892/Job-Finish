@@ -4,6 +4,28 @@
 
 완료 감지는 동작했지만, 수정 전 toast 클릭 이후 Windows 창 활성화는 이전 C# 구현과 같은 경로가 아니었다. 아래 비교와 실패 자료는 보존하며, 사용자 지시로 추가한 C# 구현과 검증 범위도 기록한다.
 
+## 2026-10-08 클릭 후 첫 Alt+Tab 이상을 기준으로 재조사
+
+**확인된 실패는 정확한 HWND가 전달된 뒤에도 알림 셸이 전경에 남는 것이다.** 설치본의 15:01:29.435와 15:13:32.218(KST) 클릭은 모두 `toast.click`과 `window.activation.request`까지 도달했다. 대상 HWND `263850`은 PID `20088`의 VS Code 창이고, 결과에 남은 전경 HWND `131934`는 PID `5712`의 `ShellExperienceHost.exe`, 제목 `새 알림`이었다. 실제 Win32 조회로 두 창의 식별을 확인했다. 따라서 이 두 건은 클릭 누락이나 HWND 미연결로 설명되지 않는다.
+
+두 실행에서 확장의 `focused: true` 통지는 활성화 요청 후 164ms·180ms에 도착했지만, 245ms·270ms 뒤의 결과는 여전히 알림 셸 HWND였다. 기존 코드는 `SetForegroundWindow` 결과와 무관하게 연결된 입력 큐에서 `SetActiveWindow`와 `SetFocus`를 호출했다. 이 때문에 VS Code의 내부 포커스 통지 자체를 실제 전경 전환의 증거로 사용할 수 없다.
+
+사용자가 보고한 첫 Alt+Tab 이상과 관련된 구현은 다음과 같다.
+
+- `AttachThreadInput`으로 helper·현재 전경·대상 창의 입력 상태와 포커스를 공유한다. Microsoft는 이 호출이 키 상태를 초기화한다고 명시한다. [AttachThreadInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-attachthreadinput).
+- 연결 중 전역 Alt down/up 입력을 합성하고 대상의 내부 포커스를 강제로 바꾼다. 키 입력 두 개가 짝을 이룬다는 사실만으로 각 창의 메시지 처리와 메뉴 상태까지 보장할 수는 없다.
+- 입력 큐를 공유한 전경 전환은 기존 전경 창의 비활성화 메시지 처리를 동기적으로 기다릴 수 있다. [Microsoft의 입력 큐 동기화 설명](https://devblogs.microsoft.com/oldnewthing/20130607-00/?p=4143/).
+
+이 조합은 전경·내부 포커스·modifier 상태를 동시에 건드리므로, 키를 놓고 다시 Alt+Tab을 하면 정상화되는 증상과 부합한다. **첫 Alt+Tab 이상이 어느 호출에서 발생하는지까지 재현으로 확정한 것은 아니다.** 확인된 전경/포커스 불일치와 문서화된 키 상태 변경을 근거로 원인 후보를 입력 큐 연결과 Alt 합성으로 좁혔다. 현재 조회 시 실행 중인 `JobFinish.Native.exe`는 없어 지속적으로 멈춘 helper도 확인되지 않았다.
+
+### 최소 구현으로 변경
+
+원래 확장의 클릭 승인과 대상 HWND·PID·실행 파일·시작 시각 검증을 유지한다. 활성화는 최소화된 경우의 `ShowWindow(SW_RESTORE)`와 `SetForegroundWindow(hwnd)` 한 번으로 줄였다. 알림 셸 `WM_CLOSE`, 입력 큐 연결, Alt 합성, 대상 내부 `SetActiveWindow`·`SetFocus`, 중복 대상 검증과 복원 후 임의 대기는 제거했다. 일반 창과 최대화 창은 복원 API를 호출하지 않는다.
+
+기존의 60ms 뒤 전경 HWND 확인은 결과 관측에만 사용한다. 재시도는 하지 않으며, `foreground-refused`는 그 시점의 전경 불일치라는 기존 진단 명칭이다. API의 직접 거부와 비동기 전환 지연을 구분한 오류 코드가 아니다.
+
+타입 검사·95개 테스트·C# 빌드와 컴파일된 helper의 실제 pipe 계약 검사가 통과했다. 기존 VS Code 두 창 마우스 재현은 테스트 창 준비 단계에서 시간 초과가 발생했다. 상속된 `VSCODE_*` 환경 변수를 테스트 자식 프로세스에서 제거해도 같은 단계에서 실패했다. 별도의 WinForms 네이티브 probe도 준비 창을 전경으로 만들지 못해 제품 활성화 호출 전에 중단했다. 당시 `SHQueryUserNotificationState`는 성공 HRESULT와 `1 (QUNS_NOT_PRESENT)`을 반환했다. 이는 화면 보호기·잠금·비활성 사용자 세션 중 하나이며 이 값만으로 어느 상태인지 구분할 수 없다([Microsoft 정의](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/ne-shellapi-query_user_notification_state)). probe와 기존 VS Code는 모두 세션 `4`였다. 이 결과들을 toast 클릭이나 최소 구현의 실패로 집계하지 않는다. 자료는 `.generated/native-focus-check/results-final.jsonl`에 보관했다. 임시 helper 등록은 원래 설치본으로 복원했고 테스트 창도 종료했다. 사용자 설치본 적용과 실제 클릭·첫 Alt+Tab 해결 확인은 수행하지 않았다.
+
 ## 2026-10-06 설치 후 팝업 미표시 추가 조사
 
 **확인된 실패 범위는 Windows의 toast 표시 단계다.** 아래 실제 완료 건에서는 observe, 소유권 확인, HWND 전달, C# 실행과 Windows 알림 플랫폼 전달까지 진행됐다. 등록 정보의 전환 누락과 진단의 한계는 확인했으나, 원래 배너가 안 뜬 직접 원인을 하나로 확정하지는 못했다.
