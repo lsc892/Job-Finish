@@ -13,7 +13,7 @@ internal record Request(string NotificationId, string WindowInstanceId, string T
 internal static class Program
 {
     internal static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true };
-    const string AppId = "JobFinish.VSCode";
+    internal const string AppId = "JobFinish.VSCode";
     const string Scheme = "jobfinish-native-focus";
     static readonly object OutputLock = new();
 
@@ -42,6 +42,7 @@ internal static class Program
                 Show(request); return 0;
             }
             if (args.Length == 2 && args[0] == "--uri") return Click(args[1]);
+            if (args.Length >= 1 && args[0] == "--activate") return ComActivator.Run();
             return 2;
         }
         catch (Exception error)
@@ -71,7 +72,9 @@ internal static class Program
                 if (!Equals(command.GetValue(""), value)) { command.SetValue("", value); Registration.ProtocolChanged(); }
             }
             using (var app = Registry.CurrentUser.CreateSubKey($@"Software\Classes\AppUserModelId\{AppId}"))
-            { app.SetValue("DisplayName", "Job-Finish"); app.SetValue("ShowInSettings", 1, RegistryValueKind.DWord); }
+            { app.SetValue("DisplayName", "Job-Finish"); app.SetValue("ShowInSettings", 1, RegistryValueKind.DWord); app.SetValue("CustomActivator", $"{{{Registration.Activator}}}"); }
+            using (var server = Registry.CurrentUser.CreateSubKey($@"Software\Classes\CLSID\{{{Registration.Activator}}}\LocalServer32"))
+            { server.SetValue("", $"\"{executable}\" --activate"); }
             // Shell registration is asynchronous. Retry only the specific not-yet-resolved identity error.
             var deadline = Stopwatch.StartNew();
             NotificationSetting setting;
@@ -101,7 +104,7 @@ internal static class Program
         var activation = request with { Title = "", Message = "" };
         var payload = Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(activation, Json)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
         var xml = new XmlDocument();
-        xml.LoadXml($"<toast activationType=\"protocol\" launch=\"{Scheme}://focus/{payload}\"><visual><binding template=\"ToastGeneric\"><text>{SecurityElement.Escape(request.Title)}</text><text>{SecurityElement.Escape(request.Message)}</text></binding></visual><audio silent=\"true\"/></toast>");
+        xml.LoadXml($"<toast activationType=\"foreground\" launch=\"{payload}\"><visual><binding template=\"ToastGeneric\"><text>{SecurityElement.Escape(request.Title)}</text><text>{SecurityElement.Escape(request.Message)}</text></binding></visual><audio silent=\"true\"/></toast>");
         var notifier = ToastNotificationManager.CreateToastNotifier(AppId);
         if (notifier.Setting != NotificationSetting.Enabled) throw new InvalidOperationException($"Windows notifications disabled: {notifier.Setting}");
         var toast = new ToastNotification(xml) { ExpirationTime = DateTimeOffset.FromUnixTimeSeconds(request.Expires), Tag = request.NotificationId[..Math.Min(16, request.NotificationId.Length)], Group = request.WindowInstanceId[..Math.Min(16, request.WindowInstanceId.Length)] };
@@ -112,7 +115,13 @@ internal static class Program
     {
         var uri = new Uri(uriText);
         if (uri.Scheme != Scheme || uri.Host != "focus" || uriText.Length > 16384) return 2;
-        var payload = uri.AbsolutePath.Trim('/').Replace('-', '+').Replace('_', '/');
+        return ClickPayload(uri.AbsolutePath.Trim('/'));
+    }
+
+    internal static int ClickPayload(string payload)
+    {
+        if (payload.Length > 16384) return 2;
+        payload = payload.Replace('-', '+').Replace('_', '/');
         payload = payload.PadRight((payload.Length + 3) / 4 * 4, '=');
         var request = JsonSerializer.Deserialize<Request>(Convert.FromBase64String(payload), Json) ?? throw new ArgumentException("Invalid activation");
         if (request.AppId != AppId || request.Expires < DateTimeOffset.UtcNow.ToUnixTimeSeconds()

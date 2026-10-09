@@ -4,7 +4,7 @@ using System.Text;
 
 internal static class Registration
 {
-    // Protocol activation needs a stable stub CLSID; no COM server is registered for it.
+    // The shortcut and AUMID registration use this toast callback's CLSID.
     internal static readonly Guid Activator = new("903FBE91-746B-4BB5-84A8-DBAA32C34F42");
     const string ShortcutName = "Job-Finish Native Notifications.lnk";
     static readonly Guid AppProperties = new("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3");

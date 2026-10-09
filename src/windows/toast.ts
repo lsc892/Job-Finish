@@ -11,7 +11,7 @@ export interface ToastRequest {
 }
 export interface ToastProcessPorts { launch(binary: string, args: string[]): ChildProcess }
 const processes: ToastProcessPorts = { launch: (binary, args) => spawn(binary, args, { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }) };
-/** The extension authorizes a click; the native protocol process performs focus itself. */
+/** The extension authorizes a click; the native toast callback activates its HWND. */
 export class WindowsToast {
   static readonly appId = 'JobFinish.VSCode';
   private active?: { child?: ChildProcess; server: Server; sockets: Set<Socket>; timer: NodeJS.Timeout; id: string; cancel?: () => void };
@@ -111,12 +111,12 @@ export class WindowsToast {
               if (!allowed) { socket.end(); return; }
               clicked = true;
               authorizedSocket = socket;
-              this.diagnostics.trace('toast.click', { notificationId: request.notificationId, windowInstanceId: request.windowInstanceId, source: 'native-protocol' });
-              this.diagnostics.trace('window.activation.request', { notificationId: request.notificationId, windowInstanceId: request.windowInstanceId, hwnd: request.target?.hwnd, source: 'native-protocol' });
+              this.diagnostics.trace('toast.click', { notificationId: request.notificationId, windowInstanceId: request.windowInstanceId, source: 'native-toast' });
+              this.diagnostics.trace('window.activation.request', { notificationId: request.notificationId, windowInstanceId: request.windowInstanceId, hwnd: request.target?.hwnd, source: 'native-toast' });
             } else if (event.event === 'window.activation.result' && socket === authorizedSocket && !completed) {
               completed = true;
               this.diagnostics.trace('window.activation.result', { notificationId: request.notificationId, windowInstanceId: request.windowInstanceId,
-                activated: event.activated === true, reason: event.reason, hwnd: event.hwnd, foreground: event.foreground, source: 'native-protocol' });
+                activated: event.activated === true, reason: event.reason, hwnd: event.hwnd, foreground: event.foreground, source: 'native-toast' });
               if (event.activated !== true) this.diagnostics.add(`Native toast activation failed: ${String(event.reason)}`);
               try { request.onClick?.(); } catch (error) { this.diagnostics.add(error); }
               socket.end();
