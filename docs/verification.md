@@ -1,5 +1,7 @@
 # 구현 및 검증 기록
 
+2026-10-09 추가 검증에서는 protocol helper의 실제 `SetForegroundWindow` 거부와 정식 COM toast callback의 전경 전환 성공을 비교했다. 새 알림은 `CustomActivator`·`LocalServer32`와 STA callback으로 처리하며 Alt 합성·입력 스레드 연결·재시도는 사용하지 않는다. 95개 테스트·타입 검사·빌드와 실제 COM/pipe 승인·거부·helper 종료 검사가 통과했다. 제품 helper로 일반·최소화·최대화 창의 실제 callback을 확인했고, 명시적 진단 HWND를 사용한 Job-Finish VS Code 창에서도 브라우저에서 대상 HWND로 전환됐다. 자동 바인딩과 완료 감지 전체의 새 검증으로 확대하지 않는다. 상세 원자료와 한계는 [추가 조사](ToastActivationInvestigation.md)를 따른다. 아래 기록은 당시 검증 범위로 보존한다.
+
 검증일: 2026-10-05, 토스트 클릭 추가 검증 2026-10-06 (Asia/Seoul). 원래 인수 기준은 [requirements-and-verification.md](requirements-and-verification.md)에 유지한다. 이 문서는 구현된 경로와 확인한 증거를 구분한다. 모든 실제 런타임·Windows 시각 검증이 완료되었다고 주장하지 않는다.
 
 2026-10-06 실제 Extension Host의 toast 클릭 재현에서는 기존 수정 후에도 실패가 남는 것을 확인했다. 이전 C#의 protocol 활성화·알림 셸 처리와 현재 경로의 차이, HWND 미연결 조건과 알림 셸 전경 유지 조건은 [원인 비교 보고서](ToastActivationInvestigation.md)에 기록했다. 아래 별도 프로세스의 성공 실험은 당시 확인한 범위로 보존하며, 이 재현의 해결 증거로 사용하지 않는다.

@@ -1,8 +1,25 @@
 # C# hook 시절과 현재 toast 클릭 경로 비교
 
-확인일: 2026-10-06 (Asia/Seoul).
+최초 확인일: 2026-10-06, 추가 확인일: 2026-10-08·2026-10-09 (Asia/Seoul).
 
 완료 감지는 동작했지만, 수정 전 toast 클릭 이후 Windows 창 활성화는 이전 C# 구현과 같은 경로가 아니었다. 아래 비교와 실패 자료는 보존하며, 사용자 지시로 추가한 C# 구현과 검증 범위도 기록한다.
+
+## 2026-10-09 남은 전경 활성화 실패와 COM callback 전환
+
+사용자는 이전 수정 이후 **Alt+Tab은 정상이고 toast 클릭으로 창이 앞으로 나오지 않는 문제만 남았다**고 확인했다. 설치본 helper와 번들의 SHA256은 작업 디렉터리 빌드와 일치했고, 재시작한 Extension Host에서도 실패했다. 15:19:20.246의 클릭은 대상 VS Code HWND `1247302`에 도달했으나 90ms 뒤 전경은 `ShellExperienceHost`의 `새 알림` HWND `262822`였다. 따라서 구버전 미적용이나 HWND 미연결 문제로 설명되지 않는다.
+
+활성 데스크톱(`QUNS_ACCEPTS_NOTIFICATIONS`)의 격리 창에서 실패 원인을 나눠 검사했다.
+
+- 같은 `Focus.Activate`를 창 소유 프로세스에서 직접 실행하면 일반 전환·최소화 복원·최대화 유지가 성공했다.
+- 실제 toast를 화면에서 확인하고 클릭해 실행한 protocol helper는 `SetForegroundWindow`가 즉시 `false`였으며 500ms 뒤에도 알림 셸이 전경이었다. 대상의 `WM_NULL` 응답은 정상이고, 전경의 메뉴·capture 상태는 없었다. 이 실행에서는 클릭 승인 전후 입력 시각도 바뀌지 않았다. 비동기 전환 지연이나 대상의 무응답으로 설명되지 않는다.
+- 임시 진단의 `AllowSetForegroundWindow(self)`는 성공했다. 따라서 helper가 전경 자격을 전혀 받지 못했다고 단정하지 않는다. 대상 PID에 권한을 전달하거나 메시지 큐를 만드는 것만으로도 실패했고, 별도 실행의 소유자 직접 호출은 중간 입력으로 권한이 바뀌어 결정적 비교로 사용하지 않았다.
+- 실제 `INotificationActivationCallback`을 등록한 foreground toast는 같은 HWND 활성화 함수로 전환됐다. callback은 등록한 STA에서 실행됐으며, helper는 처리 후 정상 종료했다. AUMID의 `CustomActivator` 없이 바로가기와 `LocalServer32`만 바꾼 첫 실험에서는 클릭 callback이 호출되지 않았다. AUMID 등록도 연결한 뒤 실제 클릭이 도달했다. 등록 방식은 [Microsoft Toolkit 구현](https://github.com/CommunityToolkit/WindowsCommunityToolkit/blob/main/Microsoft.Toolkit.Uwp.Notifications/Toasts/Compat/ToastNotificationManagerCompat.cs)을 따른다.
+
+제품은 새 toast를 `activationType="foreground"`로 만들고, 고정 CLSID의 `LocalServer32`를 helper의 `--activate`에 연결한다. `ComActivator`의 STA 메시지 루프가 callback을 받아 기존 `ClickPayload`의 만료·pipe 승인·대상 검증을 수행한다. 창 활성화는 최소화 복원과 `SetForegroundWindow` 한 번을 유지한다. Alt 입력·스레드 연결·알림 셸 조작·재시도는 추가하지 않았다. 기존 알림의 유효 기간을 위해 protocol URI 처리는 유지했다.
+
+95개 테스트·타입 검사·C# 빌드와 실제 COM `CoCreateInstance → Activate → pipe → helper 종료` 계약 검사가 통과했다. COM 계약은 미연결·무효 HWND·소유권 거부·잘못된 AppId를 확인하며 전경을 조작하지 않는다. 제품 helper로 생성한 일반·최소화·최대화 테스트 알림의 실제 callback에서 목표 HWND 전환과 입력 포커스, 복원 및 최대화 유지를 500ms까지 확인했다. 자동 마우스 스크립트가 확인하지 못한 실행은 native callback 검증으로만 집계했다. 마지막 최대화 실행의 Alt 메시지 1회는 관측 기간의 입력이며 제품에 합성 입력 API는 없다.
+
+실제 Job-Finish VS Code 창도 명시적 진단 HWND로 검사했다. 16:16:57의 시작 전경은 브라우저 `66554`였고, 16:17:01의 클릭 결과는 대상 `263816`의 `activated: true`, 실제 전경도 `263816`이었다. 진단 오류는 없었다. 이는 제품의 C# helper와 TypeScript 클릭 채널을 검증하며, 진단 스크립트가 HWND를 명시했으므로 자동 완료 감지·자동 바인딩 전체의 새로운 검증으로 확대하지 않는다. 원자료는 `.generated/native-focus-check/results-com-oct9.jsonl`, `results-com-product-*-oct9.jsonl`, `product-vscode.stdout` 및 `.generated/toast-activation-probe/publish/trace-oct9.jsonl`에 보관했다. 임시 Windows 등록은 각 검사 후 복원했다.
 
 ## 2026-10-08 클릭 후 첫 Alt+Tab 이상을 기준으로 재조사
 

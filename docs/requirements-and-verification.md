@@ -122,7 +122,7 @@ VS Code의 포커스 통지는 Windows의 실제 전경 HWND 전환보다 먼저
 
 확장은 같은 Extension Host의 런타임 이벤트를 메모리에서 observe하고, 창 UUID와 관측한 HWND를 유지한다. TypeScript 알림 adapter는 HWND·PID·실행 파일·알림 ID를 C# helper에 UTF-8 JSON으로 전달한다. VSIX에는 런타임을 포함한 `dist/native/JobFinish.Native.exe`를 묶으며, 외부 상주 서비스는 실행하지 않는다.
 
-알림이 활성화된 확장 초기화 때 `--register`를 실행하고 창별로 성공한 등록 Promise를 공유한다. 등록 실패는 진단하고 다음 요청에서 재시도한다. C#은 창 사이의 등록을 mutex로 직렬화하고, 고정 AUMID와 protocol용 stub CLSID를 가진 `Job-Finish Native Notifications.lnk` 하나를 사용한다. 기존 `Job-Finish.lnk`의 AUMID가 일치하면 시작 메뉴 밖 `%LOCALAPPDATA%/Job-Finish/notification-backups`에 원본을 백업한 뒤 제거한다. 다른 앱의 바로가기와 여러 앱이 공유할 수 있는 SnoreToast COM 등록은 제거하지 않는다. 변경된 새 바로가기도 교체 전에 백업하고, 내용이 같으면 다시 쓰지 않는다. Shell 변경 통지 후 WinRT가 앱 ID를 인식하는지 확인하며, 등록 직후의 `0x80070490`에만 최대 5초 재조회한다.
+알림이 활성화된 확장 초기화 때 `--register`를 실행하고 창별로 성공한 등록 Promise를 공유한다. 등록 실패는 진단하고 다음 요청에서 재시도한다. C#은 창 사이의 등록을 mutex로 직렬화하고, 고정 AUMID와 COM toast callback의 CLSID를 가진 `Job-Finish Native Notifications.lnk` 하나를 사용한다. AUMID의 `CustomActivator`와 해당 CLSID의 `LocalServer32`를 helper의 `--activate`에 연결한다. 기존 `Job-Finish.lnk`의 AUMID가 일치하면 시작 메뉴 밖 `%LOCALAPPDATA%/Job-Finish/notification-backups`에 원본을 백업한 뒤 제거한다. 다른 앱의 바로가기와 여러 앱이 공유할 수 있는 SnoreToast COM 등록은 제거하지 않는다. 변경된 새 바로가기도 교체 전에 백업하고, 내용이 같으면 다시 쓰지 않는다. Shell 변경 통지 후 WinRT가 앱 ID를 인식하는지 확인하며, 등록 직후의 `0x80070490`에만 최대 5초 재조회한다.
 
 완료 시에는 등록 완료를 기다리고 포커스·활성화 설정·요청 세대를 다시 검사한 뒤 `--show`로 전송한다. 전송 경로는 바로가기나 protocol을 등록하지 않는다. C#은 WinRT `Failed`를 구독하고 STA 메시지를 처리하며 최대 약 2초 동안 오류 코드·해당 Tag/Group의 Windows 이력·사용자 알림 상태를 관측한 뒤 종료한다. `toast.registration.ready`, `toast.submitted`, `toast.history.confirmed`, `toast.failed`, `toast.observation.complete`를 구분하고 TypeScript는 stdout/stderr가 소진된 `close`에서 결과를 확정한다. 이력 확인이나 정상 종료를 실제 배너 표시 성공으로 표현하지 않으며, 종료 이후 발생한 표시 실패는 이 짧은 관측 범위에 포함되지 않는다.
 
@@ -141,7 +141,7 @@ interface ToastRequest {
 }
 ```
 
-앱 ID `JobFinish.VSCode`를 시작 메뉴 바로가기의 AppUserModelID와 일치시킨다. toast의 `activationType="protocol"`은 별도 `jobfinish-native-focus` handler를 실행한다. C# 클릭 프로세스는 원래 확장의 named pipe에서 알림 ID·창 UUID·현재 소유권·enabled 상태를 확인받고, 전달된 HWND·PID·실행 파일·프로세스 시작 시각을 재검증한다. 그 프로세스가 알림 셸 닫기와 입력 스레드 연결 후 대상 창을 활성화하고 실제 전경 HWND로 결과를 판정한다. 최소화된 창만 복원하며 최대화 상태는 유지한다. 알림 셸 강제 종료·제목으로 창 추측·새 VS Code 창 실행·장시간 재시도는 사용하지 않는다.
+앱 ID `JobFinish.VSCode`를 시작 메뉴 바로가기의 AppUserModelID와 일치시킨다. toast의 `activationType="foreground"`는 등록된 `INotificationActivationCallback`을 호출한다. C# helper의 STA 메시지 루프에서 callback을 처리하고, 원래 확장의 named pipe에서 알림 ID·창 UUID·현재 소유권·enabled 상태를 확인받은 뒤 전달된 HWND·PID·실행 파일·프로세스 시작 시각을 재검증한다. 최소화된 창만 복원하고 `SetForegroundWindow`를 한 번 호출해 실제 전경 HWND로 결과를 판정하며 최대화 상태는 유지한다. callback 처리가 끝나면 helper가 종료된다. 알림 셸 조작·Alt 합성·입력 스레드 연결·제목으로 창 추측·새 VS Code 창 실행·활성화 재시도는 사용하지 않는다. 이전 알림의 제한된 유효 기간을 위해 기존 protocol URI 처리도 유지한다.
 
 확장은 완료 → toast 실행 → 등록 → 클릭 → 활성화 요청 → 실제 전경 결과를 같은 windowInstanceId·notificationId로 기록하고 해당 flash를 정지한다. 실행 파일의 정상 종료를 클릭으로 해석하지 않는다. 클릭 유효기간은 5분이며, 전송 프로세스 종료 후에도 원래 확장과 승인 pipe가 살아 있으면 알림 센터 클릭을 처리한다. 알림 교체·설정 해제·확장 종료 시 채널을 닫아 과거 클릭을 거부한다. HWND 미연결·대상 변경·전경 전환 거부는 진단한다.
 

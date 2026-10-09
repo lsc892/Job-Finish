@@ -25,14 +25,14 @@ internal static class RegistrationTests
             Check(!File.Exists(legacy) && Hash(result.LegacyBackup!) == oldLegacy, "Legacy backup must preserve original bytes");
             Check(Directory.GetFiles(backups).Any(path => Hash(path) == oldCanonical), "Native shortcut must also be backed up before replacement");
             var info = Registration.Read(canonical);
-            Check(info.AppId == app && info.Activator == Registration.Activator, "Native shortcut requires the correct AUMID and stub CLSID");
+            Check(info.AppId == app && info.Activator == Registration.Activator, "Native shortcut requires the correct AUMID and callback CLSID");
             Check(string.Equals(info.Executable, executable, StringComparison.OrdinalIgnoreCase), "Native shortcut must target this helper");
             var lastWrite = File.GetLastWriteTimeUtc(canonical); var hash = Hash(canonical);
             var second = Registration.Shortcut(app, executable, programs, backups);
             Check(!second.Changed && second.LegacyBackup == null, "Repeated registration must be idempotent");
             Check(Hash(canonical) == hash && File.GetLastWriteTimeUtc(canonical) == lastWrite, "Do not rewrite an unchanged shortcut");
             Check(Directory.GetFiles(backups).Length == 2, "Do not create duplicate backups");
-            Console.WriteLine("Native registration passed: migration, stub CLSID, exact backups, idempotence");
+            Console.WriteLine("Native registration passed: migration, callback CLSID, exact backups, idempotence");
 
             // Identical filenames are insufficient evidence of ownership.
             Registration.Write(legacy, "Another.App", executable, null);
