@@ -1,0 +1,49 @@
+{
+  "source": "actual-runtime",
+  "capturedDateKst": "2026-10-05",
+  "provider": "codex",
+  "expectedStatus": "error",
+  "sessionId": "captured-session",
+  "turnId": "captured-turn",
+  "events": [
+    {
+      "method": "turn/started",
+      "params": {
+        "threadId": "captured-session",
+        "turn": {
+          "id": "captured-turn",
+          "items": [],
+          "itemsView": "notLoaded",
+          "status": "inProgress",
+          "error": null,
+          "startedAt": 1791128184,
+          "completedAt": null,
+          "durationMs": null
+        }
+      },
+      "emittedAtMs": 1791128184487
+    },
+    {
+      "method": "turn/completed",
+      "params": {
+        "threadId": "captured-session",
+        "turn": {
+          "id": "captured-turn",
+          "items": [],
+          "itemsView": "notLoaded",
+          "status": "failed",
+          "error": {
+            "message": "{\"type\":\"error\",\"status\":400,\"error\":{\"type\":\"invalid_request_error\",\"message\":\"The 'gpt-5.4' model is not supported when using Codex with a ChatGPT account.\"}}",
+            "codexErrorInfo": "other",
+            "additionalDetails": null,
+            "misalignment": null
+          },
+          "startedAt": 1791128184,
+          "completedAt": 1791128187,
+          "durationMs": 2806
+        }
+      },
+      "emittedAtMs": 1791128187257
+    }
+  ]
+}

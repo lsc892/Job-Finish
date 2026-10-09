@@ -1,59 +1,84 @@
 {
   "name": "job-finish",
-  "version": "1.0.2",
-  "description": "Windows toast notifications for Claude Code & Codex with taskbar flashing and VS Code focus on click.",
-  "type": "module",
-  "bin": {
-    "job-finish": "dist/index.js"
-  },
-  "files": [
-    "dist",
-    "templates/notify.win.ps1",
-    "templates/jf-focus-vscode.exe"
-  ],
-  "scripts": {
-    "build": "tsup && node scripts/build-focus-exe.mjs",
-    "dev": "tsup --watch",
-    "start": "node dist/index.js",
-    "test": "tsup tests/codex-installer.test.ts --format esm --platform node --target node18 --out-dir .test-dist --clean && node .test-dist/codex-installer.test.js",
-    "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/lsc892/Job-Finish.git"
-  },
-  "homepage": "https://github.com/lsc892/Job-Finish#readme",
-  "bugs": {
-    "url": "https://github.com/lsc892/Job-Finish/issues"
-  },
-  "keywords": [
-    "claude-code",
-    "codex",
-    "hooks",
-    "notification",
-    "toast",
-    "cli",
-    "vscode",
-    "windows"
-  ],
-  "author": "",
+  "displayName": "Job-Finish",
+  "description": "Window-scoped Codex and Claude execution notifications for Windows.",
+  "version": "0.1.0",
+  "publisher": "lsc892",
   "license": "MIT",
-  "engines": {
-    "node": ">=18"
+  "repository": { "type": "git", "url": "https://github.com/lsc892/Job-Finish.git" },
+  "engines": { "vscode": "^1.99.0", "node": ">=22" },
+  "categories": ["Other"],
+  "extensionKind": ["ui"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.cjs",
+  "capabilities": { "untrustedWorkspaces": { "supported": false }, "virtualWorkspaces": false },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "install:extension": "npm --prefix tools/installer run install:extension --",
+    "update:extension": "npm --prefix tools/installer run update:extension --",
+    "uninstall:legacy": "npm --prefix tools/installer run uninstall:legacy --",
+    "build:installer": "npm --prefix tools/installer run build -- --vsix ../../job-finish-win32-x64.vsix",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "check": "npm run typecheck && npm test && npm run build",
+    "test:live": "tsx scripts/live.ts",
+    "test:live:claude-input": "tsx scripts/live-claude-input.ts",
+    "test:live:codex-input": "tsx scripts/live-codex-input.ts",
+    "test:live:codex-history": "tsx scripts/live-codex-history.ts",
+    "test:load": "tsx --expose-gc scripts/load.ts",
+    "test:router-load": "tsx --expose-gc scripts/router-load.ts",
+    "test:extension": "npm run build && node scripts/extension-host.mjs",
+    "test:windows": "npm run build && node scripts/extension-host.mjs --dual",
+    "test:profile": "node scripts/profile-host.mjs",
+    "test:package": "node scripts/verify-package.mjs",
+    "test:toast": "tsx scripts/native-toast.ts",
+    "test:native": "node scripts/native-toast-contract.mjs",
+    "vscode:prepublish": "npm run build",
+    "package": "vsce package --target win32-x64 --out job-finish-win32-x64.vsix"
+  },
+  "contributes": {
+    "commands": [
+      { "command": "jobFinish.runCodex", "title": "Job-Finish: Run Codex" },
+      { "command": "jobFinish.runClaude", "title": "Job-Finish: Run Claude" },
+      { "command": "jobFinish.continue", "title": "Job-Finish: Continue Session" },
+      { "command": "jobFinish.resume", "title": "Job-Finish: Resume Saved Session" },
+      { "command": "jobFinish.cancel", "title": "Job-Finish: Cancel Turn" },
+      { "command": "jobFinish.respond", "title": "Job-Finish: Answer Pending Request" },
+      { "command": "jobFinish.results", "title": "Job-Finish: Show Results" },
+      { "command": "jobFinish.reconnect", "title": "Job-Finish: Reconnect and Reconcile" },
+      { "command": "jobFinish.detach", "title": "Job-Finish: Release Session" },
+      { "command": "jobFinish.bindWindow", "title": "Job-Finish: Bind This Windows Window" },
+      { "command": "jobFinish.stopFlash", "title": "Job-Finish: Stop Flash" },
+      { "command": "jobFinish.diagnostics", "title": "Job-Finish: Show Diagnostics" }
+    ],
+    "configuration": {
+      "title": "Job-Finish",
+      "properties": {
+        "jobFinish.enabled": { "type": "boolean", "default": true, "description": "Automatically detect Codex and Claude activity in this VS Code window and show notifications. Changes apply immediately." },
+        "jobFinish.toast": { "type": "boolean", "default": true, "description": "Show native Windows toasts while this window is unfocused." },
+        "jobFinish.flash": { "type": "boolean", "default": true, "description": "Flash a verified native window." },
+        "jobFinish.flashMode": { "type": "string", "enum": ["manual", "system"], "default": "manual" },
+        "jobFinish.flashTimeoutSeconds": { "type": "number", "minimum": 0, "maximum": 86400, "default": 300, "description": "Flash expiry; 0 keeps flashing until focus, click or explicit stop." },
+        "jobFinish.codexExecutable": { "type": "string", "default": "", "scope": "machine", "description": "Codex executable or npm bin/codex.js. Empty searches PATH." },
+        "jobFinish.codexModel": { "type": "string", "default": "", "description": "Optional model override. Empty uses Codex configuration." },
+        "jobFinish.codexMode": { "type": "string", "enum": ["default", "plan"], "default": "default", "description": "Codex execution mode for newly connected sessions. Plan mode can ask structured questions before implementation." },
+        "jobFinish.claudeExecutable": { "type": "string", "default": "", "scope": "machine", "description": "Optional Claude Code executable; empty uses the bundled SDK CLI." },
+        "jobFinish.maxSessions": { "type": "integer", "minimum": 1, "maximum": 32, "default": 8, "description": "Maximum sessions retained by this window." },
+        "jobFinish.maxConnections": { "type": "integer", "minimum": 1, "maximum": 16, "default": 4 },
+        "jobFinish.claudeMaxTurns": { "type": "integer", "minimum": 1, "maximum": 1000, "default": 50 }
+      }
+    }
   },
   "dependencies": {
-    "@clack/prompts": "^0.7.0",
-    "@iarna/toml": "^2.2.5",
-    "picocolors": "^1.0.1",
-    "zod": "^3.23.8"
+    "@anthropic-ai/claude-agent-sdk": "0.3.289",
+    "koffi": "3.3.2"
   },
   "devDependencies": {
-    "@types/node": "^20.14.0",
-    "tsup": "^8.1.0",
-    "typescript": "^5.5.0"
-  },
-  "os": [
-    "win32"
-  ]
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.99.0",
+    "@vscode/vsce": "4.0.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
 }

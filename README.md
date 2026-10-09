@@ -2,166 +2,74 @@
 
 **English · [한국어](README.ko.md) · [中文](README.zh.md) · [日本語](README.jp.md)**
 
-Stop staring at your terminal to check whether the AI agent is done.
-The instant Claude Code is waiting for your input or a Claude Code/Codex task finishes, a Windows notification brings you back.
+Get back to your task when Claude Code or Codex finishes a response.
 
-| Toast notification | Taskbar flashing |
-| :---: | :---: |
-| <img src="resources/Toast.gif" alt="Toast notification demo" width="380"> | <img src="resources/Flash.gif" alt="Taskbar flashing demo" width="380"> |
-| Click the toast to jump back to VS Code | The target window flashes until you return |
+Job-Finish brings agent signals into the VS Code window where they belong, so you can keep moving between projects and see which task is ready.
 
-![Platform](https://img.shields.io/badge/platform-Windows-0078D4)
-![Node](https://img.shields.io/badge/node-%3E%3D18-339933)
+![VS Code](https://img.shields.io/badge/platform-VS%20Code-0078D4)
+![Status](https://img.shields.io/badge/status-implementation%20%2B%20verification-orange)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ## Features
 
-- Claude Code + Codex support - Hooks up Claude Code's `Stop` / `AskUserQuestion` and Codex's `Stop` lifecycle event in one shot.
-- Native Windows notifications - Shows task completions, input prompts, and the last agent message as toast notifications.
-- Abnormal-stop alerts - Also notifies when Claude Code halts on a usage/session limit or an API error, with a distinct title (`Usage limit reached` / `API error`) so you can tell it apart from a normal finish at a glance.
-- Click the notification to return to VS Code - Tapping the toast finds your existing VS Code window and brings it to the front.
-- Open the project even when the window is gone - If the target VS Code window was closed, it reopens the project window with `code -n <project>`.
-- Focus awareness - Skips the notification if you are already looking at VS Code, and when it regains focus, clears only that window's notifications.
-- Taskbar flashing - Even if you miss the notification, the target window flashes in the taskbar. Choose from `30s`, `5m`, `10m`, or `infinite`.
-- Sound alerts - Hear task completions through the OS default notification sound.
-- global / project install - Choose an install scope for your entire account or just the current project.
-- Safe settings merge - Adds only the hooks it needs without overwriting your Claude/Codex settings, and leaves a `.bak` backup before making changes.
-- Duplicate notification prevention - Cleans up previous Job-Finish hooks and migrates legacy Codex `notify` installs to the immediate `Stop` hook.
-- Diagnostics and preview - Use the `doctor` and `preview` commands to quickly check the current install and notification behavior.
-- VS Code only, by design - Desktop clients like Codex Desktop, Claude Desktop, and Orca ADE ship their own built-in alerts, which would collide with Job-Finish. So notifications and taskbar flashing fire only when the agent is running inside VS Code; hooks triggered from those other environments are skipped.
+- Claude Code and Codex signals in VS Code.
+- Results tied to their own window, including windows sharing the same project.
+- Clear completion signals and a place to review the agent's response.
 
-## Supported Targets
+## Current stage
 
-| Target | Integration | Notification timing |
-| --- | --- | --- |
-| Claude Code | `~/.claude/settings.json` or `./.claude/settings.json` hooks | Task completion, `AskUserQuestion` input prompt, usage-limit / API-error stop |
-| Codex | `~/.codex/config.toml` `hooks.Stop` | Task completion, last assistant message |
+The Windows x64 extension automatically observes the existing Codex and Claude extensions' stdio runtime events in the same Extension Host, then routes completion, errors, and input requests to this window's toasts and flash. `jobFinish.enabled` defaults to `true` and changes immediately. Existing and newly spawned agent processes are observed without provider hooks, transcript scans, additional App Servers, or model calls. Direct Job-Finish execution remains available.
 
-> Job-Finish is a Windows-only tool. It relies on PowerShell, the Windows toast API, and VS Code window focus handling.
->
-> Codex does not run command hooks it has not trusted. Start `codex` in a terminal and it shows a `Hooks need review` screen on startup. Pick **Trust all and continue** there. This is a one-time step; Codex will not ask again.
+Observation uses Node's internal process discovery/spawn methods and checks installed provider paths and stream arguments. Provider or VS Code changes can affect compatibility. Separate Extension Hosts, WSL/remote agents, and external terminal processes are outside automatic observation. Use **Job-Finish: Show Diagnostics** to inspect `automatic.connections`; approvals and answers for existing chats stay in their original UI.
 
-## Installation
+Use Node.js 22+ and .NET SDK 8+ to build, then run `npm ci`, `npm run check`, and `npm run package`. Install `job-finish-win32-x64.vsix` with **Extensions: Install from VSIX…**, or press F5 for a development window. The packaged C# notification helper includes its runtime; users do not need to install .NET. Codex needs an installed, authenticated compatible CLI (live-tested with 0.160.0). The bundled Claude SDK CLI also needs valid authentication.
 
-```powershell
-npx job-finish init
-```
+For automatic legacy migration and version-aware installation, install the independent CLI dependencies with `npm --prefix tools/installer ci`, then run `npm run install:extension -- --vsix ./job-finish-win32-x64.vsix`. `npm run update:extension` uses the same reconciliation flow. Add `--dry-run` to preview or `--profile <name>` to select a VS Code profile. The tool backs up and removes legacy PowerShell/C# hooks/files before installing, updates older extensions, and preserves equal or newer versions. It compares the VSIX's extension version, preserves current extension settings/data, and checks VSIX validity and VS Code compatibility before cleanup. Direct VSIX installation through VS Code bypasses this migration step. See [installer instructions](tools/installer/README.md) for npm/npx packaging.
 
-The install wizard uses English by default. Append a language code to run it in Korean, Chinese, or Japanese:
+Run **Job-Finish: Run Codex** or **Run Claude** from the command palette. Use **Answer Pending Request** for tool approvals/questions and **Show Results** for recent responses. Commands also support continuing, cancellation, saved-session resumption, reconnection, releasing ownership, and native window binding. The status bar opens pending requests when present.
+
+Set `jobFinish.codexMode` to `plan` for structured planning questions in newly connected Codex sessions. Permission approvals grant only the requested permissions for the current turn. Recovery reads bounded history pages and preserves unknown outcomes when the runtime cannot confirm them.
+
+See the [Korean usage guide](README.ko.md) for configuration defaults and the [verification report](docs/verification.md) for evidence and outstanding acceptance checks. The extension supports local desktop execution; remote workspaces and web hosts are outside this release. Events stay in extension memory; the C# helper receives the observed HWND, displays a WinRT toast and activates that exact window through Windows' COM toast activation callback. It restores minimized windows and preserves maximized windows. Missing window bindings or refused foreground activation appear in **Show Diagnostics**. Clicks remain valid for five minutes while the originating extension and notification authorization channel remain active, including after the sender process exits.
+
+Read the [development document](docs/requirements-and-verification.md) for features, implementation algorithms, and acceptance criteria. The [journal](docs/일지.md) contains the rationale, historical implementations, and measured results.
+
+## Remove the old PowerShell/C# installation
+
+The installer is an independent package in [tools/installer](tools/installer/README.md), with its own dependencies and tests. Its uninstall command can also remove legacy installations separately. From the repository root:
 
 ```powershell
-npx job-finish init ko  # Korean
-npx job-finish init zh  # Chinese
-npx job-finish init jp  # Japanese
+npm --prefix tools/installer ci
+npm run uninstall:legacy -- --dry-run
+npm run uninstall:legacy
+npm run uninstall:legacy -- --keep-files
+npm run uninstall:legacy -- --project "C:\Projects\MyProject"
 ```
 
-The install wizard lets you choose the following.
+The root command forwards arguments to the standalone package. You can also run `npm --prefix tools/installer run uninstall:legacy -- --dry-run` directly. The default project and relative paths use the directory from which the command was invoked. The tool is excluded from the VSIX.
 
-| Setting | Description |
-| --- | --- |
-| Install scope | Current project (`./.claude`) or global (`~/.claude`, `~/.job-finish`) |
-| Agent | Which tools to connect: Claude Code or Codex |
-| Notification mode | Windows toast, taskbar flashing |
-| Flash duration | `30s`, `5m`, `10m`, `infinite` |
-| Sound | Whether to use the Windows default sound |
-| Focus suppression | Whether to skip notifications when you are already looking at the target VS Code window |
-
-Once installation finishes, you can send a test notification right away.
-
-## Usage
-
-```powershell
-# Interactive install (English by default; append ko, zh, or jp to change the wizard language)
-npx job-finish init
-
-# Check install status and dependencies + test notification
-npx job-finish doctor
-
-# Preview a notification with the current settings
-npx job-finish preview
-
-# Remove the hooks and the installed files
-npx job-finish uninstall
-```
-
-To run the local development build:
-
-```powershell
-npm install
-npm run build
-node dist/index.js init
-```
-
-## How It Works
-
-```text
-Claude Code Stop / AskUserQuestion
-or Codex Stop
-  -> run job-finish-notify.ps1
-  -> Windows toast / taskbar flash / sound
-  -> on toast click, launch jobfinish-focus://open
-  -> jf-focus-vscode.exe locates the existing VS Code window
-  -> bring the exact window to the front, or open the project in a new window
-```
-
-Job-Finish does more than just pop up a notification. Even when several VS Code windows are open, it uses the project name, cwd, window handle, and process id to find the best-matching window. The notification click and the taskbar flash are designed to point at the same window, so you never get confused even when working on multiple projects at once.
-
-## Installed Files
-
-Depending on the install scope, files are created in one of the locations below.
-
-| Scope | Location |
-| --- | --- |
-| project | `./.claude/job-finish/` |
-| global | `~/.job-finish/` |
-
-Created files:
-
-- `job-finish-notify.ps1`
-- `job-finish.config.json`
-- `jf-focus-vscode.exe`
-
-In addition, to handle toast clicks on Windows, the `jobfinish-focus://` protocol handler is registered for the current user (`HKCU`).
-
-## Configuration File
-
-`job-finish.config.json` is saved in the install folder. You can edit it directly without reinstalling.
-
-```json
-{
-  "version": 1,
-  "platform": "win32",
-  "modes": ["os", "flash"],
-  "flashTimeout": "5m",
-  "sound": { "enabled": true },
-  "suppressWhenFocused": true,
-  "clearToastOnFocus": true,
-  "debug": false,
-  "watchApp": ""
-}
-```
-
-Debug logging is off by default. Setting `"debug": true` in `job-finish.config.json` generates `job-finish.log` and `jf-focus-vscode.log`; otherwise no logs are created.
-
-## Requirements
-
-- Windows
-- Node.js 18+
-- PowerShell
-- VS Code
-
-`jf-focus-vscode.exe` ships as a self-contained binary, so no separate .NET runtime installation is required.
-
-## Uninstall
-
-```powershell
-# Remove the Claude/Codex hooks and the installed files
-npx job-finish uninstall
-
-# Remove only the hooks, keep the generated files
-npx job-finish uninstall --keep-files
-```
+The command removes Job-Finish hooks from user and selected project settings, backs up changed settings beside their originals, and removes verified legacy installation folders, the focus protocol and its Start Menu shortcut. It also checks `CLAUDE_CONFIG_DIR` and `CODEX_HOME` when set. `--dry-run` only previews changes; `--keep-files` removes hooks while retaining files and Windows registrations. Changed Codex TOML is reformatted without comments; its original text remains in the backup. Run with `--project` for each additional project installation. C# source projects and the current VS Code extension are preserved. If the old npm package was installed globally, remove it separately with `npm rm -g job-finish`.
 
 ## License
 
-MIT
+MIT License
+
+Copyright (c) 2026 lsc892
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
