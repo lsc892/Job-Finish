@@ -12,6 +12,7 @@ import { EventQueue, RpcError, RpcMessage, StdioRpc } from './transport';
 import { codexCommand } from './executable';
 import { randomUUID } from 'node:crypto';
 import { CodexHistory } from './codex-history';
+import { inputTitle } from './titles';
 
 export function codexStatus(value: string): TerminalStatus | undefined {
   switch (value) { case 'completed': return 'completed'; case 'failed': return 'error'; case 'interrupted': return 'cancelled'; default: return undefined; }
@@ -39,18 +40,21 @@ export class CodexAdapter {
   constructor(readonly session: Session) {}
   handle(message: RpcMessage, connectionId: string, admitStarted = false): void {
     if (!this.session.valid(connectionId)) return;
-    const methods = ['turn/started', 'turn/completed', 'item/completed', 'serverRequest/resolved', 'error',
+    const methods = ['thread/name/updated', 'turn/started', 'turn/completed', 'item/started', 'item/completed', 'serverRequest/resolved', 'error',
       'item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'item/permissions/requestApproval', 'item/tool/requestUserInput'];
     if (!methods.includes(message.method ?? '')) return;
     const p = object(message.params);
     if (id(p.threadId) !== this.session.binding.sessionId) return;
-    if (message.method === 'turn/started') {
+    if (message.method === 'thread/name/updated') {
+      this.session.setTitle(p.threadName, connectionId);
+    } else if (message.method === 'turn/started') {
       const turn = object(p.turn);
       if (admitStarted) this.session.start(id(turn.id), connectionId);
       else this.session.running(id(turn.id), connectionId);
-    } else if (message.method === 'item/completed') {
+    } else if (message.method === 'item/started' || message.method === 'item/completed') {
       const item = object(p.item);
-      if (item.type === 'agentMessage' && item.phase !== 'commentary') {
+      if (item.type === 'userMessage') this.session.turnTitle(id(p.turnId), inputTitle(item.content), connectionId);
+      else if (message.method === 'item/completed' && item.type === 'agentMessage' && item.phase !== 'commentary') {
         if (typeof item.text !== 'string') throw new Error('Malformed agent message');
         this.session.body(id(p.turnId), item.text, connectionId);
       }
@@ -70,6 +74,10 @@ export class CodexAdapter {
   }
   reconcileTurn(value: Turn, connectionId: string): void {
     const turn = object(value); const turnId = id(turn.id);
+    if (Array.isArray(turn.items)) for (const item of turn.items) {
+      const entry = object(item);
+      if (entry.type === 'userMessage') this.session.turnTitle(turnId, inputTitle(entry.content), connectionId);
+    }
     const status = codexStatus(String(turn.status));
     if (!status) {
       if (turn.status !== 'inProgress') throw new Error(`Unknown Codex turn status: ${turn.status}`);
@@ -122,6 +130,7 @@ export class CodexExecution {
         const result = await this.rpc!.request<{ thread: Thread; model?: string }>('thread/start', p);
         this.effectiveModel = result.model;
         this.session = this.options.createSession(id(result.thread?.id), this.rpc!.connectionId);
+        this.session.setTitle(result.thread.name || result.thread.preview, this.rpc!.connectionId);
         this.adapter = new CodexAdapter(this.session);
       }
       this.ready = true; this.queue.drain(message => this.handle(message));
@@ -151,7 +160,7 @@ export class CodexExecution {
     const rpc = this.rpc!;
     const startRequestId = randomUUID();
     try {
-      this.session.beginStart(startRequestId, rpc.connectionId);
+      this.session.beginStart(startRequestId, rpc.connectionId, prompt);
       const p: TurnStartParams = { threadId: this.session.binding.sessionId, clientUserMessageId: startRequestId, input: [{ type: 'text', text: prompt, text_elements: [] }],
         ...(this.options.mode ? { collaborationMode: { mode: this.options.mode, settings: { model: model!, reasoning_effort: null, developer_instructions: null } } } : {}) };
       const result = await rpc.request<{ turn: Turn }>('turn/start', p);
@@ -220,6 +229,7 @@ export class CodexExecution {
   }
   private async reconcile(thread: Thread, rpc: StdioRpc): Promise<void> {
     if (id(thread?.id) !== this.session!.binding.sessionId) throw new Error('Invalid thread recovery response');
+    this.session!.setTitle(thread.name || thread.preview, rpc.connectionId);
     const history = this.history(rpc); const { turns, truncated } = await history.turns();
     if (truncated) this.options.diagnostic.add('History baseline limited to the latest 512 turns; older unobserved turns cannot notify');
     const pending = this.session!.pendingStart;

@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type { SDKResultMessage } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
-import { Diagnostics, LIMITS, Provider, Signal } from '../core/model';
+import { Diagnostics, LIMITS, Provider, Signal, taskTitle } from '../core/model';
 import { Session } from '../core/session';
 import { acceptClaudeResult } from './claude';
 import { CodexAdapter } from './codex';
 import type { RpcMessage } from './transport';
+import { inputTitle } from './titles';
 
 const record = (value: unknown): Record<string, unknown> | undefined =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
@@ -16,7 +17,10 @@ export class AgentEventRouter {
   private readonly sessions = new Map<string, Session>();
   private readonly ignored = new Set<string>();
   private readonly pendingThreads = new Map<string, boolean>();
-  private readonly claudeRequests: { id: string; supplied: boolean }[] = [];
+  private readonly titles = new Map<string, string>();
+  private readonly codexStartTitles = new Map<string, { threadId: string; title: string }>();
+  private readonly codexTurnTitles = new Map<string, string>();
+  private readonly claudeRequests: { id: string; supplied: boolean; title?: string }[] = [];
   private readonly claudeResults = new Set<string>();
   private claudeSessionId?: string;
   private disposed = false;
@@ -31,16 +35,21 @@ export class AgentEventRouter {
         const params = record(message.params);
         this.pendingThreads.set(JSON.stringify(message.id), params?.ephemeral === true);
         this.bound(this.pendingThreads);
+      } else if (message.method === 'turn/start' && message.id !== undefined) {
+        const params = record(message.params); const threadId = identifier(params?.threadId); const title = inputTitle(params?.input);
+        if (threadId && title) {
+          this.codexStartTitles.set(JSON.stringify(message.id), { threadId, title }); this.bound(this.codexStartTitles);
+        }
       }
       return;
     }
     if (message.type === 'user') {
-      // Only identifiers are retained; prompts and tool contents remain in the original transport.
+      // Retain a bounded display title; full prompts and tool contents remain in the transport.
       if (this.claudeRequests.length >= LIMITS.turns) throw new Error('Observed Claude input queue exceeds limit');
       const id = identifier(message.uuid);
-      this.claudeRequests.push({ id: id ?? randomUUID(), supplied: !!id });
+      this.claudeRequests.push({ id: id ?? randomUUID(), supplied: !!id, title: inputTitle(record(message.message)?.content) });
       const sessionId = identifier(message.session_id) ?? this.claudeSessionId;
-      if (sessionId) this.session(sessionId)?.start(this.claudeRequests[0]!.id, this.connectionId);
+      if (sessionId) this.session(sessionId)?.start(this.claudeRequests[0]!.id, this.connectionId, this.claudeRequests[0]!.title);
     } else if (message.type === 'control_response' && this.claudeSessionId) {
       const response = record(message.response); const id = identifier(response?.request_id);
       if (id) this.sessions.get(this.claudeSessionId)?.resolve(id, this.connectionId);
@@ -70,11 +79,24 @@ export class AgentEventRouter {
         this.ignored.add(thread.id as string); this.bound(this.ignored);
       }
       this.pendingThreads.delete(pendingKey);
+      if (!this.ignored.has(thread.id as string) && ('name' in thread || 'preview' in thread)) this.rememberTitle(thread.id as string, thread.name || thread.preview);
+    }
+    if (message.id !== undefined) {
+      const requestKey = JSON.stringify(message.id); const pending = this.codexStartTitles.get(requestKey);
+      if (pending && (result || message.error)) {
+        this.codexStartTitles.delete(requestKey);
+        const turn = record(result?.turn); const turnId = identifier(turn?.id);
+        if (turnId && !this.ignored.has(pending.threadId)) {
+          this.codexTurnTitles.set(JSON.stringify([pending.threadId, turnId]), pending.title); this.bound(this.codexTurnTitles);
+          this.sessions.get(pending.threadId)?.turnTitle(turnId, pending.title, this.connectionId);
+        }
+      }
     }
     // History RPC responses never enter the live notification path.
     if (typeof message.method !== 'string' || !params) return;
     const id = identifier(params.threadId); if (!id || this.ignored.has(id)) return;
-    const relevant = ['turn/started', 'turn/completed', 'item/completed', 'serverRequest/resolved', 'error',
+    if (message.method === 'thread/name/updated') { this.rememberTitle(id, params.threadName); return; }
+    const relevant = ['turn/started', 'turn/completed', 'item/started', 'item/completed', 'serverRequest/resolved', 'error',
       'item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'item/permissions/requestApproval', 'item/tool/requestUserInput'];
     if (!relevant.includes(message.method)) return;
     const session = this.session(id); if (!session) return;
@@ -82,7 +104,16 @@ export class AgentEventRouter {
     const turnId = identifier(turn?.id ?? params.turnId);
     // A live completion or input request also identifies a turn already running when observation began.
     // Unlike an RPC history response, this comes directly from this window's active runtime connection.
-    if (turnId && message.method !== 'error') session.start(turnId, this.connectionId);
+    if (turnId && message.method !== 'error') {
+      const key = JSON.stringify([id, turnId]); let title = this.codexTurnTitles.get(key);
+      if (!title && message.method === 'turn/started') {
+        const pending = [...this.codexStartTitles.values()].filter(request => request.threadId === id);
+        if (pending.length === 1) title = pending[0]!.title;
+      }
+      session.start(turnId, this.connectionId, title);
+      if (title) session.turnTitle(turnId, title, this.connectionId);
+      if (message.method === 'turn/completed') this.codexTurnTitles.delete(key);
+    }
     new CodexAdapter(session).handle(message as RpcMessage, this.connectionId, true);
   }
 
@@ -90,7 +121,7 @@ export class AgentEventRouter {
     const sessionId = identifier(message.session_id);
     if (sessionId) this.claudeSessionId = sessionId;
     if (message.type === 'system' && message.subtype === 'init' && sessionId && this.claudeRequests.length) {
-      this.session(sessionId)?.start(this.claudeRequests[0]!.id, this.connectionId);
+      this.session(sessionId)?.start(this.claudeRequests[0]!.id, this.connectionId, this.claudeRequests[0]!.title);
     } else if (message.type === 'result' && sessionId) {
       if (!identifier(message.uuid) || typeof message.is_error !== 'boolean' || typeof message.subtype !== 'string') throw new Error('Malformed observed Claude result');
       if (message.subtype === 'success' ? typeof message.result !== 'string' : !Array.isArray(message.errors) || message.errors.some(e => typeof e !== 'string')) throw new Error('Malformed observed Claude result body');
@@ -106,10 +137,11 @@ export class AgentEventRouter {
         const previous = session.turns.get(previousId);
         if (previous) {
           for (const request of [...session.requests.values()]) if (request.turnId === previousId) session.resolve(request.id, this.connectionId);
-          session.turns.delete(previousId); session.start(turnId, this.connectionId); session.body(turnId, previous.text, this.connectionId);
+          session.turns.delete(previousId); session.start(turnId, this.connectionId, previous.title); session.body(turnId, previous.text, this.connectionId);
         }
       }
-      session.start(turnId, this.connectionId);
+      session.start(turnId, this.connectionId, queued?.title);
+      if (queued?.title) session.turnTitle(turnId, queued.title, this.connectionId);
       acceptClaudeResult(session, turnId, message as unknown as SDKResultMessage, this.connectionId);
       this.claudeResults.add(message.uuid as string); this.bound(this.claudeResults);
       if (queued) this.claudeRequests.shift();
@@ -119,7 +151,7 @@ export class AgentEventRouter {
       if (!id || request?.subtype !== 'can_use_tool' || !this.claudeSessionId) return;
       const session = this.session(this.claudeSessionId); if (!session) return;
       const turnId = this.claudeRequests[0]?.id ?? [...session.turns.keys()][0] ?? `input:${id}`;
-      session.start(turnId, this.connectionId);
+      session.start(turnId, this.connectionId, this.claudeRequests[0]?.title);
       const question = request.tool_name === 'AskUserQuestion';
       const input = record(request.input);
       const questions = Array.isArray(input?.questions) ? input.questions.map(q => record(q)?.question).filter(q => typeof q === 'string').join('\n') : '';
@@ -153,13 +185,20 @@ export class AgentEventRouter {
         connectionId: this.connectionId, sessionId: id, source: 'verifiedIntegration' },
       () => !this.disposed && !this.isOwned(this.provider, id), () => {}, this.emit, this.diagnostics);
       this.sessions.set(id, session);
+      if (this.titles.has(id)) session.setTitle(this.titles.get(id), this.connectionId);
     }
     return session;
+  }
+  private rememberTitle(id: string, value: unknown): void {
+    const title = taskTitle(value);
+    if (title) { this.titles.set(id, title); this.bound(this.titles); } else this.titles.delete(id);
+    this.sessions.get(id)?.setTitle(title, this.connectionId);
   }
   private bound(collection: Map<string, unknown> | Set<string>): void {
     while (collection.size > LIMITS.dedup) collection.delete(collection.keys().next().value!);
   }
   snapshot() { return { provider: this.provider, connectionId: this.connectionId, sessions: this.sessions.size,
     activeTurns: [...this.sessions.values()].reduce((count, s) => count + s.turns.size, 0) }; }
-  dispose(): void { this.disposed = true; this.sessions.clear(); this.pendingThreads.clear(); this.ignored.clear(); this.claudeResults.clear(); this.claudeRequests.length = 0; }
+  dispose(): void { this.disposed = true; this.sessions.clear(); this.pendingThreads.clear(); this.ignored.clear(); this.titles.clear();
+    this.codexStartTitles.clear(); this.codexTurnTitles.clear(); this.claudeResults.clear(); this.claudeRequests.length = 0; }
 }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { CodexAdapter, codexStatus } from '../src/runtime/codex';
 import { acceptClaudeResult } from '../src/runtime/claude';
 import { Session } from '../src/core/session';
-import { boundedText, Diagnostics, LIMITS, Signal, toastText } from '../src/core/model';
+import { boundedText, Diagnostics, LIMITS, Signal, taskTitle, toastText } from '../src/core/model';
 import { binding, fixture } from './helpers';
 import type { SDKResultMessage } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
 
@@ -87,4 +87,32 @@ test('Claude mismatched session or result request is rejected', () => {
   const f = fixture({ provider: 'claude' }); f.session.start('request', 'connection-1');
   assert.throws(() => acceptClaudeResult(f.session, 'request', { session_id: 'another', uuid: 'result' } as unknown as SDKResultMessage, 'connection-1'), /identity/);
   assert.throws(() => acceptClaudeResult(f.session, 'request', { session_id: 'thread-A', uuid: 'result', user_message_uuid: 'other' } as unknown as SDKResultMessage, 'connection-1'), /bound/);
+});
+
+test('Task titles stay separate from assistant bodies and recover with tracked executions', () => {
+  const f = fixture(); f.session.setTitle('  Native toast\nsettings  ', 'connection-1');
+  f.session.beginStart('request', 'connection-1', 'Add a sleeping dog icon');
+  const signals: Signal[] = [];
+  const restored = new Session(binding({ connectionId: 'connection-2' }), () => true, () => {}, s => signals.push(s), new Diagnostics(), f.session.checkpoint());
+  restored.start('turn', 'connection-2');
+  assert.equal(restored.turns.get('turn')!.title, 'Add a sleeping dog icon');
+  restored.body('turn', 'Implemented icon settings.', 'connection-2');
+  restored.finish('turn', 'completed', 'connection-2');
+  assert.equal(signals[0]!.title, 'Native toast settings'); assert.equal(signals[0]!.text, 'Implemented icon settings.');
+  restored.setTitle(undefined, 'connection-2'); restored.start('next', 'connection-2', 'Repair the layout');
+  restored.body('next', 'Fixed.', 'connection-2'); restored.finish('next', 'completed', 'connection-2');
+  assert.equal(signals[1]!.title, 'Repair the layout');
+  restored.start('without-title', 'connection-2'); restored.body('without-title', 'Assistant response is not a task title.', 'connection-2');
+  restored.finish('without-title', 'completed', 'connection-2'); assert.equal(signals[2]!.title, undefined);
+});
+
+test('Title storage is bounded in UTF-8 and title updates require current ownership and connection', () => {
+  const title = taskTitle('한글🐕'.repeat(200))!;
+  assert.ok(Buffer.byteLength(title) <= 512); assert.ok(!title.includes('\uFFFD'));
+  assert.equal(taskTitle(' \n '), undefined); assert.equal(taskTitle({ text: 'wrong type' }), undefined);
+  const f = fixture(); f.session.start('turn', 'connection-1', 'Original task');
+  f.session.setTitle('Stale connection', 'other'); f.session.turnTitle('turn', 'Stale prompt', 'other');
+  assert.equal(f.session.turns.get('turn')!.title, 'Original task'); assert.equal(f.session.checkpoint().title, undefined);
+  f.revoke(); f.session.setTitle('Lost ownership', 'connection-1'); f.session.turnTitle('turn', 'Lost ownership prompt', 'connection-1');
+  assert.equal(f.session.turns.get('turn')!.title, 'Original task'); assert.equal(f.session.checkpoint().title, undefined);
 });

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { boundedText, Checkpoint, Diagnostics, InputRequest, isTerminal, LIMITS, SessionBinding, Signal, TerminalStatus, TurnState } from './model';
+import { boundedText, Checkpoint, Diagnostics, InputRequest, isTerminal, LIMITS, SessionBinding, Signal, taskTitle, TerminalStatus, TurnState } from './model';
 
 /** Only explicitly admitted turns can notify. History and evicted replay never admit a turn. */
 export class Session {
@@ -8,25 +8,40 @@ export class Session {
   readonly requests = new Map<string, InputRequest>();
   private readonly seenRequests = new Set<string>();
   pendingStart?: string;
+  private pendingStartTitle?: string;
+  private title?: string;
   constructor(public binding: SessionBinding, private readonly owns: () => boolean,
     private readonly save: (state: Checkpoint) => void, private readonly emit: (signal: Signal) => void,
     readonly diagnostics: Diagnostics, checkpoint?: Checkpoint, private readonly changed: () => void = () => {}) {
     this.pendingStart = checkpoint?.pendingStart;
+    this.pendingStartTitle = this.pendingStart ? taskTitle(checkpoint?.pendingStartTitle) : undefined;
+    this.title = taskTitle(checkpoint?.title);
     for (const [id, status] of checkpoint?.completed.slice(-LIMITS.dedup) ?? []) this.completed.set(id, status);
     for (const turn of checkpoint?.turns.slice(-LIMITS.turns) ?? []) {
-      if (!isTerminal(turn.status)) this.turns.set(turn.id, { ...turn, ...boundedText(turn.text), status: 'unknown' });
+      if (!isTerminal(turn.status)) this.turns.set(turn.id, { ...turn, ...boundedText(turn.text), title: taskTitle(turn.title), status: 'unknown' });
     }
   }
   valid(connectionId: string): boolean { return connectionId === this.binding.connectionId && this.owns(); }
-  start(id: string, connectionId: string): void {
+  setTitle(title: unknown, connectionId: string): void {
+    if (!this.valid(connectionId)) return;
+    const value = taskTitle(title);
+    if (this.title !== value) { this.title = value; this.persist(); }
+  }
+  turnTitle(id: string, title: unknown, connectionId: string): void {
+    if (!this.valid(connectionId)) return;
+    const turn = this.turns.get(id); const value = taskTitle(title);
+    if (turn && value && turn.title !== value) { turn.title = value; this.persist(); }
+  }
+  start(id: string, connectionId: string, title?: string): void {
     if (!id || !this.valid(connectionId) || this.completed.has(id) || this.turns.has(id)) return;
     if (this.turns.size >= LIMITS.turns) throw new Error('Active turn limit exceeded');
-    this.turns.set(id, { id, status: 'running', text: '', truncated: false }); this.pendingStart = undefined; this.persist();
+    this.turns.set(id, { id, status: 'running', text: '', truncated: false, title: taskTitle(title) ?? this.pendingStartTitle });
+    this.pendingStart = undefined; this.pendingStartTitle = undefined; this.persist();
   }
-  beginStart(requestId: string, connectionId: string): void {
+  beginStart(requestId: string, connectionId: string, title?: string): void {
     if (!this.valid(connectionId)) throw new Error('Session ownership or connection lost');
     if (this.pendingStart || this.turns.size) throw new Error('Session has an unresolved execution');
-    this.pendingStart = requestId; this.persist();
+    this.pendingStart = requestId; this.pendingStartTitle = taskTitle(title); this.persist();
   }
   body(id: string, text: string, connectionId: string): void {
     if (!this.valid(connectionId)) return;
@@ -83,21 +98,23 @@ export class Session {
   reconnect(connectionId: string): void { this.binding = { ...this.binding, connectionId }; this.requests.clear(); this.seenRequests.clear(); this.changed(); }
   startRejected(requestId: string, message: string, connectionId: string): void {
     if (!this.valid(connectionId)) return;
-    if (this.pendingStart === requestId) { this.pendingStart = undefined; this.persist(); }
+    const title = this.title ?? (this.pendingStart === requestId ? this.pendingStartTitle : undefined);
+    if (this.pendingStart === requestId) { this.pendingStart = undefined; this.pendingStartTitle = undefined; this.persist(); }
     this.emit({ ...this.binding, scope: 'startRequest', requestId, notificationId: randomUUID(), turnId: '',
-      status: 'error', ...boundedText(message), detail: 'Execution start request rejected', at: new Date().toISOString() });
+      status: 'error', ...boundedText(message), title, detail: 'Execution start request rejected', at: new Date().toISOString() });
   }
   baseline(ids: readonly { id: string; status: TerminalStatus }[]): void {
     for (const item of ids) if (!this.turns.has(item.id)) this.completed.set(item.id, item.status);
     while (this.completed.size > LIMITS.dedup) this.completed.delete(this.completed.keys().next().value!);
     this.persist();
   }
-  checkpoint(): Checkpoint { return { version: 1, completed: [...this.completed], turns: [...this.turns.values()], ...(this.pendingStart ? { pendingStart: this.pendingStart } : {}) }; }
+  checkpoint(): Checkpoint { return { version: 1, completed: [...this.completed], turns: [...this.turns.values()],
+    ...(this.title ? { title: this.title } : {}), ...(this.pendingStart ? { pendingStart: this.pendingStart, ...(this.pendingStartTitle ? { pendingStartTitle: this.pendingStartTitle } : {}) } : {}) }; }
   private persist(): void { this.save(this.checkpoint()); this.changed(); }
   private clearRequests(turnId: string): void { for (const [id, r] of this.requests) if (r.turnId === turnId) this.requests.delete(id); }
   private signal(turn: TurnState, detail?: string, requestId?: string): void {
     if (!this.owns()) return;
     this.emit({ ...this.binding, notificationId: randomUUID(), turnId: turn.id, status: turn.status,
-      text: turn.text, truncated: turn.truncated, detail: detail && boundedText(detail, 2048).text, requestId, at: new Date().toISOString() });
+      text: turn.text, truncated: turn.truncated, title: this.title ?? turn.title, detail: detail && boundedText(detail, 2048).text, requestId, at: new Date().toISOString() });
   }
 }
