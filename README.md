@@ -2,74 +2,172 @@
 
 **English · [한국어](README.ko.md) · [中文](README.zh.md) · [日本語](README.jp.md)**
 
-Get back to your task when Claude Code or Codex finishes a response.
+Stop watching the chat to see whether your AI agent is done.
+When **Claude Code or Codex finishes, needs input, or encounters an error**, Job-Finish notifies you and brings you back to the right VS Code window.
 
-Job-Finish brings agent signals into the VS Code window where they belong, so you can keep moving between projects and see which task is ready.
+| Windows toast notification | Taskbar flashing |
+| :---: | :---: |
+| <img src="https://raw.githubusercontent.com/lsc892/Job-Finish/877024beb5f86c390c1beec4992cf64c862dbc67/resources/Toast.gif" alt="Demo of a Windows toast notification and returning to VS Code" width="380"> | <img src="https://raw.githubusercontent.com/lsc892/Job-Finish/877024beb5f86c390c1beec4992cf64c862dbc67/resources/Flash.gif" alt="Demo of the VS Code taskbar button flashing" width="380"> |
+| Click the toast to return to the task's VS Code window | Spot the waiting window even if you miss the toast |
 
-![VS Code](https://img.shields.io/badge/platform-VS%20Code-0078D4)
-![Status](https://img.shields.io/badge/status-implementation%20%2B%20verification-orange)
+*These GIFs show the earlier version's notification behavior; the current extension's toast appearance may differ.*
+
+![Windows x64](https://img.shields.io/badge/platform-Windows%20x64-0078D4)
+![VS Code](https://img.shields.io/badge/VS%20Code-1.99%2B-007ACC)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-## Features
+## Features at a glance
 
-- Claude Code and Codex signals in VS Code.
-- Results tied to their own window, including windows sharing the same project.
-- Clear completion signals and a place to review the agent's response.
+| Feature | What you get |
+| --- | --- |
+| **Claude Code + Codex** | Automatically detects supported activity in the existing VS Code extensions. |
+| **Completion, input, and error alerts** | Alerts you when tasks finish, fail, or wait for a choice, answer, or approval. |
+| **Click to return** | Brings the VS Code window that sent the notification to the front, including when several windows are open. |
+| **Taskbar flashing** | Highlights the task's window until you return or the configured timeout expires. |
+| **Focus awareness** | Skips new toasts and flashing while you are already looking at that window. |
+| **Recent results** | Review the agent's responses with **Job-Finish: Show Results**. |
 
-## Current stage
+## Install and update
 
-The Windows x64 extension automatically observes the existing Codex and Claude extensions' stdio runtime events in the same Extension Host, then routes completion, errors, and input requests to this window's toasts and flash. `jobFinish.enabled` defaults to `true` and changes immediately. Existing and newly spawned agent processes are observed without provider hooks, transcript scans, additional App Servers, or model calls. Direct Job-Finish execution remains available.
+Requires **Windows x64, VS Code 1.99+, Node.js 22+, and a trusted local workspace**. Install and sign in to the Codex or Claude Code VS Code extension you use, then run:
 
-Observation uses Node's internal process discovery/spawn methods and checks installed provider paths and stream arguments. Provider or VS Code changes can affect compatibility. Separate Extension Hosts, WSL/remote agents, and external terminal processes are outside automatic observation. Use **Job-Finish: Show Diagnostics** to inspect `automatic.connections`; approvals and answers for existing chats stay in their original UI.
+```powershell
+npx job-finish@latest install
+```
 
-Use Node.js 22+ and .NET SDK 8+ to build, then run `npm ci`, `npm run check`, and `npm run package`. Install `job-finish-win32-x64.vsix` with **Extensions: Install from VSIX…**, or press F5 for a development window. The packaged C# notification helper includes its runtime; users do not need to install .NET. Codex needs an installed, authenticated compatible CLI (live-tested with 0.160.0). The bundled Claude SDK CLI also needs valid authentication.
+The installer installs the bundled VS Code extension and backs up and removes detected old PowerShell/C# installations. Run it from your project folder to include that project's old installation. Reload VS Code if prompted; Job-Finish starts automatically. No separate .NET installation is needed.
 
-For automatic legacy migration and version-aware installation, install the independent CLI dependencies with `npm --prefix tools/installer ci`, then run `npm run install:extension -- --vsix ./job-finish-win32-x64.vsix`. `npm run update:extension` uses the same reconciliation flow. Add `--dry-run` to preview or `--profile <name>` to select a VS Code profile. The tool backs up and removes legacy PowerShell/C# hooks/files before installing, updates older extensions, and preserves equal or newer versions. It compares the VSIX's extension version, preserves current extension settings/data, and checks VSIX validity and VS Code compatibility before cleanup. Direct VSIX installation through VS Code bypasses this migration step. See [installer instructions](tools/installer/README.md) for npm/npx packaging.
+To update:
 
-Run **Job-Finish: Run Codex** or **Run Claude** from the command palette. Use **Answer Pending Request** for tool approvals/questions and **Show Results** for recent responses. Commands also support continuing, cancellation, saved-session resumption, reconnection, releasing ownership, and native window binding. The status bar opens pending requests when present.
+```powershell
+npx job-finish@latest update
+```
 
-Set `jobFinish.codexMode` to `plan` for structured planning questions in newly connected Codex sessions. Permission approvals grant only the requested permissions for the current turn. Recovery reads bounded history pages and preserves unknown outcomes when the runtime cannot confirm them.
+Add `--dry-run` to preview changes or `--profile "Profile name"` to choose a VS Code profile. Equal or newer extension versions are preserved. See the [installer guide](tools/installer/README.md) for details.
 
-See the [Korean usage guide](README.ko.md) for configuration defaults and the [verification report](docs/verification.md) for evidence and outstanding acceptance checks. The extension supports local desktop execution; remote workspaces and web hosts are outside this release. Events stay in extension memory; the C# helper receives the observed HWND, displays a WinRT toast and activates that exact window through Windows' COM toast activation callback. It restores minimized windows and preserves maximized windows. Missing window bindings or refused foreground activation appear in **Show Diagnostics**. Clicks remain valid for five minutes while the originating extension and notification authorization channel remain active, including after the sender process exits.
+<details>
+<summary>Install the CLI globally</summary>
 
-Read the [development document](docs/requirements-and-verification.md) for features, implementation algorithms, and acceptance criteria. The [journal](docs/일지.md) contains the rationale, historical implementations, and measured results.
+```powershell
+npm install -g job-finish@latest
+job-finish install
+```
 
-## Remove the old PowerShell/C# installation
+After installing the latest CLI, you can also use `job-finish update` and `job-finish uninstall`.
 
-The installer is an independent package in [tools/installer](tools/installer/README.md), with its own dependencies and tests. Its uninstall command can also remove legacy installations separately. From the repository root:
+</details>
+
+<details>
+<summary>Install a VSIX manually</summary>
+
+1. Prepare `job-finish-win32-x64.vsix` using the source build steps below.
+2. In VS Code, press `Ctrl+Shift+P` and select **Extensions: Install from VSIX…**.
+3. Select the VSIX file and reload VS Code if prompted.
+
+To update, install the new VSIX the same way. Manual installation does not remove old PowerShell/C# installations.
+
+</details>
+
+<details>
+<summary>Build the VSIX from source</summary>
+
+With **Node.js 22+ and .NET SDK 8+**, run these commands from the repository root:
+
+```powershell
+npm ci
+npm run check
+npm run package
+```
+
+The output is `job-finish-win32-x64.vsix`. Press `F5` instead to open a development window.
+
+If you used the old PowerShell/C# version, the installer can back up and remove it before installing the extension:
+
+```powershell
+npm --prefix tools/installer ci
+npm run install:extension -- --vsix ./job-finish-win32-x64.vsix
+```
+
+</details>
+
+## Use the extension
+
+1. Work in your usual Codex or Claude Code chat in VS Code. Job-Finish is enabled by default.
+2. While the task's window is inactive, completion, errors, and requests for a choice, answer, or approval trigger a toast and taskbar flashing.
+3. Click the toast to return to that window and respond in the original chat.
+
+Open the command palette with `Ctrl+Shift+P` and search for **Job-Finish**:
+
+| Command | Purpose |
+| --- | --- |
+| **Show Results** | Review recent responses. |
+| **Stop Flash** | Stop taskbar flashing immediately. |
+| **Show Diagnostics** | Check detection and notification status. |
+| **Run Codex / Run Claude** | Start a task directly through Job-Finish. |
+| **Answer Pending Request** | Answer questions or approvals for tasks started through Job-Finish. |
+
+Direct execution requires an installed, authenticated Codex CLI or valid authentication for the bundled Claude SDK CLI. If Codex is not on PATH, set `jobFinish.codexExecutable`.
+
+Automatic detection supports local agents in the same VS Code Extension Host. WSL, remote workspaces, external terminal agents, and desktop agent apps are outside this scope. If detection stops working after a provider update, check **Show Diagnostics**.
+
+## Settings at a glance
+
+Open VS Code Settings (`Ctrl+,`) and search for **Job-Finish**.
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `jobFinish.enabled` | `true` | Turn automatic detection and notifications on or off immediately. |
+| `jobFinish.toast` | `true` | Show Windows toast notifications. |
+| `jobFinish.flash` | `true` | Flash the task's VS Code window in the taskbar. |
+| `jobFinish.flashMode` | `manual` | `manual`: flash every 0.5 seconds. `system`: use Windows' default flashing behavior. |
+| `jobFinish.flashTimeoutSeconds` | `300` | Stop flashing after this many seconds. `0` keeps it going until focus returns, the toast is clicked, or **Stop Flash** is used. |
+
+## Uninstall
+
+Remove the VS Code extension and detected old installations:
+
+```powershell
+npx job-finish@latest uninstall
+```
+
+Reload VS Code if prompted. Add `--dry-run` to preview removal, `--profile "Profile name"` for a specific VS Code profile, or `--project "C:\Projects\MyProject"` for another project's old installation.
+
+If you installed the CLI globally, remove it after uninstalling the extension:
+
+```powershell
+npm uninstall -g job-finish
+```
+
+This last command removes only the npm CLI, not the VS Code extension.
+
+<details>
+<summary>Remove only the VS Code extension manually</summary>
+
+In VS Code Extensions (`Ctrl+Shift+X`), find **Job-Finish**, choose **Uninstall**, and reload if prompted. You can also use:
+
+```powershell
+code --uninstall-extension lsc892.job-finish
+```
+
+</details>
+
+<details>
+<summary>Remove only the old PowerShell/C# version</summary>
+
+Use `npx job-finish@latest uninstall-legacy`, or run these commands from the repository root:
 
 ```powershell
 npm --prefix tools/installer ci
 npm run uninstall:legacy -- --dry-run
 npm run uninstall:legacy
-npm run uninstall:legacy -- --keep-files
-npm run uninstall:legacy -- --project "C:\Projects\MyProject"
 ```
 
-The root command forwards arguments to the standalone package. You can also run `npm --prefix tools/installer run uninstall:legacy -- --dry-run` directly. The default project and relative paths use the directory from which the command was invoked. The tool is excluded from the VSIX.
+This removes old Job-Finish hooks and installation files; it does not uninstall the VS Code extension. Use `--project "C:\Projects\MyProject"` for each additional project installation. See the [installer guide](tools/installer/README.md) for backup behavior and other options.
 
-The command removes Job-Finish hooks from user and selected project settings, backs up changed settings beside their originals, and removes verified legacy installation folders, the focus protocol and its Start Menu shortcut. It also checks `CLAUDE_CONFIG_DIR` and `CODEX_HOME` when set. `--dry-run` only previews changes; `--keep-files` removes hooks while retaining files and Windows registrations. Changed Codex TOML is reformatted without comments; its original text remains in the backup. Run with `--project` for each additional project installation. C# source projects and the current VS Code extension are preserved. If the old npm package was installed globally, remove it separately with `npm rm -g job-finish`.
+</details>
+
+For implementation details and verification, see the [development document](docs/requirements-and-verification.md) and [verification report](docs/verification.md).
 
 ## License
 
-MIT License
-
-Copyright (c) 2026 lsc892
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+[MIT](LICENSE). Bundled third-party components retain their respective licenses.

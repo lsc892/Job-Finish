@@ -2,101 +2,135 @@
 
 **[English](README.md) · 한국어 · [中文](README.zh.md) · [日本語](README.jp.md)**
 
-다른 작업을 보고 있는 동안 Codex·Claude 실행이 완료되거나 오류·취소·입력 대기가 발생하면, 실행한 VS Code 창에 Windows 토스트와 작업 표시줄 flash로 알립니다.
+AI 에이전트가 끝났는지 확인하려고 채팅창을 계속 보고 있을 필요 없습니다.
+**Claude Code·Codex의 작업 완료, 입력 대기, 오류**를 알리고, 클릭 한 번으로 해당 VS Code 창에 돌아오는 확장입니다.
 
-Windows x64의 로컬 VS Code 확장입니다. 설치 후 자동으로 켜지며, 같은 창의 기존 Codex·Claude 확장이 주고받는 실행 이벤트를 받아 알립니다. VS Code 설정에서 **Job-Finish: Enabled**를 끄거나 켜면 즉시 적용됩니다. Job-Finish에서 직접 시작한 실행도 지원합니다.
+| Windows 토스트 알림 | 작업 표시줄 깜빡임 |
+| :---: | :---: |
+| <img src="https://raw.githubusercontent.com/lsc892/Job-Finish/877024beb5f86c390c1beec4992cf64c862dbc67/resources/Toast.gif" alt="Windows 토스트 알림을 클릭해 VS Code로 돌아오는 동작 예시" width="380"> | <img src="https://raw.githubusercontent.com/lsc892/Job-Finish/877024beb5f86c390c1beec4992cf64c862dbc67/resources/Flash.gif" alt="VS Code 작업 표시줄 버튼이 깜빡이는 동작 예시" width="380"> |
+| 알림을 클릭하면 작업하던 VS Code 창으로 복귀 | 토스트를 놓쳐도 입력·완료를 기다리는 창을 확인 |
 
-자동 감지는 같은 Extension Host 안에서 실행 중인 Codex App Server의 stdio와 Claude의 SDK JSON 스트림을 읽습니다. 켤 때 이미 실행 중인 프로세스에 연결하고, 이후 시작되는 프로세스도 관찰합니다. 훅 설정 변경·세션 로그 감시·추가 App Server 실행·추가 모델 호출은 없습니다. 기존 채팅창의 승인과 답변은 그 채팅창에서 처리합니다.
+*GIF는 이전 버전의 알림 동작 예시입니다. 현재 확장의 토스트 모양은 다를 수 있습니다.*
 
-현재 설치된 `openai.chatgpt`·`anthropic.claude-code` 확장 경로와 실행 인수를 확인해 연결합니다. Node의 내부 프로세스 API를 사용하므로 확장/VS Code 버전의 통신 방식 변경에 영향을 받을 수 있습니다. 별도 Extension Host, WSL·원격 실행, 다른 프로세스의 터미널 실행은 자동 감지 대상에 포함되지 않습니다. **Job-Finish: Show Diagnostics**의 `automatic.connections`에서 연결 상태를 확인할 수 있습니다.
+![Windows x64](https://img.shields.io/badge/platform-Windows%20x64-0078D4)
+![VS Code](https://img.shields.io/badge/VS%20Code-1.99%2B-007ACC)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
-## 설치와 실행
+## 주요 기능 한눈에 보기
 
-Node.js 22 이상과 .NET SDK 8 이상에서 다음 명령을 실행합니다. VSIX에 C# 알림 helper와 .NET 런타임이 포함되므로 사용자에게 별도 .NET 설치는 필요하지 않습니다.
+| 기능 | 설명 |
+| --- | --- |
+| **Claude Code + Codex** | 기존 VS Code 확장에서 실행하는 지원 대상 작업을 자동으로 감지합니다. |
+| **완료·입력 대기·오류 알림** | 작업 완료·오류와 선택지 선택·질문 답변·승인 대기를 알립니다. |
+| **클릭으로 해당 창 복귀** | 여러 VS Code 창을 열어도 알림을 보낸 작업의 창으로 돌아갑니다. |
+| **작업 표시줄 깜빡임** | 창으로 돌아오거나 설정 시간이 지날 때까지 작업 창을 강조합니다. |
+| **포커스 인식** | 이미 해당 창을 보고 있으면 새 토스트와 깜빡임을 생략합니다. |
+| **최근 결과 확인** | **Job-Finish: Show Results**에서 에이전트의 응답을 다시 봅니다. |
+
+## 설치 및 업데이트
+
+**Windows x64, VS Code 1.99 이상, Node.js 22 이상, 신뢰된 로컬 작업 폴더**에서 사용합니다. 사용할 Codex 또는 Claude Code VS Code 확장을 설치하고 로그인한 뒤 실행하세요.
+
+```powershell
+npx job-finish@latest install
+```
+
+패키지에 포함된 VS Code 확장을 설치하고, 발견한 예전 PowerShell/C# 설치본은 백업 후 정리합니다. 프로젝트 폴더에서 실행하면 해당 프로젝트의 예전 설치본도 정리합니다. VS Code 다시 로드 안내가 나오면 실행하세요. Job-Finish는 자동으로 켜지며 .NET은 별도로 설치할 필요가 없습니다.
+
+업데이트할 때는 다음 명령을 사용합니다.
+
+```powershell
+npx job-finish@latest update
+```
+
+미리보기는 `--dry-run`, 특정 VS Code 프로필은 `--profile "프로필 이름"`을 추가합니다. 같은 버전이나 더 최신인 확장은 유지합니다. 자세한 내용은 [설치 도구 안내](tools/installer/README.md)를 참고하세요.
+
+<details>
+<summary>CLI를 전역 설치해서 사용하기</summary>
+
+```powershell
+npm install -g job-finish@latest
+job-finish install
+```
+
+최신 CLI 설치 후 `job-finish update`, `job-finish uninstall`도 사용할 수 있습니다.
+
+</details>
+
+<details>
+<summary>VSIX 파일로 직접 설치하기</summary>
+
+1. 아래 소스 빌드 안내로 `job-finish-win32-x64.vsix`를 준비합니다.
+2. VS Code에서 `Ctrl+Shift+P` → **Extensions: Install from VSIX…**를 선택합니다.
+3. VSIX 파일을 선택하고, 다시 로드 안내가 나오면 실행합니다.
+
+업데이트도 새 VSIX를 같은 방법으로 설치하면 됩니다. 직접 설치하면 예전 PowerShell/C# 설치본은 정리하지 않습니다.
+
+</details>
+
+<details>
+<summary>소스에서 VSIX 빌드하기</summary>
+
+**Node.js 22 이상과 .NET SDK 8 이상**에서 저장소 루트를 열고 실행합니다.
 
 ```powershell
 npm ci
-npm --prefix tools/installer ci
 npm run check
 npm run package
 ```
 
-다음 명령으로 설치·업데이트합니다. 설치 도구는 토스트 확장과 분리된 [tools/installer](tools/installer/README.md) 패키지입니다.
+`job-finish-win32-x64.vsix`가 생성됩니다. 개발용 창을 열려면 `F5`를 사용합니다.
+
+예전 PowerShell/C# 버전을 사용했다면, 설치 도구로 기존 설치를 백업·정리하면서 확장을 설치할 수 있습니다.
 
 ```powershell
-# 상태와 처리 계획 미리보기
-npm run install:extension -- --vsix ./job-finish-win32-x64.vsix --dry-run
-
-# 설치 또는 업데이트 (두 명령은 같은 상태 확인 로직 사용)
-npm run install:extension -- --vsix ./job-finish-win32-x64.vsix
-npm run update:extension -- --vsix ./job-finish-win32-x64.vsix
-```
-
-| 발견한 상태 | 처리 |
-| --- | --- |
-| 설치된 버전 없음 | 새로 설치 |
-| C# 레거시 있음 | 설정 백업 → 레거시 제거 → 새 확장 설치 |
-| 현재 확장 있음 | 버전 비교 → 이전 버전이면 업데이트 |
-| 레거시와 현재 확장 모두 있음 | 설정 백업 → 레거시 제거 → 현재 확장 업데이트 |
-
-현재 확장이 같은 버전이거나 더 최신이면 재설치·다운그레이드를 생략합니다. 레거시가 함께 있으면 레거시만 정리합니다. 실제 VSIX의 확장 버전을 비교하며, 삭제 전에 VSIX와 VS Code 호환성을 확인합니다. 업데이트는 현재 확장의 설정·저장 데이터를 유지합니다. 특정 VS Code 프로필에는 `--profile "프로필 이름"`을 추가하세요.
-
-개발 중에는 `F5`로 확장 개발 창을 엽니다. **Extensions: Install from VSIX…**로 직접 설치할 수도 있지만, 이 경우 독립 설치 도구의 레거시 정리 과정은 실행되지 않습니다.
-
-1. Codex CLI를 설치·로그인합니다. 검증에 사용한 버전은 `0.160.0`입니다. Claude는 포함된 SDK CLI가 사용 가능한 로그인 또는 인증 환경을 필요로 합니다.
-2. 기존 Codex·Claude 채팅창에서 평소처럼 작업을 실행합니다. 상태 표시줄의 `JF · on`은 자동 감지가 켜졌다는 뜻입니다.
-3. 다른 앱으로 전환하면 해당 창의 완료·오류·입력 대기를 알립니다. 직접 실행하려면 명령 팔레트의 **Job-Finish: Run Codex** 또는 **Run Claude**를 사용하고, 해당 실행의 승인·답변은 **Answer Pending Request**에서 처리합니다.
-4. **Show Results**로 최근 결과를 확인합니다. 같은 창을 보고 있으면 새 토스트·flash를 생략합니다.
-
-**Continue Session**, **Cancel Turn**, **Resume Saved Session**, **Reconnect and Reconcile**, **Release Session**으로 실행을 관리합니다. 창 연결을 확인하려면 해당 창에 포커스를 두고 **Bind This Windows Window**를 실행합니다. HWND를 확정하지 못하면 토스트만 표시합니다.
-
-## 프로젝트 로컬 빌드·적용 스킬
-
-이 저장소에는 Codex용 [job-finish-build-apply](.agents/skills/job-finish-build-apply/SKILL.md) 스킬이 포함되어 있습니다. 이 프로젝트를 연 Codex에서 다음과 같이 요청합니다.
-
-```text
-$job-finish-build-apply 이 프로젝트를 빌드하고 로컬 VS Code에 적용해줘.
-```
-
-스킬은 자신이 포함된 저장소를 기준으로 타입 검사·테스트·VSIX 검증·설치를 수행하며, 같은 버전으로 다시 빌드한 변경분도 적용합니다. 빌드만 요청하면 설치는 생략합니다. 전역 스킬 설치는 필요하지 않습니다.
-
-## 기존 PowerShell/C# 버전 제거
-
-설치 도구의 `uninstall` 명령은 레거시만 따로 정리합니다. 아래 명령은 저장소 루트 기준입니다.
-
-```powershell
-# 제거 도구의 의존성만 설치
 npm --prefix tools/installer ci
-
-# 제거 대상 미리보기
-npm run uninstall:legacy -- --dry-run
-
-# 기존 훅, 설치 폴더, Windows 포커스 프로토콜과 바로가기 제거
-npm run uninstall:legacy
-
-# 훅만 제거하고 설치 파일과 Windows 등록 유지
-npm run uninstall:legacy -- --keep-files
-
-# 다른 프로젝트의 설치본도 정리하려면 프로젝트 경로 지정
-npm run uninstall:legacy -- --project "C:\Projects\MyProject"
+npm run install:extension -- --vsix ./job-finish-win32-x64.vsix
 ```
 
-루트 명령은 설치 패키지에 인수를 전달합니다. 직접 실행하려면 `npm --prefix tools/installer run uninstall:legacy -- --dry-run`을 사용합니다. 기본 프로젝트 경로는 명령을 호출한 폴더입니다.
+</details>
 
-전역 설치와 지정 프로젝트의 설치본을 정리합니다. 기본 설치 폴더는 `~/.job-finish`와 `<프로젝트>/.claude/job-finish`입니다. 기본 Claude/Codex 설정에 더해 `CLAUDE_CONFIG_DIR`·`CODEX_HOME`으로 지정한 설정도 확인합니다. Job-Finish 훅만 제거하며, 변경한 설정은 같은 폴더의 `.bak` 파일로 백업합니다. Codex TOML을 변경하면 주석과 서식은 다시 생성됩니다. 기존 파일은 백업에서 확인할 수 있습니다. 다른 프로젝트의 설치본은 각각 `--project`로 지정합니다.
+## 확장 사용법
 
-예전 npm 전역 패키지도 설치했다면 `npm rm -g job-finish`로 별도 제거합니다. 이 명령은 C# 소스 프로젝트나 현재 VS Code 확장을 삭제하지 않습니다.
+1. VS Code의 기존 Codex·Claude Code 채팅창에서 평소처럼 작업합니다. Job-Finish는 기본으로 켜져 있습니다.
+2. 작업 창이 비활성일 때 완료·오류·선택지/질문/승인 대기를 토스트와 작업 표시줄 깜빡임으로 알려줍니다.
+3. 토스트를 클릭해 해당 창으로 돌아와 원래 채팅창에서 선택하거나 답변·승인합니다.
 
-## 설정
+`Ctrl+Shift+P`로 명령 팔레트를 열고 **Job-Finish**를 검색합니다.
 
-| 설정 | 기본값 / 의미 |
+| 명령 | 용도 |
 | --- | --- |
-| `jobFinish.enabled` | `true`; 자동 감지와 알림을 즉시 켜거나 끔 |
-| `jobFinish.toast`, `jobFinish.flash` | `true` |
-| `jobFinish.toastIcon` | `true` — 토스트 본문 왼쪽에 기본 잠자는 캐릭터 이미지 표시. 끄면 이미지 없이 표시 |
-| `jobFinish.toastIconPath` | 빈 값은 기본 이미지. 로컬 PNG·JPEG·GIF·BMP 경로로 교체 가능하며 상대 경로는 첫 workspace 폴더 기준 |
-| `jobFinish.flashMode` | `manual` — 500ms 간격; `system`도 선택 가능 |
-| `jobFinish.flashTimeoutSeconds` | `300`; `0`은 명시적 정지·포커스 복귀까지 유지 |
+| **Show Results** | 최근 에이전트 응답 확인 |
+| **Stop Flash** | 작업 표시줄 깜빡임 즉시 정지 |
+| **Show Diagnostics** | 자동 감지·알림 연결 상태 확인 |
+| **Run Codex / Run Claude** | Job-Finish에서 직접 작업 시작 |
+| **Answer Pending Request** | Job-Finish에서 직접 시작한 작업의 질문·승인 처리 |
+
+직접 실행에는 설치·인증된 Codex CLI 또는 포함된 Claude SDK CLI의 유효한 인증이 필요합니다. Codex가 PATH에 없다면 `jobFinish.codexExecutable`을 지정하세요.
+
+자동 감지는 같은 VS Code Extension Host에서 실행되는 로컬 에이전트를 지원합니다. WSL·원격 작업 폴더·외부 터미널·데스크톱 에이전트 앱은 대상에 포함되지 않습니다. 에이전트 확장 업데이트 후 감지가 안 되면 **Show Diagnostics**에서 상태를 확인하세요.
+
+완료 판정은 런타임 이벤트를 사용합니다. 세션 로그 감시나 추가 AI 요약 호출은 사용하지 않습니다. 토스트 상단의 Job-Finish 왼쪽에는 VS Code 아이콘을 표시하고, 본문은 대화·작업 제목 1줄과 AI 응답 최대 4줄로 구성합니다. 제목이 없으면 해당 사용자 요청이나 workspace 이름을 사용합니다. 질문·승인 대기에는 작업 제목 앞에 `Answer needed` 또는 `Approval needed`를 표시합니다. 알림 미리보기의 Markdown 기호와 빈 줄은 정리하며 최대 360자로 제한합니다. 결과는 창별 20개·각 16 KiB로 원문을 보관합니다. 잘린 Codex 결과는 연결된 런타임에 원문을 요청하며, 조회할 수 없으면 화면에 표시합니다.
+
+## 기본 설정 한눈에 보기
+
+VS Code 설정(`Ctrl+,`)에서 **Job-Finish**를 검색합니다.
+
+| 설정 | 기본값 | 설명 |
+| --- | --- | --- |
+| `jobFinish.enabled` | `true` | 자동 감지와 알림을 즉시 켜거나 끕니다. |
+| `jobFinish.toast` | `true` | Windows 토스트 알림을 표시합니다. |
+| `jobFinish.toastIcon` | `true` | 토스트 본문 왼쪽에 기본 잠자는 캐릭터 이미지를 표시합니다. 끄면 이미지 없이 표시합니다. |
+| `jobFinish.toastIconPath` | 빈 값 | 빈 값은 기본 이미지입니다. 로컬 PNG·JPEG·GIF·BMP로 교체할 수 있으며 상대 경로는 첫 workspace 폴더 기준입니다. |
+| `jobFinish.flash` | `true` | 작업하던 VS Code 창의 작업 표시줄 버튼을 깜빡입니다. |
+| `jobFinish.flashMode` | `manual` | `manual`: 0.5초마다 직접 깜빡임. `system`: Windows 기본 깜빡임 방식 사용. |
+| `jobFinish.flashTimeoutSeconds` | `300` | 깜빡임 유지 시간(초). `0`이면 창 복귀·토스트 클릭·**Stop Flash**까지 유지합니다. |
+
+<details>
+<summary>직접 실행과 세션 설정 더 보기</summary>
+
+| 설정 | 기본값과 설명 |
+| --- | --- |
 | `jobFinish.codexExecutable` | 빈 값은 PATH 탐색. `codex.exe` 또는 npm `bin/codex.js` 경로 |
 | `jobFinish.codexModel` | 빈 값은 Codex 설정 사용 |
 | `jobFinish.codexMode` | `default`; `plan`은 구조화된 질문을 사용하는 계획 모드. 새로 연결할 세션에 적용 |
@@ -104,16 +138,54 @@ npm run uninstall:legacy -- --project "C:\Projects\MyProject"
 | `jobFinish.maxSessions`, `jobFinish.maxConnections` | `8`, `4` |
 | `jobFinish.claudeMaxTurns` | `50`; 계정 사용량 한도와 별개의 실행 제한 |
 
-## 검증과 지원 범위
+</details>
 
-완료 판정은 런타임 이벤트를 사용합니다. 세션 로그 감시나 추가 AI 요약 호출은 사용하지 않습니다. 토스트 상단의 Job-Finish 왼쪽에는 VS Code 아이콘을 표시하고, 본문은 대화·작업 제목 1줄과 AI 응답 최대 4줄로 구성합니다. 제목이 없으면 해당 사용자 요청이나 workspace 이름을 사용합니다. 알림 미리보기의 Markdown 기호와 빈 줄은 정리하며 최대 360자로 제한합니다. 결과는 창별 20개·각 16 KiB로 원문을 보관합니다. 잘린 Codex 결과는 연결된 런타임에 원문을 요청하며, 조회할 수 없으면 화면에 표시합니다.
+## 삭제
 
-Codex는 연결 오류 시 최대 3회 재연결하고 기존 턴을 조회합니다. 미확정 작업을 자동 재실행하지 않습니다. SDK가 종료 결과를 확인해 주지 못하는 Claude 실행은 `unknown`으로 남습니다. 이벤트는 확장 메모리에서 observe하고, C# helper에 관측한 HWND를 전달해 WinRT toast를 표시합니다. 클릭하면 Windows protocol로 실행된 C# helper가 해당 창을 앞으로 가져오고 flash를 멈춥니다. 최소화된 창만 복원하고 최대화 상태는 유지합니다. 알림 전송 프로세스가 종료돼도 원래 확장과 해당 알림의 클릭 승인 채널이 유지되는 5분 동안 클릭할 수 있습니다. 알림 교체·비활성화·확장 종료 후에는 활성화하지 않습니다. HWND 미연결이나 전경 전환 거부는 **Show Diagnostics**에 기록합니다.
+VS Code 확장과 발견한 예전 설치본을 함께 삭제합니다.
 
-Codex 복구는 최근 512개 턴의 상태를 페이지별로 조회하고, 필요한 턴의 결과만 읽습니다. 조회 예산을 초과하거나 저장된 미완료 턴의 실제 실행 상태를 확인할 수 없으면 `unknown`을 유지합니다. 권한 승인 UI의 **Allow once**는 요청된 권한만 현재 턴에 허용합니다.
+```powershell
+npx job-finish@latest uninstall
+```
 
-현재 구현과 실제 검증 결과·미검증 항목은 [검증 보고서](docs/verification.md)에 기록합니다. 원래 기준은 [요구사항](docs/requirements-and-verification.md), 과거 실험은 [일지](docs/일지.md)를 참고하세요.
+VS Code 다시 로드 안내가 나오면 실행하세요. 삭제 대상 미리보기는 `--dry-run`, 특정 VS Code 프로필은 `--profile "프로필 이름"`, 다른 프로젝트의 예전 설치본은 `--project "C:\Projects\MyProject"`를 추가합니다.
+
+CLI를 전역 설치했다면 확장을 삭제한 뒤 CLI도 제거합니다.
+
+```powershell
+npm uninstall -g job-finish
+```
+
+마지막 명령은 npm CLI만 삭제하며 VS Code 확장은 삭제하지 않습니다.
+
+<details>
+<summary>VS Code 확장만 직접 삭제하기</summary>
+
+VS Code 확장 목록(`Ctrl+Shift+X`)에서 **Job-Finish** → **제거(Uninstall)**를 선택하고, 다시 로드 안내가 나오면 실행합니다. 명령으로 삭제할 수도 있습니다.
+
+```powershell
+code --uninstall-extension lsc892.job-finish
+```
+
+</details>
+
+<details>
+<summary>예전 PowerShell/C# 버전만 삭제하기</summary>
+
+`npx job-finish@latest uninstall-legacy`를 사용하거나, 저장소 루트에서 다음 명령을 실행합니다.
+
+```powershell
+npm --prefix tools/installer ci
+npm run uninstall:legacy -- --dry-run
+npm run uninstall:legacy
+```
+
+예전 Job-Finish 훅과 설치 파일을 제거하는 명령이며, 현재 VS Code 확장은 삭제하지 않습니다. 다른 프로젝트의 설치본은 각각 `--project "C:\Projects\MyProject"`로 지정합니다. 백업 동작과 추가 옵션은 [설치 도구 안내](tools/installer/README.md)를 참고하세요.
+
+</details>
+
+내부 동작과 검증 결과는 [개발 문서](docs/requirements-and-verification.md)와 [검증 보고서](docs/verification.md)에서 확인할 수 있습니다.
 
 ## 라이선스
 
-[MIT](LICENSE). 포함된 외부 런타임과 native 구성요소는 각각의 라이선스를 따릅니다.
+[MIT](LICENSE). 포함된 외부 구성요소는 각각의 라이선스를 따릅니다.
