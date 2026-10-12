@@ -113,7 +113,7 @@ test('Click stops its flash and activates the originating window only while deli
 
 test('Notification policy stores focused results, rechecks ownership and bounds result count', async () => {
   let focused = true; let owns = true; const calls: string[] = [];
-  const notifications = new Notifications({ focused: () => focused, owns: () => owns, stopFlash: () => { calls.push('stop'); }, flash: () => { calls.push('flash'); }, activate: () => {}, toast: async (_s, message, _click, allowed) => { assert.ok(Array.from(message).length <= 180); if (allowed()) calls.push('toast'); } });
+  const notifications = new Notifications({ focused: () => focused, owns: () => owns, stopFlash: () => { calls.push('stop'); }, flash: () => { calls.push('flash'); }, activate: () => {}, toast: async (_s, message, _click, allowed) => { assert.ok(Array.from(message).length <= 360); if (allowed()) calls.push('toast'); } });
   const signal: Signal = { ...binding(), notificationId: 'n', turnId: 't', status: 'completed', text: 'x'.repeat(300), truncated: false, at: '' };
   await notifications.deliver(signal); assert.deepEqual(calls, ['stop']);
   focused = false; await notifications.deliver(signal); assert.deepEqual(calls, ['stop', 'flash', 'toast']);

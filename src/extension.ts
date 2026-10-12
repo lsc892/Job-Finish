@@ -5,6 +5,7 @@ import { Session } from './core/session';
 import { Diagnostics, InputRequest, Provider, SessionBinding, Signal } from './core/model';
 import { Lease, Ownership } from './core/ownership';
 import { Notifications } from './core/notifications';
+import { toastTitle } from './core/toast-content';
 import { CodexExecution, codexApprovalResponse } from './runtime/codex';
 import { ClaudeExecution } from './runtime/claude';
 import { runtimeId } from './runtime/executable';
@@ -12,6 +13,7 @@ import { AgentStreamObserver, AgentRoot } from './runtime/observe';
 import { Win32, WindowIdentity } from './windows/native';
 import { FlashController } from './windows/flash';
 import { WindowsToast } from './windows/toast';
+import { toastImagePath } from './windows/toast-image';
 import type { RpcMessage } from './runtime/transport';
 import type { ToolRequestUserInputParams } from './protocol/v2/ToolRequestUserInputParams';
 
@@ -44,7 +46,7 @@ class Application {
   private opening = 0;
   private readonly busy = new Set<string>();
   constructor(private context: vscode.ExtensionContext) {
-    this.toast = new WindowsToast(WindowsToast.binary(context.extensionPath), this.diagnostics);
+    this.toast = new WindowsToast(WindowsToast.binary(context.extensionPath), this.diagnostics, undefined, process.execPath);
     const storage = context.extensionMode === vscode.ExtensionMode.Test && process.env.JOB_FINISH_TEST_SHARED_STORAGE
       ? process.env.JOB_FINISH_TEST_SHARED_STORAGE : context.globalStorageUri.fsPath;
     mkdirSync(storage, { recursive: true });
@@ -69,7 +71,9 @@ class Application {
       toast: async (signal, message, click, allowed) => {
         const binding = this.identity?.valid();
         if (this.config('toast', true)) await this.toast.show({ notificationId: signal.notificationId, windowInstanceId: this.windowInstanceId,
-          title: `${signal.provider} · ${signal.status} · ${this.windowInstanceId.slice(0, 8)}`, message, appId: WindowsToast.appId, onClick: click,
+          title: toastTitle(signal, vscode.workspace.name), message, appId: WindowsToast.appId, onClick: click,
+          imagePath: toastImagePath(context.extensionPath, this.config('toastIcon', true), this.config('toastIconPath', ''),
+            vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, message => this.diagnostics.add(message)),
           target: binding ? { hwnd: binding.hwnd.toString(), pid: binding.pid, executable: binding.executable } : undefined,
           canActivate: () => !this.disposed && this.config('enabled', true) && this.owns(signal) }, allowed);
       },

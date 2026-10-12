@@ -93,6 +93,8 @@ npm run uninstall:legacy -- --project "C:\Projects\MyProject"
 | --- | --- |
 | `jobFinish.enabled` | `true`; 자동 감지와 알림을 즉시 켜거나 끔 |
 | `jobFinish.toast`, `jobFinish.flash` | `true` |
+| `jobFinish.toastIcon` | `true` — 토스트 본문 왼쪽에 기본 잠자는 캐릭터 이미지 표시. 끄면 이미지 없이 표시 |
+| `jobFinish.toastIconPath` | 빈 값은 기본 이미지. 로컬 PNG·JPEG·GIF·BMP 경로로 교체 가능하며 상대 경로는 첫 workspace 폴더 기준 |
 | `jobFinish.flashMode` | `manual` — 500ms 간격; `system`도 선택 가능 |
 | `jobFinish.flashTimeoutSeconds` | `300`; `0`은 명시적 정지·포커스 복귀까지 유지 |
 | `jobFinish.codexExecutable` | 빈 값은 PATH 탐색. `codex.exe` 또는 npm `bin/codex.js` 경로 |
@@ -104,7 +106,7 @@ npm run uninstall:legacy -- --project "C:\Projects\MyProject"
 
 ## 검증과 지원 범위
 
-완료 판정은 런타임 이벤트를 사용합니다. 세션 로그 감시나 추가 AI 요약 호출은 사용하지 않습니다. 결과는 창별 20개·각 16 KiB, 토스트는 180자로 제한합니다. 잘린 Codex 결과는 연결된 런타임에 원문을 요청하며, 조회할 수 없으면 화면에 표시합니다.
+완료 판정은 런타임 이벤트를 사용합니다. 세션 로그 감시나 추가 AI 요약 호출은 사용하지 않습니다. 토스트 상단의 Job-Finish 왼쪽에는 VS Code 아이콘을 표시하고, 본문은 대화·작업 제목 1줄과 AI 응답 최대 4줄로 구성합니다. 제목이 없으면 해당 사용자 요청이나 workspace 이름을 사용합니다. 알림 미리보기의 Markdown 기호와 빈 줄은 정리하며 최대 360자로 제한합니다. 결과는 창별 20개·각 16 KiB로 원문을 보관합니다. 잘린 Codex 결과는 연결된 런타임에 원문을 요청하며, 조회할 수 없으면 화면에 표시합니다.
 
 Codex는 연결 오류 시 최대 3회 재연결하고 기존 턴을 조회합니다. 미확정 작업을 자동 재실행하지 않습니다. SDK가 종료 결과를 확인해 주지 못하는 Claude 실행은 `unknown`으로 남습니다. 이벤트는 확장 메모리에서 observe하고, C# helper에 관측한 HWND를 전달해 WinRT toast를 표시합니다. 클릭하면 Windows protocol로 실행된 C# helper가 해당 창을 앞으로 가져오고 flash를 멈춥니다. 최소화된 창만 복원하고 최대화 상태는 유지합니다. 알림 전송 프로세스가 종료돼도 원래 확장과 해당 알림의 클릭 승인 채널이 유지되는 5분 동안 클릭할 수 있습니다. 알림 교체·비활성화·확장 종료 후에는 활성화하지 않습니다. HWND 미연결이나 전경 전환 거부는 **Show Diagnostics**에 기록합니다.
 

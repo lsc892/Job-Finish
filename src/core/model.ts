@@ -34,7 +34,7 @@ export function taskTitle(text: unknown): string | undefined {
   const title = boundedText(text.replace(/\s+/gu, ' ').trim(), 512).text;
   return title || undefined;
 }
-export function toastText(text: string): string { const chars = Array.from(text); return chars.length > 180 ? chars.slice(0, 179).join('') + '…' : text; }
+export function toastText(text: string): string { const chars = Array.from(text); return chars.length > 360 ? chars.slice(0, 359).join('') + '…' : text; }
 export const sessionKey = (b: Pick<SessionBinding, 'provider' | 'runtimeId' | 'sessionId'>): string => JSON.stringify([b.provider, b.runtimeId, b.sessionId]);
 export const isTerminal = (s: Status): s is TerminalStatus => s === 'completed' || s === 'error' || s === 'cancelled';
 

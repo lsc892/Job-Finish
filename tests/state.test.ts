@@ -72,7 +72,7 @@ test('Bounded keys, active turns, diagnostics and UTF-8 result storage', () => {
   for (let i = 0; i < LIMITS.turns; i++) f.session.start(`pending-${i}`, 'connection-1');
   assert.throws(() => f.session.start('overflow', 'connection-1'), /limit/);
   const text = boundedText('😀한글'.repeat(10_000)); assert.ok(text.truncated); assert.ok(Buffer.byteLength(text.text) <= LIMITS.textBytes); assert.ok(!text.text.includes('�'));
-  assert.equal(Array.from(toastText('😀'.repeat(181))).length, 180);
+  assert.equal(Array.from(toastText('😀'.repeat(361))).length, 360);
 });
 for (const [subtype, is_error, status] of [['success', false, 'completed'], ['success', true, 'error'], ['error_max_turns', true, 'error'], ['error_during_execution', true, 'error']]) {
   test(`Claude ${subtype}/${is_error} maps to ${status}`, () => {

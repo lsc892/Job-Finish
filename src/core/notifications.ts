@@ -1,4 +1,5 @@
-import { LIMITS, Signal, toastText } from './model';
+import { LIMITS, Signal } from './model';
+import { toastMessage } from './toast-content';
 export interface NotificationPorts {
   enabled?(): boolean;
   focused(): boolean; owns(signal: Signal): boolean;
@@ -15,7 +16,7 @@ export class Notifications {
     this.results.push(signal); if (this.results.length > LIMITS.results) this.results.shift();
     if (this.ports.enabled?.() === false || this.ports.focused()) { this.ports.stopFlash(); return; }
     this.ports.flash(signal);
-    await this.ports.toast(signal, toastText(signal.text || signal.detail || signal.status),
+    await this.ports.toast(signal, toastMessage(signal),
       () => {
         this.ports.stopFlash(signal.notificationId);
         if (this.ports.enabled?.() !== false && this.ports.owns(signal)) this.ports.activate(signal);

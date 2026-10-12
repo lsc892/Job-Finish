@@ -10,5 +10,7 @@
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="../../tools/windows-toast/Registration.cs" Link="Registration.cs" />
+    <Compile Include="../../tools/windows-toast/Branding.cs" Link="Branding.cs" />
+    <Compile Include="../../tools/windows-toast/ToastContent.cs" Link="ToastContent.cs" />
   </ItemGroup>
 </Project>

@@ -110,11 +110,11 @@ T/U의 turn/completed 수신 → completed / error / cancelled 분류
   이미 처리한 이벤트인가? 맞으면 무시
   상태·본문·세션·창 ID를 제한된 결과 저장소에 기록
   해당 창이 focused인가? 맞으면 해당 flash 정지 후 종료
-  toast 설정이 켜졌으면 provider·상태·본문·창 ID로 표시
+  toast 설정이 켜졌으면 작업 제목과 AI 응답 미리보기로 표시
   flash 설정이 켜졌고 HWND가 확인되면 그 HWND에만 시작
 ```
 
-알림 본문은 에이전트의 최종 응답을 사용하고 요약을 위한 AI 호출은 추가하지 않는다. Windows 토스트 본문은 최대 180자로 제한한다. 전체 본문은 제한된 결과 저장소나 런타임의 지원되는 조회 API로 열고, 잘린 결과나 조회 불가 상태를 표시한다.
+알림 본문은 에이전트의 최종 응답을 사용하고 요약을 위한 AI 호출은 추가하지 않는다. Windows 토스트 제목에는 Codex의 대화 이름·첫 사용자 메시지 또는 해당 턴의 사용자 요청을 사용하고, 제목을 확보하지 못하면 workspace 이름을 사용한다. Claude는 해당 사용자 요청을 제목으로 사용한다. 상태·창 ID는 결과와 진단에 보관한다. 토스트 미리보기만 Markdown 기호·빈 줄을 정리하고 최대 360자로 제한한다. 전체 본문은 제한된 결과 저장소나 런타임의 지원되는 조회 API로 열고, 잘린 결과나 조회 불가 상태를 표시한다.
 
 ### Windows 토스트 구현
 
@@ -126,6 +126,8 @@ VS Code의 포커스 통지는 Windows의 실제 전경 HWND 전환보다 먼저
 
 완료 시에는 등록 완료를 기다리고 포커스·활성화 설정·요청 세대를 다시 검사한 뒤 `--show`로 전송한다. 전송 경로는 바로가기나 protocol을 등록하지 않는다. C#은 WinRT `Failed`를 구독하고 STA 메시지를 처리하며 최대 약 2초 동안 오류 코드·해당 Tag/Group의 Windows 이력·사용자 알림 상태를 관측한 뒤 종료한다. `toast.registration.ready`, `toast.submitted`, `toast.history.confirmed`, `toast.failed`, `toast.observation.complete`를 구분하고 TypeScript는 stdout/stderr가 소진된 `close`에서 결과를 확정한다. 이력 확인이나 정상 종료를 실제 배너 표시 성공으로 표현하지 않으며, 종료 이후 발생한 표시 실패는 이 짧은 관측 범위에 포함되지 않는다.
 
+등록 시 실제 실행 중인 VS Code 경로를 전달해 바로가기의 `IconLocation`과 AUMID의 `IconUri`를 VS Code 아이콘으로 설정한다. 본문은 `ToastGeneric`의 제목 1줄·응답 최대 4줄을 사용한다. `jobFinish.toastIcon`은 기본 `true`이며 스크린샷의 잠자는 캐릭터를 `appLogoOverride`로 표시한다. `jobFinish.toastIconPath`에 로컬 PNG·JPEG·GIF·BMP 경로를 지정하면 교체할 수 있고, 잘못된 경로는 진단 후 기본 이미지로 대체한다. 이미지를 끄면 image 요소를 생략한다. 이 설정은 다음 알림부터 적용된다.
+
 토스트 adapter는 다음 입력을 받도록 구성한다.
 
 ```typescript
@@ -135,6 +137,7 @@ interface ToastRequest {
   title: string;
   message: string;
   appId: string;
+  imagePath?: string;
   target?: { hwnd: string; pid: number; executable: string };
   canActivate?: () => boolean;
   onClick?: () => void;
@@ -177,7 +180,7 @@ UUID는 확장 실행 식별자이고 HWND는 Windows의 실제 창 핸들이다
 
 연결 정보는 `windowInstanceId`, `hwnd`, native 창 PID, 확인 방식·시각을 포함한다. 실행 직전 `IsWindow(hwnd)`와 대상 프로세스를 다시 확인하고 창이 사라지거나 재활성화되면 연결을 버린다. 여러 창이 같은 Code PID를 공유할 수 있으므로 PID 단독으로 창을 결정하지 않는다.
 
-같은 프로젝트·같은 제목의 창도 UUID와 HWND를 각각 연결한다. 제목 점수 동률의 ZOrder를 소유권으로 사용하지 않는다. HWND가 모호하면 미연결 상태로 남겨 토스트에 창 UUID를 표시하고 flash는 시작하지 않는다.
+같은 프로젝트·같은 제목의 창도 UUID와 HWND를 각각 연결한다. 제목 점수 동률의 ZOrder를 소유권으로 사용하지 않는다. HWND가 모호하면 미연결 상태로 남겨 토스트만 표시하고 flash는 시작하지 않는다. 창 UUID는 진단에서 확인한다.
 
 해당 창이 포커스될 때 `onDidChangeWindowState`와 native 전경 HWND를 함께 관측해 UUID 연결 후보를 확보하거나 명시적인 연결 명령을 제공한다. 관측 중 포커스가 바뀌거나 후보를 확정할 수 없으면 연결을 보류한다. 같은 폴더의 두 창과 빠른 포커스 전환에서도 다른 창의 HWND를 확정하지 않도록 처리한다.
 
