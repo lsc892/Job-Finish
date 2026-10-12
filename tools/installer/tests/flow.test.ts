@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EXTENSION_ID, installOrUpdate, planInstall, type InstallServices } from '../src/flow';
+import { EXTENSION_ID, installOrUpdate, planInstall, uninstall, type InstallServices, type UninstallServices } from '../src/flow';
 import { applyLegacyUninstall, planLegacyUninstall } from '../src/uninstall';
 import { parseInstalledVersion } from '../src/vscode';
 
@@ -103,4 +103,76 @@ test('Extension listing ignores other IDs and logs; malformed installed versions
   assert.equal(parseInstalledVersion('warning\r\nother.job-finish@2.0.0\r\nlsc892.job-finish@0.9.0\r\nlsc892.job-finish@0.10.0\r\n', EXTENSION_ID), '0.10.0');
   assert.equal(parseInstalledVersion('other.job-finish@1.0.0', EXTENSION_ID), null);
   assert.throws(() => parseInstalledVersion('lsc892.job-finish@broken', EXTENSION_ID), /버전/);
+});
+
+for (const [installed, legacy] of [[null, false], [null, true], ['0.1.0', false], ['0.1.0', true]] as const) {
+  test(`Uninstall removes only installed targets and is repeatable: extension=${installed}, legacy=${legacy}`, () => {
+    let current: string | null = installed;
+    let legacyPresent: boolean = legacy;
+    const calls: string[] = [];
+    const services: UninstallServices = {
+      installedVersion: id => { assert.equal(id, EXTENSION_ID); return current; },
+      inspectLegacy: () => ({ found: legacyPresent, targets: legacyPresent ? ['legacy'] : [], remove: () => {
+        calls.push('legacy'); legacyPresent = false; return ['settings.bak'];
+      } }),
+      uninstall: id => { assert.equal(id, EXTENSION_ID); calls.push('extension'); current = null; }
+    };
+    assert.deepEqual(uninstall(false, services, () => {}), {
+      installedVersion: installed, removeExtension: installed !== null, removeLegacy: legacy
+    });
+    assert.deepEqual(calls, [...(installed === null ? [] : ['extension']), ...(legacy ? ['legacy'] : [])]);
+    calls.length = 0;
+    assert.deepEqual(uninstall(false, services, () => {}), {
+      installedVersion: null, removeExtension: false, removeLegacy: false
+    });
+    assert.deepEqual(calls, []);
+  });
+}
+
+test('Uninstall dry-run inspects both targets without needing a VSIX or removing anything', () => {
+  const calls: string[] = [];
+  const services: UninstallServices = {
+    installedVersion: () => { calls.push('inspect-extension'); return '0.1.0'; },
+    inspectLegacy: () => { calls.push('inspect-legacy'); return { found: true, targets: ['legacy'],
+      remove: () => { calls.push('remove-legacy'); return []; } }; },
+    uninstall: () => { calls.push('remove-extension'); }
+  };
+  assert.deepEqual(uninstall(true, services, () => {}), {
+    installedVersion: '0.1.0', removeExtension: true, removeLegacy: true
+  });
+  assert.deepEqual(calls, ['inspect-extension', 'inspect-legacy']);
+});
+
+test('Uninstall inspection failures prevent mutations; extension failures preserve legacy settings', () => {
+  const calls: string[] = [];
+  const services: UninstallServices = {
+    installedVersion: () => '0.1.0',
+    inspectLegacy: () => ({ found: true, targets: ['legacy'], remove: () => { calls.push('legacy'); return []; } }),
+    uninstall: () => { calls.push('extension'); }
+  };
+  assert.throws(() => uninstall(false, { ...services,
+    installedVersion: () => { throw new Error('listing failed'); } }, () => {}), /listing failed/);
+  assert.throws(() => uninstall(false, { ...services,
+    inspectLegacy: () => { throw new Error('malformed legacy settings'); } }, () => {}), /malformed legacy settings/);
+  assert.deepEqual(calls, []);
+  assert.throws(() => uninstall(false, { ...services,
+    uninstall: () => { throw new Error('extension removal failed'); } }, () => {}), /extension removal failed/);
+  assert.deepEqual(calls, []);
+  assert.throws(() => uninstall(false, services, () => {}), /확장 제거 결과/);
+  assert.deepEqual(calls, ['extension']);
+});
+
+test('Uninstall reports a failed post-removal query or failed legacy cleanup', () => {
+  let current: string | null = '0.1.0';
+  let removed = false;
+  const services: UninstallServices = {
+    installedVersion: () => current,
+    inspectLegacy: () => ({ found: true, targets: ['legacy'], remove: () => { throw new Error('backup failed'); } }),
+    uninstall: () => { removed = true; current = null; }
+  };
+  assert.throws(() => uninstall(false, { ...services,
+    installedVersion: () => { if (removed) throw new Error('verification failed'); return current; } }, () => {}), /verification failed/);
+  removed = false; current = '0.1.0';
+  assert.throws(() => uninstall(false, services, () => {}), /backup failed/);
+  assert.equal(current, null);
 });

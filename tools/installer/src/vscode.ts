@@ -23,6 +23,12 @@ export function resolveCode(executable?: string): CodeCommand {
     script = join(dirname(dirname(path)), relativeCli);
   } else if (extname(path).toLowerCase() === '.exe') {
     code = path; script = join(dirname(path), 'resources', 'app', 'out', 'cli.js');
+    // Recent VS Code installs can keep resources in a version directory named by code.cmd.
+    const launcher = join(dirname(path), 'bin', 'code.cmd');
+    if (!existsSync(script) && existsSync(launcher)) {
+      const resolved = resolveCode(launcher);
+      if (resolved.executable.toLowerCase() === path.toLowerCase()) script = resolved.args[0]!;
+    }
   } else throw new Error('--code는 Code.exe 또는 code.cmd 경로여야 합니다.');
   if (!existsSync(code) || !existsSync(script)) throw new Error(`VS Code CLI 파일이 없습니다: ${code}`);
   return { executable: code, args: [script] };
@@ -62,6 +68,12 @@ export class VSCode {
     }
   }
   install(path: string): void { this.run(['--install-extension', resolve(path), '--force']); }
+  uninstall(id: string): void {
+    if (this.installedVersion(id) === null) return;
+    this.run(['--uninstall-extension', id]);
+    const actual = this.installedVersion(id);
+    if (actual !== null) throw new Error(`확장 제거 결과를 확인하지 못했습니다. 남아 있는 버전: ${actual}`);
+  }
 }
 
 /** Read the version from the actual VSIX, rather than the installer's npm version. */
