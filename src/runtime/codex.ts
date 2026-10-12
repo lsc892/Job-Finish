@@ -7,6 +7,7 @@ import type { TurnStartParams } from '../protocol/v2/TurnStartParams';
 import type { PermissionsRequestApprovalParams } from '../protocol/v2/PermissionsRequestApprovalParams';
 import type { PermissionsRequestApprovalResponse } from '../protocol/v2/PermissionsRequestApprovalResponse';
 import { Session } from '../core/session';
+import { inputQuestionText } from '../core/input';
 import { Diagnostics, LIMITS, TerminalStatus } from '../core/model';
 import { EventQueue, RpcError, RpcMessage, StdioRpc } from './transport';
 import { codexCommand } from './executable';
@@ -23,6 +24,44 @@ function object(value: unknown): Record<string, unknown> {
 }
 function id(value: unknown): string { if (typeof value !== 'string' || !value) throw new Error('Missing Codex identifier'); return value; }
 
+/** Input panels handled by the existing Codex extension, never by Job-Finish's direct execution UI. */
+export function observedCodexQuestion(message: RpcMessage): string | undefined {
+  const p = object(message.params);
+  let input: Record<string, unknown>;
+  let tool: string;
+  if (message.method === 'item/tool/requestOptionPicker') { input = p; tool = 'request_option_picker'; }
+  else {
+    if (message.method !== 'item/tool/call' || (p.namespace != null && p.namespace !== 'codex_app')) return;
+    if (!p.arguments || typeof p.arguments !== 'object' || Array.isArray(p.arguments)) return;
+    input = p.arguments as Record<string, unknown>; tool = String(p.tool);
+  }
+  const text = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
+  const optionalText = (value: unknown): boolean => value == null || typeof value === 'string';
+  const options = (value: unknown): boolean => Array.isArray(value) && value.every(option =>
+    !!option && typeof option === 'object' && !Array.isArray(option) && text((option as Record<string, unknown>).label) &&
+      optionalText((option as Record<string, unknown>).description));
+  if (tool === 'request_option_picker' && text(input.question) && options(input.options) &&
+      (input.allowMultiple === undefined || typeof input.allowMultiple === 'boolean') && optionalText(input.submitLabel) && optionalText(input.skipLabel)) {
+    return inputQuestionText([input], 'Codex needs a selection');
+  }
+  if (tool === 'request_onboarding_input' && Array.isArray(input.questions) && input.questions.length > 0 && input.questions.length <= 3 &&
+      input.questions.every(question => !!question && typeof question === 'object' && !Array.isArray(question) &&
+        text(question.id) && text(question.question) && optionalText(question.header) &&
+        Array.isArray(question.options) && question.options.length >= 2 && options(question.options))) {
+    return inputQuestionText(input.questions, 'Codex needs an answer');
+  }
+  const stringList = (value: unknown, count: number, length: number): boolean => value === undefined ||
+    Array.isArray(value) && value.length <= count && value.every(entry => text(entry) && entry.trim().length <= length);
+  if (tool === 'request_environment_input' && ['repositories', 'name', 'secrets', 'network', 'review'].includes(String(input.mode)) &&
+      (input.reason === undefined || text(input.reason) && input.reason.trim().length <= 512) &&
+      stringList(input.domains, 20, 253) && stringList(input.repositories, 10, 512) &&
+      (input.secrets === undefined || Array.isArray(input.secrets) && input.secrets.length <= 20 && input.secrets.every(secret =>
+        secret && typeof secret === 'object' && !Array.isArray(secret) && text(secret.name) && secret.name.trim().length <= 128))) {
+    return text(input.reason) ? input.reason : `Codex needs an environment decision: ${input.mode}`;
+  }
+  if (tool === 'setup_codex_step' && Object.keys(input).length === 1 && ['role', 'task'].includes(String(input.step))) return `Codex needs a setup selection: ${input.step}`;
+}
+
 export function codexApprovalResponse(message: RpcMessage, allow: boolean): unknown {
   if (message.method === 'item/permissions/requestApproval') {
     const { permissions } = message.params as PermissionsRequestApprovalParams;
@@ -37,10 +76,11 @@ export function codexApprovalResponse(message: RpcMessage, allow: boolean): unkn
 
 /** Shared by live execution and protocol fixture verification. */
 export class CodexAdapter {
-  constructor(readonly session: Session) {}
+  private statusWaiting = false;
+  constructor(readonly session: Session, private statusEpisode = 0) {}
   handle(message: RpcMessage, connectionId: string, admitStarted = false): void {
     if (!this.session.valid(connectionId)) return;
-    const methods = ['thread/name/updated', 'turn/started', 'turn/completed', 'item/started', 'item/completed', 'serverRequest/resolved', 'error',
+    const methods = ['thread/name/updated', 'turn/started', 'turn/completed', 'item/started', 'item/completed', 'thread/status/changed', 'serverRequest/resolved', 'error',
       'item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'item/permissions/requestApproval', 'item/tool/requestUserInput'];
     if (!methods.includes(message.method ?? '')) return;
     const p = object(message.params);
@@ -53,15 +93,40 @@ export class CodexAdapter {
       else this.session.running(id(turn.id), connectionId);
     } else if (message.method === 'item/started' || message.method === 'item/completed') {
       const item = object(p.item);
-      if (item.type === 'userMessage') this.session.turnTitle(id(p.turnId), inputTitle(item.content), connectionId);
-      else if (message.method === 'item/completed' && item.type === 'agentMessage' && item.phase !== 'commentary') {
-        if (typeof item.text !== 'string') throw new Error('Malformed agent message');
-        this.session.body(id(p.turnId), item.text, connectionId);
+      const turnId = id(p.turnId);
+      if (item.type === 'userMessage') {
+        this.session.turnTitle(turnId, inputTitle(item.content), connectionId);
+        this.session.clearInputNotice(turnId, connectionId);
       }
+      if (message.method === 'item/completed' && item.type === 'agentMessage') {
+        if (item.phase !== 'commentary') {
+          if (typeof item.text !== 'string') throw new Error('Malformed agent message');
+          this.session.body(turnId, item.text, connectionId);
+        }
+        if (Array.isArray(item.questions) && item.questions.some(question =>
+          question && typeof question === 'object' && typeof question.title === 'string' && question.title.trim())) {
+          this.session.notifyWaitingForInput(turnId, connectionId, inputQuestionText(item.questions, 'Codex needs an answer'), `async:${id(item.id)}`, 'question');
+        }
+      }
+    } else if (message.method === 'thread/status/changed') {
+      const status = object(p.status);
+      const turns = [...this.session.turns.values()];
+      if (turns.length !== 1) return; // Thread-level evidence must identify exactly one observed live turn.
+      const turn = turns[0]!;
+      const flags = status.type === 'active' && Array.isArray(status.activeFlags) ? status.activeFlags : [];
+      const kind = flags.includes('waitingOnUserInput') ? 'question' : flags.includes('waitingOnApproval') ? 'approval' : undefined;
+      if (this.statusWaiting && !kind) this.statusEpisode++;
+      this.statusWaiting = !!kind;
+      if (kind) this.session.notifyWaitingForInput(turn.id, connectionId,
+        kind === 'question' ? 'Codex needs an answer or selection' : 'Codex needs approval', `status:${turn.id}:${this.statusEpisode}:${kind}`, kind);
+      else this.session.clearInputNotice(turn.id, connectionId);
     } else if (message.method === 'turn/completed') {
       this.reconcileTurn(p.turn as Turn, connectionId);
     } else if (message.method === 'serverRequest/resolved') {
-      this.session.resolve(JSON.stringify(p.requestId), connectionId);
+      const requestId = JSON.stringify(p.requestId);
+      const request = this.session.requests.get(requestId);
+      this.session.resolve(requestId, connectionId);
+      if (request) this.session.clearInputNotice(request.turnId, connectionId);
     } else if (message.method === 'error') {
       this.session.diagnostics.add(`Codex non-terminal error: ${JSON.stringify(p.error)}`);
     } else if (message.id !== undefined) {
@@ -69,7 +134,7 @@ export class CodexAdapter {
       const question = message.method === 'item/tool/requestUserInput';
       this.session.waiting({ id: JSON.stringify(message.id), turnId, connectionId,
         kind: question ? 'question' : 'approval', payload: message,
-        title: question ? JSON.stringify(p.questions) : String(p.command ?? p.reason ?? 'File change approval') });
+        title: question ? inputQuestionText(p.questions, 'Codex needs an answer') : String(p.command ?? p.reason ?? 'Codex needs approval') });
     }
   }
   reconcileTurn(value: Turn, connectionId: string): void {
@@ -147,7 +212,7 @@ export class CodexExecution {
     }, message => this.options.diagnostic.add(message));
     this.rpc = rpc;
     const command = codexCommand(this.options.executable); rpc.start(command.executable, command.args, this.options.cwd);
-    const p: InitializeParams = { clientInfo: { name: 'job_finish', title: 'Job-Finish', version: '0.1.0' },
+    const p: InitializeParams = { clientInfo: { name: 'job_finish', title: 'Job-Finish', version: '0.1.2' },
       capabilities: { experimentalApi: true, requestAttestation: false, optOutNotificationMethods: ['item/agentMessage/delta', 'item/reasoning/textDelta', 'item/reasoning/summaryTextDelta', 'item/commandExecution/outputDelta', 'turn/diff/updated'] } };
     await rpc.request('initialize', p); rpc.notify('initialized');
   }

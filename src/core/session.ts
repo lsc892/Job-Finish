@@ -7,6 +7,8 @@ export class Session {
   readonly completed = new Map<string, TerminalStatus>();
   readonly requests = new Map<string, InputRequest>();
   private readonly seenRequests = new Set<string>();
+  private readonly inputNotices = new Set<string>();
+  private readonly seenNotices = new Set<string>();
   pendingStart?: string;
   private pendingStartTitle?: string;
   private title?: string;
@@ -80,22 +82,41 @@ export class Session {
     while (this.seenRequests.size > LIMITS.dedup) this.seenRequests.delete(this.seenRequests.values().next().value!);
     this.requests.set(request.id, request);
     const turn = this.turns.get(request.turnId)!; turn.status = 'waitingForInput'; this.persist();
-    this.signal({ ...turn, ...boundedText(request.title) }, undefined, request.id);
+    if (!this.inputNotices.has(request.turnId)) this.signal({ ...turn, ...boundedText(request.title) }, undefined, request.id, request.kind);
+  }
+  /** Status/async question notices do not invent an RPC request or an answer UI. */
+  notifyWaitingForInput(turnId: string, connectionId: string, title: string, dedupKey: string, kind: InputRequest['kind'] = 'question'): void {
+    if (!dedupKey || !this.valid(connectionId)) return;
+    const turn = this.turns.get(turnId); if (!turn) return;
+    const key = JSON.stringify([connectionId, turnId, dedupKey]);
+    if (this.seenNotices.has(key)) return;
+    this.seenNotices.add(key);
+    while (this.seenNotices.size > LIMITS.dedup) this.seenNotices.delete(this.seenNotices.values().next().value!);
+    if (this.inputNotices.has(turnId) || [...this.requests.values()].some(r => r.turnId === turnId)) return;
+    this.inputNotices.add(turnId); turn.status = 'waitingForInput'; this.persist();
+    this.signal({ ...turn, ...boundedText(title) }, undefined, undefined, kind);
+  }
+  clearInputNotice(turnId: string, connectionId: string): void {
+    if (!this.valid(connectionId)) return;
+    if (!this.inputNotices.delete(turnId)) return;
+    const turn = this.turns.get(turnId);
+    if (turn && ![...this.requests.values()].some(r => r.turnId === turnId)) turn.status = 'running';
+    this.persist();
   }
   resolve(id: string, connectionId: string): void {
     if (!this.valid(connectionId)) return;
     const request = this.requests.get(id); if (!request) return;
     this.requests.delete(id);
     const turn = this.turns.get(request.turnId);
-    if (turn && ![...this.requests.values()].some(r => r.turnId === turn.id)) turn.status = 'running';
+    if (turn && !this.inputNotices.has(turn.id) && ![...this.requests.values()].some(r => r.turnId === turn.id)) turn.status = 'running';
     this.persist();
   }
   disconnected(reason: unknown): void {
-    this.diagnostics.add(reason); this.requests.clear(); this.seenRequests.clear();
+    this.diagnostics.add(reason); this.requests.clear(); this.seenRequests.clear(); this.inputNotices.clear(); this.seenNotices.clear();
     for (const turn of this.turns.values()) turn.status = 'unknown';
     if (this.owns()) this.persist(); else this.changed();
   }
-  reconnect(connectionId: string): void { this.binding = { ...this.binding, connectionId }; this.requests.clear(); this.seenRequests.clear(); this.changed(); }
+  reconnect(connectionId: string): void { this.binding = { ...this.binding, connectionId }; this.requests.clear(); this.seenRequests.clear(); this.inputNotices.clear(); this.seenNotices.clear(); this.changed(); }
   startRejected(requestId: string, message: string, connectionId: string): void {
     if (!this.valid(connectionId)) return;
     const title = this.title ?? (this.pendingStart === requestId ? this.pendingStartTitle : undefined);
@@ -111,10 +132,10 @@ export class Session {
   checkpoint(): Checkpoint { return { version: 1, completed: [...this.completed], turns: [...this.turns.values()],
     ...(this.title ? { title: this.title } : {}), ...(this.pendingStart ? { pendingStart: this.pendingStart, ...(this.pendingStartTitle ? { pendingStartTitle: this.pendingStartTitle } : {}) } : {}) }; }
   private persist(): void { this.save(this.checkpoint()); this.changed(); }
-  private clearRequests(turnId: string): void { for (const [id, r] of this.requests) if (r.turnId === turnId) this.requests.delete(id); }
-  private signal(turn: TurnState, detail?: string, requestId?: string): void {
+  private clearRequests(turnId: string): void { this.inputNotices.delete(turnId); for (const [id, r] of this.requests) if (r.turnId === turnId) this.requests.delete(id); }
+  private signal(turn: TurnState, detail?: string, requestId?: string, inputKind?: InputRequest['kind']): void {
     if (!this.owns()) return;
     this.emit({ ...this.binding, notificationId: randomUUID(), turnId: turn.id, status: turn.status,
-      text: turn.text, truncated: turn.truncated, title: this.title ?? turn.title, detail: detail && boundedText(detail, 2048).text, requestId, at: new Date().toISOString() });
+      text: turn.text, truncated: turn.truncated, title: this.title ?? turn.title, detail: detail && boundedText(detail, 2048).text, requestId, inputKind, at: new Date().toISOString() });
   }
 }

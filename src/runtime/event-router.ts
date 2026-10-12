@@ -2,8 +2,9 @@ import { randomUUID } from 'node:crypto';
 import type { SDKResultMessage } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
 import { Diagnostics, LIMITS, Provider, Signal, taskTitle } from '../core/model';
 import { Session } from '../core/session';
+import { inputQuestionText } from '../core/input';
 import { acceptClaudeResult } from './claude';
-import { CodexAdapter } from './codex';
+import { CodexAdapter, observedCodexQuestion } from './codex';
 import type { RpcMessage } from './transport';
 import { inputTitle } from './titles';
 
@@ -20,8 +21,11 @@ export class AgentEventRouter {
   private readonly titles = new Map<string, string>();
   private readonly codexStartTitles = new Map<string, { threadId: string; title: string }>();
   private readonly codexTurnTitles = new Map<string, string>();
+  private readonly codexInputEpisodes = new Map<string, { waiting: boolean; episode: number }>();
   private readonly claudeRequests: { id: string; supplied: boolean; title?: string }[] = [];
   private readonly claudeResults = new Set<string>();
+  private readonly claudeInitializations = new Set<string>();
+  private readonly claudeDialogs = new Set<string>();
   private claudeSessionId?: string;
   private disposed = false;
   constructor(readonly provider: Provider, private windowInstanceId: string, private runtimeId: string,
@@ -41,6 +45,19 @@ export class AgentEventRouter {
           this.codexStartTitles.set(JSON.stringify(message.id), { threadId, title }); this.bound(this.codexStartTitles);
         }
       }
+      if (!message.method && message.id !== undefined && ('result' in message || 'error' in message)) {
+        const requestId = JSON.stringify(message.id);
+        for (const session of this.sessions.values()) {
+          const request = session.requests.get(requestId);
+          if (!request) continue;
+          session.resolve(requestId, this.connectionId);
+          session.clearInputNotice(request.turnId, this.connectionId);
+        }
+      } else if (message.method === 'turn/steer' || message.method === 'turn/start') {
+        const params = record(message.params);
+        const session = typeof params?.threadId === 'string' ? this.sessions.get(params.threadId) : undefined;
+        if (session) for (const turn of session.turns.values()) session.clearInputNotice(turn.id, this.connectionId);
+      }
       return;
     }
     if (message.type === 'user') {
@@ -51,10 +68,14 @@ export class AgentEventRouter {
       const sessionId = identifier(message.session_id) ?? this.claudeSessionId;
       if (sessionId) this.session(sessionId)?.start(this.claudeRequests[0]!.id, this.connectionId, this.claudeRequests[0]!.title);
     } else if (message.type === 'control_response' && this.claudeSessionId) {
-      const response = record(message.response); const id = identifier(response?.request_id);
-      if (id) this.sessions.get(this.claudeSessionId)?.resolve(id, this.connectionId);
+      this.claudeResponse(record(message.response));
     } else if (message.type === 'control_request') {
       const request = record(message.request);
+      if (request?.subtype === 'initialize') {
+        const id = identifier(message.request_id);
+        if (id) this.claudeInitializations.add(id);
+        this.bound(this.claudeInitializations);
+      }
       if (request?.subtype === 'interrupt' && this.claudeSessionId) {
         // Wait for the explicit control response, rather than treating an outgoing request as acknowledgement.
         const id = identifier(message.request_id);
@@ -96,9 +117,13 @@ export class AgentEventRouter {
     if (typeof message.method !== 'string' || !params) return;
     const id = identifier(params.threadId); if (!id || this.ignored.has(id)) return;
     if (message.method === 'thread/name/updated') { this.rememberTitle(id, params.threadName); return; }
-    const relevant = ['turn/started', 'turn/completed', 'item/started', 'item/completed', 'serverRequest/resolved', 'error',
-      'item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'item/permissions/requestApproval', 'item/tool/requestUserInput'];
+    const relevant = ['turn/started', 'turn/completed', 'item/started', 'item/completed', 'thread/status/changed', 'serverRequest/resolved', 'error',
+      'item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'item/permissions/requestApproval', 'item/tool/requestUserInput',
+      'item/tool/requestOptionPicker', 'item/tool/call'];
     if (!relevant.includes(message.method)) return;
+    const observedQuestion = message.method === 'item/tool/call' || message.method === 'item/tool/requestOptionPicker'
+      ? observedCodexQuestion(message as RpcMessage) : undefined;
+    if ((message.method === 'item/tool/call' || message.method === 'item/tool/requestOptionPicker') && !observedQuestion) return;
     const session = this.session(id); if (!session) return;
     const turn = record(params.turn);
     const turnId = identifier(turn?.id ?? params.turnId);
@@ -114,7 +139,20 @@ export class AgentEventRouter {
       if (title) session.turnTitle(turnId, title, this.connectionId);
       if (message.method === 'turn/completed') this.codexTurnTitles.delete(key);
     }
-    new CodexAdapter(session).handle(message as RpcMessage, this.connectionId, true);
+    if (observedQuestion) {
+      if (turnId && message.id !== undefined) session.waiting({ id: JSON.stringify(message.id), turnId, connectionId: this.connectionId,
+        kind: 'question', title: observedQuestion, payload: null });
+      return;
+    }
+    let statusEpisode = this.codexInputEpisodes.get(id)?.episode ?? 0;
+    if (message.method === 'thread/status/changed') {
+      const status = record(params.status);
+      const waiting = status?.type === 'active' && Array.isArray(status.activeFlags) &&
+        status.activeFlags.some(flag => flag === 'waitingOnUserInput' || flag === 'waitingOnApproval');
+      if (this.codexInputEpisodes.get(id)?.waiting && !waiting) statusEpisode++;
+      this.codexInputEpisodes.set(id, { waiting, episode: statusEpisode }); this.bound(this.codexInputEpisodes);
+    }
+    new CodexAdapter(session, statusEpisode).handle(message as RpcMessage, this.connectionId, true);
   }
 
   private claude(message: Record<string, unknown>): void {
@@ -136,40 +174,90 @@ export class AgentEventRouter {
         // Some extension versions add the UUID after writing the user input. Transfer the observed state.
         const previous = session.turns.get(previousId);
         if (previous) {
-          for (const request of [...session.requests.values()]) if (request.turnId === previousId) session.resolve(request.id, this.connectionId);
+          for (const request of [...session.requests.values()]) if (request.turnId === previousId) {
+            this.claudeDialogs.delete(request.id); session.resolve(request.id, this.connectionId);
+          }
           session.turns.delete(previousId); session.start(turnId, this.connectionId, previous.title); session.body(turnId, previous.text, this.connectionId);
         }
       }
       session.start(turnId, this.connectionId, queued?.title);
       if (queued?.title) session.turnTitle(turnId, queued.title, this.connectionId);
+      for (const request of session.requests.values()) if (request.turnId === turnId) this.claudeDialogs.delete(request.id);
       acceptClaudeResult(session, turnId, message as unknown as SDKResultMessage, this.connectionId);
       this.claudeResults.add(message.uuid as string); this.bound(this.claudeResults);
       if (queued) this.claudeRequests.shift();
     } else if (message.type === 'control_request') {
-      const request = record(message.request);
-      const id = identifier(message.request_id);
-      if (!id || request?.subtype !== 'can_use_tool' || !this.claudeSessionId) return;
-      const session = this.session(this.claudeSessionId); if (!session) return;
-      const turnId = this.claudeRequests[0]?.id ?? [...session.turns.keys()][0] ?? `input:${id}`;
-      session.start(turnId, this.connectionId, this.claudeRequests[0]?.title);
-      const question = request.tool_name === 'AskUserQuestion';
-      const input = record(request.input);
-      const questions = Array.isArray(input?.questions) ? input.questions.map(q => record(q)?.question).filter(q => typeof q === 'string').join('\n') : '';
-      session.waiting({ id, turnId, connectionId: this.connectionId, kind: question ? 'question' : 'approval',
-        title: question ? questions || 'Claude needs an answer' : `Claude: ${String(request.tool_name ?? 'tool')} approval`, payload: null });
+      this.claudeInput(message);
     } else if (message.type === 'control_cancel_request') {
-      if (this.claudeSessionId && identifier(message.request_id)) this.sessions.get(this.claudeSessionId)?.resolve(message.request_id as string, this.connectionId);
+      const id = identifier(message.request_id);
+      if (this.claudeSessionId && id) {
+        this.claudeDialogs.delete(id); this.sessions.get(this.claudeSessionId)?.resolve(id, this.connectionId);
+      }
     } else if (message.type === 'control_response') {
       const response = record(message.response); const id = identifier(response?.request_id);
+      const initialized = !!id && this.claudeInitializations.delete(id);
+      if (initialized && response?.subtype === 'success' && this.claudeSessionId) {
+        // Only re-delivery belonging to an initialize we actually observed is live input.
+        // The SDK may also deliver these IDs as control_request frames; Session deduplicates them.
+        for (const name of ['pending_permission_requests', 'pending_user_dialog_requests']) {
+          if (Array.isArray(response[name])) for (const pending of response[name]) {
+            const envelope = record(pending);
+            if (envelope?.type === 'control_request') this.claudeInput(envelope);
+          }
+        }
+      }
       if (id && this.claudeSessionId) {
         const session = this.sessions.get(this.claudeSessionId);
-        session?.resolve(id, this.connectionId);
+        this.claudeResponse(response);
         if (this.pendingThreads.delete(id) && response?.subtype === 'success') {
           const turn = this.claudeRequests.shift();
-          if (turn) session?.finish(turn.id, 'cancelled', this.connectionId, 'Interrupt acknowledged by the existing Claude runtime');
+          if (turn) {
+            for (const request of session?.requests.values() ?? []) if (request.turnId === turn.id) this.claudeDialogs.delete(request.id);
+            session?.finish(turn.id, 'cancelled', this.connectionId, 'Interrupt acknowledged by the existing Claude runtime');
+          }
         }
       }
     }
+  }
+
+  private claudeInput(message: Record<string, unknown>): void {
+    const request = record(message.request);
+    const id = identifier(message.request_id);
+    if (!id || !request || !this.claudeSessionId) return;
+    let kind: 'question' | 'approval';
+    let title: string;
+    if (request.subtype === 'can_use_tool') {
+      const question = request.tool_name === 'AskUserQuestion';
+      const input = record(request.input);
+      kind = question ? 'question' : 'approval';
+      title = question
+        ? inputQuestionText(input?.questions, typeof request.title === 'string' ? request.title : 'Claude needs an answer')
+        : typeof request.title === 'string' && request.title.trim() ? request.title : `Claude: ${String(request.tool_name ?? 'tool')} approval`;
+    } else if (request.subtype === 'request_user_dialog') {
+      const dialogKind = identifier(request.dialog_kind);
+      const payload = record(request.payload);
+      if (!dialogKind || !payload) return;
+      kind = 'question';
+      title = inputQuestionText(Array.isArray(payload.questions) ? payload.questions : [payload], `Claude needs an answer (${dialogKind})`);
+    } else return;
+    const session = this.session(this.claudeSessionId); if (!session) return;
+    const turnId = this.claudeRequests[0]?.id ?? [...session.turns.keys()][0] ?? `input:${id}`;
+    session.start(turnId, this.connectionId, this.claudeRequests[0]?.title);
+    // The original provider UI owns the answer; observation retains no mutable tool payload.
+    session.waiting({ id, turnId, connectionId: this.connectionId, kind, title, payload: null });
+    if (request.subtype === 'request_user_dialog' && session.requests.has(id)) {
+      this.claudeDialogs.add(id); this.bound(this.claudeDialogs);
+    }
+  }
+
+  private claudeResponse(response: Record<string, unknown> | undefined): void {
+    const id = identifier(response?.request_id);
+    if (!id || !this.claudeSessionId) return;
+    // A dialog error is not a user's choice: Claude discards it and keeps the dialog pending.
+    // Keep the existing response semantics for can_use_tool requests.
+    if (this.claudeDialogs.has(id) && response?.subtype !== 'success') return;
+    this.claudeDialogs.delete(id);
+    this.sessions.get(this.claudeSessionId)?.resolve(id, this.connectionId);
   }
 
   private session(id: string): Session | undefined {
@@ -198,7 +286,8 @@ export class AgentEventRouter {
     while (collection.size > LIMITS.dedup) collection.delete(collection.keys().next().value!);
   }
   snapshot() { return { provider: this.provider, connectionId: this.connectionId, sessions: this.sessions.size,
-    activeTurns: [...this.sessions.values()].reduce((count, s) => count + s.turns.size, 0) }; }
-  dispose(): void { this.disposed = true; this.sessions.clear(); this.pendingThreads.clear(); this.ignored.clear(); this.titles.clear();
-    this.codexStartTitles.clear(); this.codexTurnTitles.clear(); this.claudeResults.clear(); this.claudeRequests.length = 0; }
+    activeTurns: [...this.sessions.values()].reduce((count, s) => count + s.turns.size, 0),
+    pendingRequests: [...this.sessions.values()].reduce((count, s) => count + s.requests.size, 0) }; }
+  dispose(): void { this.disposed = true; this.sessions.clear(); this.pendingThreads.clear(); this.codexInputEpisodes.clear(); this.ignored.clear(); this.titles.clear();
+    this.codexStartTitles.clear(); this.codexTurnTitles.clear(); this.claudeResults.clear(); this.claudeInitializations.clear(); this.claudeDialogs.clear(); this.claudeRequests.length = 0; }
 }

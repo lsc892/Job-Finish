@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { CanUseTool, PermissionResult, Query, SDKMessage, SDKResultMessage, SDKUserMessage, query } from '@anthropic-ai/claude-agent-sdk' with { "resolution-mode": "import" };
 import { Session } from '../core/session';
 import { LIMITS } from '../core/model';
+import { inputQuestionText } from '../core/input';
 
 /** An assistant message is not a result. A bound query has exactly one foreground turn. */
 export function acceptClaudeResult(session: Session, requestId: string, message: SDKResultMessage, connectionId: string): void {
@@ -92,7 +93,9 @@ export class ClaudeExecution {
       options.signal.addEventListener('abort', abort, { once: true });
       try {
         this.session.waiting({ id, turnId: context.requestId, connectionId: context.connectionId,
-          kind: toolName === 'AskUserQuestion' ? 'question' : 'approval', title: options.title ?? `${toolName}: ${JSON.stringify(input)}`,
+          kind: toolName === 'AskUserQuestion' ? 'question' : 'approval',
+          title: toolName === 'AskUserQuestion' ? inputQuestionText(input.questions, options.title ?? 'Claude needs an answer')
+            : options.title ?? `${toolName}: ${JSON.stringify(input)}`,
           payload: { toolName, input } });
         if (options.signal.aborted || !this.session.requests.has(id)) abort();
       } catch (error) {

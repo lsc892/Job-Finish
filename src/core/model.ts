@@ -12,7 +12,7 @@ export interface InputRequest {
 export interface TurnState { id: string; status: Status; text: string; truncated: boolean; resultId?: string; title?: string }
 export interface Signal extends SessionBinding {
   notificationId: string; turnId: string; status: Status; text: string; truncated: boolean;
-  requestId?: string; detail?: string; title?: string; at: string;
+  requestId?: string; inputKind?: InputRequest['kind']; detail?: string; title?: string; at: string;
   scope?: 'turn' | 'startRequest';
 }
 export interface Checkpoint {

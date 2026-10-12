@@ -13,10 +13,12 @@ export function toastPlainText(text: string): string {
     .replace(/\s+/g, ' ').trim();
 }
 
-export function toastTitle(signal: Pick<Signal, 'title' | 'provider'>, fallback = ''): string {
+export function toastTitle(signal: Pick<Signal, 'title' | 'provider'> & Partial<Pick<Signal, 'status' | 'inputKind'>>, fallback = ''): string {
   const title = toastPlainText(signal.title ?? '') || toastPlainText(fallback) || `${signal.provider === 'codex' ? 'Codex' : 'Claude'} 작업`;
-  const chars = Array.from(title);
-  return chars.length > 100 ? chars.slice(0, 99).join('') + '…' : title;
+  const heading = signal.status === 'waitingForInput'
+    ? `${signal.inputKind === 'approval' ? 'Approval needed' : 'Answer needed'} · ${title}` : title;
+  const chars = Array.from(heading);
+  return chars.length > 100 ? chars.slice(0, 99).join('') + '…' : heading;
 }
 
 export function toastMessage(signal: Pick<Signal, 'text' | 'detail' | 'status'>): string {

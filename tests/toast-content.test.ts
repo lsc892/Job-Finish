@@ -16,6 +16,17 @@ test('Toast headers show conversation titles with readable fallbacks instead of 
   assert.equal(Array.from(toastTitle({ title: '😀'.repeat(150), provider: 'codex' })).length, 100);
 });
 
+test('Input waiting headers preserve the task title while distinguishing questions and approvals', () => {
+  assert.equal(toastTitle({ title: '**확장 알림 수정**', provider: 'codex', status: 'waitingForInput', inputKind: 'question' }),
+    'Answer needed · 확장 알림 수정');
+  assert.equal(toastTitle({ provider: 'claude', status: 'waitingForInput', inputKind: 'approval' }, '프로젝트 이름'),
+    'Approval needed · 프로젝트 이름');
+  assert.equal(toastTitle({ title: '확장 알림 수정', provider: 'codex', status: 'completed' }), '확장 알림 수정');
+  const longTitle = toastTitle({ title: '😀'.repeat(150), provider: 'codex', status: 'waitingForInput', inputKind: 'question' });
+  assert.equal(Array.from(longTitle).length, 100);
+  assert.ok(longTitle.startsWith('Answer needed · ') && longTitle.endsWith('…') && !longTitle.includes('�'));
+});
+
 test('Notification previews fill available body space while preserving the original AI result', async () => {
   const text = '# 완료\n\n목적별로 `커밋` 두 개를 만들었습니다.\n\n- **abc123** — [Fix](https://example.com)\n\n```text\n테스트 통과\n```';
   const signal: Signal = { ...binding(), title: '커밋 정리', notificationId: 'n', turnId: 't', status: 'completed', text, truncated: false, at: '' };
