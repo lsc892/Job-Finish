@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import { inputQuestionText, notificationTitle } from '../src/core/input';
 import { fixture } from './helpers';
 
-test('Question previews show question and choice labels across provider schemas', () => {
-  assert.equal(inputQuestionText([{ question: '어느 색으로 할까요?', options: [{ label: '파랑' }, { label: '초록' }] }], 'Answer needed'),
-    '어느 색으로 할까요?\n파랑 / 초록');
-  assert.equal(inputQuestionText([{ title: 'Select a plan', options: ['Small', 'Large'] }], 'Answer needed'), 'Select a plan\nSmall / Large');
+test('Question previews show question and numbered choice labels across provider schemas', () => {
+  assert.equal(inputQuestionText([{ question: '어느 색으로 할까요?', options: [{ label: '파랑' }, { label: '초록' }, { label: '빨강' }] }], 'Answer needed'),
+    '어느 색으로 할까요?\n1. 파랑\n2. 초록\n3. 빨강');
+  assert.equal(inputQuestionText([{ title: 'Select a plan', options: ['Small', 'Large'] }], 'Answer needed'), 'Select a plan\n1. Small\n2. Large');
+  assert.equal(inputQuestionText([{ question: 'Pick', options: [null, 'A', {}, { label: 'B' }] }], 'Fallback'), 'Pick\n1. A\n2. B');
   assert.equal(inputQuestionText([null, { title: '', options: ['Secret'] }, { question: 'Question', options: [null, {}, 123] }], 'Fallback'), 'Question');
   assert.equal(inputQuestionText({ privateToken: 'never render opaque data' }, 'Fallback'), 'Fallback');
   const preview = inputQuestionText([{ question: '한글😀'.repeat(5000), options: ['Yes'] }], 'Fallback');

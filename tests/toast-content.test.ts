@@ -38,6 +38,7 @@ test('Notification previews fill available body space while preserving the origi
   assert.equal(notifications.results[0]!.text, text);
   assert.equal(toastMessage({ text: '\n\u0000 ', detail: '**권한 승인이 필요합니다.**', status: 'waitingForInput' }), '권한 승인이 필요합니다.');
   assert.equal(toastMessage({ text: '', status: 'completed' }), '작업이 완료되었습니다.');
+  assert.equal(toastMessage({ text: '어느 색?\n1. 파랑\n2) 초록\n- 빨강', status: 'waitingForInput' }), '어느 색? 1. 파랑 2) 초록 빨강');
   const longPreview = toastMessage({ text: '😀'.repeat(400), status: 'completed' });
   assert.equal(Array.from(longPreview).length, 360);
   assert.ok(longPreview.endsWith('…') && !longPreview.includes('�'));

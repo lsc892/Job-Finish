@@ -1,11 +1,11 @@
 import { Signal, toastText } from './model';
 
-/** Windows renders plain text; remove Markdown and blank lines only in the preview. */
+/** Windows renders plain text; remove Markdown and blank lines only in the preview. Ordered-list numbers stay so choices remain addressable. */
 export function toastPlainText(text: string): string {
   return text
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
     .replace(/^[ \t]*(```|~~~)[^\r\n]*$/gm, '')
-    .replace(/^[ \t]*(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)/gm, '')
+    .replace(/^[ \t]*(?:#{1,6}\s+|>\s*|[-*+]\s+)/gm, '')
     .replace(/!?\[([^\]\r\n]+)\]\([^\r\n)]*\)/g, '$1')
     .replace(/`([^`]+)`/g, '$1')
     .replace(/(\*\*|__|~~)(.+?)\1/g, '$2')

@@ -4,7 +4,7 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 const text = (value: unknown): string => typeof value === 'string' ? boundedText(value, 2048).text.replace(/\s+/gu, ' ').trim() : '';
 
-/** Question previews retain the question and choice labels, never opaque tool arguments. */
+/** Question previews retain the question and numbered choice labels, never opaque tool arguments. */
 export function inputQuestionText(questions: unknown, fallback: string): string {
   if (!Array.isArray(questions)) return boundedText(fallback).text;
   const previews = questions.slice(0, 8).flatMap(value => {
@@ -13,7 +13,7 @@ export function inputQuestionText(questions: unknown, fallback: string): string 
     if (!title) return [];
     const choices = Array.isArray(question.options) ? question.options.slice(0, 8)
       .map(option => text(typeof option === 'string' ? option : record(option)?.label)).filter(Boolean) : [];
-    return [choices.length ? `${title}\n${choices.join(' / ')}` : title];
+    return [[title, ...choices.map((choice, index) => `${index + 1}. ${choice}`)].join('\n')];
   });
   return boundedText(previews.join('\n') || fallback).text;
 }

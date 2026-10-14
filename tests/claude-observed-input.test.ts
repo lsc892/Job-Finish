@@ -61,7 +61,7 @@ test('Observed Claude question and approval remain waiting requests on the same 
   assert.deepEqual(f.signals.map(signal => signal.status), ['waitingForInput', 'waitingForInput']);
   assert.equal(f.toasts.length, 2);
   assert.match(f.toasts[0]!.text, /Which color should be used\?/);
-  assert.match(f.toasts[0]!.text, /Blue \/ Green/);
+  assert.match(f.toasts[0]!.text, /Which color should be used\? 1\. Blue 2\. Green/);
   assert.equal(f.toasts[1]!.text, 'Run the requested command?');
 });
 

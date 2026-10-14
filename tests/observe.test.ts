@@ -131,7 +131,7 @@ test('Synthetic Claude stdio questions and dialogs reach mock toast ports and pr
   const requests = [
     { id: 'question', request: { subtype: 'can_use_tool', tool_name: 'AskUserQuestion', input: {
       questions: [{ question: '어느 색으로 할까요?', options: [{ label: '파랑' }, { label: '초록' }] }],
-    } }, preview: '어느 색으로 할까요?\n파랑 / 초록', answer: { behavior: 'allow', updatedInput: { answers: { color: '파랑' } } } },
+    } }, preview: '어느 색으로 할까요?\n1. 파랑\n2. 초록', answer: { behavior: 'allow', updatedInput: { answers: { color: '파랑' } } } },
     { id: 'dialog', request: { subtype: 'request_user_dialog', dialog_kind: 'auto_mode_server_fallback',
       payload: { title: 'Continue in auto mode?', paragraphs: ['Choose Continue or Stop in the original chat.'] },
     }, preview: 'Continue in auto mode?', answer: { behavior: 'completed', result: { choice: 'continue' } } },

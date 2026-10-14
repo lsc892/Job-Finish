@@ -29,7 +29,7 @@ test('Observed structured questions preview choice labels and are deduplicated a
   f.events.incoming(start()); f.events.incoming(question(1)); f.events.incoming(question(1));
   f.events.incoming(status(['waitingOnUserInput']));
   assert.equal(f.signals.length, 1); assert.equal(f.signals[0]!.status, 'waitingForInput');
-  assert.equal(f.signals[0]!.text, 'Which color?\nBlue / Green'); assert.equal(f.signals[0]!.inputKind, 'question');
+  assert.equal(f.signals[0]!.text, 'Which color?\n1. Blue\n2. Green'); assert.equal(f.signals[0]!.inputKind, 'question');
   assert.equal(f.signals[0]!.title, 'Change notification color');
   f.events.outgoing({ id: 1, result: { answers: { color: { answers: ['Blue'] } } } });
   f.events.incoming({ method: 'thread/name/updated', params: { threadId: 'thread', threadName: 'Apply selected color' } });
@@ -54,7 +54,7 @@ test('Codex option panels and onboarding questions notify through their real dyn
   ]) {
     const f = router(); f.events.incoming(request); f.events.incoming(request);
     assert.equal(f.signals.length, 1); assert.equal(f.signals[0]!.requestId, '10');
-    assert.equal(f.signals[0]!.text, 'Pick a task\nFix / Explain');
+    assert.equal(f.signals[0]!.text, 'Pick a task\n1. Fix\n2. Explain');
     f.events.incoming({ method: 'serverRequest/resolved', params: { threadId: 'thread', requestId: 10 } });
     f.events.incoming(question(11)); assert.equal(f.signals.length, 2);
   }
@@ -94,7 +94,7 @@ test('Async agent questions notify without inventing requests; plain question te
     type: 'agentMessage', id: 'async-question', phase: 'commentary', text: 'What should I do next?',
     questions: [{ title: 'What should I do next?', options: ['Fix', 'Explain'] }] } } };
   adapter.handle(message, 'connection-1'); adapter.handle(message, 'connection-1');
-  assert.equal(f.signals.length, 1); assert.equal(f.signals[0]!.text, 'What should I do next?\nFix / Explain');
+  assert.equal(f.signals.length, 1); assert.equal(f.signals[0]!.text, 'What should I do next?\n1. Fix\n2. Explain');
   assert.equal(f.signals[0]!.title, 'Repair notifications');
   assert.equal(f.session.requests.size, 0); assert.equal(f.signals[0]!.requestId, undefined);
   adapter.handle({ method: 'item/started', params: { threadId: 'thread', turnId: 'turn',
