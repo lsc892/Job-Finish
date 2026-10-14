@@ -148,7 +148,7 @@ This last command removes only the npm CLI, not the VS Code extension.
 In VS Code Extensions (`Ctrl+Shift+X`), find **Job-Finish**, choose **Uninstall**, and reload if prompted. You can also use:
 
 ```powershell
-code --uninstall-extension lsc892.job-finish
+code --uninstall-extension JobFinish.JobFinish
 ```
 
 </details>
@@ -173,7 +173,7 @@ For implementation details and verification, see the [development document](http
 <details>
 <summary>Installer commands, migration, and options</summary>
 
-The npm package is `job-finish` **2.1.0**; the bundled extension is `lsc892.job-finish` **2.1.0**. CLI and extension versions are managed separately. The installer compares the installed extension version with the version inside the VSIX, rather than the npm version.
+The npm package is `job-finish` **2.1.0**; the bundled extension is `JobFinish.JobFinish` **2.1.0**. CLI and extension versions are managed separately. The installer compares the installed extension version with the version inside the VSIX, rather than the npm version.
 
 | Command | Behavior |
 | --- | --- |

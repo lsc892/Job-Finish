@@ -146,7 +146,7 @@ npm uninstall -g job-finish
 VS Code 확장 목록(`Ctrl+Shift+X`)에서 **Job-Finish** → **제거(Uninstall)**를 선택하고, 다시 로드 안내가 나오면 실행합니다. 명령으로 삭제할 수도 있습니다.
 
 ```powershell
-code --uninstall-extension lsc892.job-finish
+code --uninstall-extension JobFinish.JobFinish
 ```
 
 </details>

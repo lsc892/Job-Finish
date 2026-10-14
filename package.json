@@ -1,11 +1,11 @@
 {
-  "name": "job-finish",
+  "name": "JobFinish",
   "private": true,
-  "displayName": "Job-Finish",
+  "displayName": "Job Finish",
   "icon": "resources/icon/JobFinish_Icon.png",
   "description": "Window-scoped Codex and Claude execution notifications for Windows.",
   "version": "2.1.0",
-  "publisher": "lsc892",
+  "publisher": "JobFinish",
   "license": "MIT",
   "repository": { "type": "git", "url": "https://github.com/lsc892/Job-Finish.git" },
   "engines": { "vscode": "^1.99.0", "node": ">=22" },
@@ -41,18 +41,18 @@
   },
   "contributes": {
     "commands": [
-      { "command": "jobFinish.runCodex", "title": "Job-Finish: Run Codex" },
-      { "command": "jobFinish.runClaude", "title": "Job-Finish: Run Claude" },
-      { "command": "jobFinish.continue", "title": "Job-Finish: Continue Session" },
-      { "command": "jobFinish.resume", "title": "Job-Finish: Resume Saved Session" },
-      { "command": "jobFinish.cancel", "title": "Job-Finish: Cancel Turn" },
-      { "command": "jobFinish.respond", "title": "Job-Finish: Answer Pending Request" },
-      { "command": "jobFinish.results", "title": "Job-Finish: Show Results" },
-      { "command": "jobFinish.reconnect", "title": "Job-Finish: Reconnect and Reconcile" },
-      { "command": "jobFinish.detach", "title": "Job-Finish: Release Session" },
-      { "command": "jobFinish.bindWindow", "title": "Job-Finish: Bind This Windows Window" },
-      { "command": "jobFinish.stopFlash", "title": "Job-Finish: Stop Flash" },
-      { "command": "jobFinish.diagnostics", "title": "Job-Finish: Show Diagnostics" }
+      { "command": "jobFinish.runCodex", "title": "Job Finish: Run Codex" },
+      { "command": "jobFinish.runClaude", "title": "Job Finish: Run Claude" },
+      { "command": "jobFinish.continue", "title": "Job Finish: Continue Session" },
+      { "command": "jobFinish.resume", "title": "Job Finish: Resume Saved Session" },
+      { "command": "jobFinish.cancel", "title": "Job Finish: Cancel Turn" },
+      { "command": "jobFinish.respond", "title": "Job Finish: Answer Pending Request" },
+      { "command": "jobFinish.results", "title": "Job Finish: Show Results" },
+      { "command": "jobFinish.reconnect", "title": "Job Finish: Reconnect and Reconcile" },
+      { "command": "jobFinish.detach", "title": "Job Finish: Release Session" },
+      { "command": "jobFinish.bindWindow", "title": "Job Finish: Bind This Windows Window" },
+      { "command": "jobFinish.stopFlash", "title": "Job Finish: Stop Flash" },
+      { "command": "jobFinish.diagnostics", "title": "Job Finish: Show Diagnostics" }
     ],
     "configuration": [
       {

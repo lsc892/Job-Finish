@@ -146,7 +146,7 @@ This last command removes only the npm CLI, not the VS Code extension.
 In VS Code Extensions (`Ctrl+Shift+X`), find **Job-Finish**, choose **Uninstall**, and reload if prompted. You can also use:
 
 ```powershell
-code --uninstall-extension lsc892.job-finish
+code --uninstall-extension JobFinish.JobFinish
 ```
 
 </details>

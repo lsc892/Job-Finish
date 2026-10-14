@@ -6,7 +6,7 @@ import { installOrUpdate, uninstall } from './flow';
 import { inspectLegacy } from './legacy';
 import { readVSIX, VSCode } from './vscode';
 
-const usage = `Job-Finish 설치·업데이트·제거
+const usage = `Job Finish 설치·업데이트·제거
   job-finish [install|update|uninstall|uninstall-legacy] [옵션]
   npm run install:extension -- [옵션]  (저장소 루트)
 
@@ -49,7 +49,7 @@ function main(): void {
     if (arg === '--user-data-dir') code.userDataDir = resolve(caller, value);
     if (arg === '--extensions-dir') code.extensionsDir = resolve(caller, value);
   }
-  if (process.platform !== 'win32') throw new Error('Job-Finish 설치·제거는 Windows 전용입니다.');
+  if (process.platform !== 'win32') throw new Error('Job Finish 설치·제거는 Windows 전용입니다.');
   if (keepFiles && command !== 'uninstall' && command !== 'uninstall-legacy') throw new Error('--keep-files는 uninstall 또는 uninstall-legacy에서만 사용할 수 있습니다.');
   // Old versions used the default home even when the runtime had a custom config home.
   const claudeHome = process.env.CLAUDE_CONFIG_DIR;
@@ -62,7 +62,7 @@ function main(): void {
     for (const target of legacy.targets) console.log(`훅 제거 / 레거시 정리 대상: ${target}`);
     if (dryRun) { console.log('미리보기 완료. 변경한 항목이 없습니다.'); return; }
     for (const backup of legacy.remove()) console.log(`설정 백업: ${backup}`);
-    console.log('기존 Job-Finish 정리 완료.');
+    console.log('기존 Job Finish 정리 완료.');
     console.log('npm 전역 패키지도 설치했다면 별도로 실행: npm rm -g job-finish');
     return;
   }

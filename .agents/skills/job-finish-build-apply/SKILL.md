@@ -10,8 +10,8 @@ description: "이 Job-Finish 저장소의 Windows VS Code 확장을 검증·빌�
 ## 저장소와 환경 확인
 
 - 이 `SKILL.md`가 있는 `.agents/skills/job-finish-build-apply` 폴더에서 세 단계 위를 저장소 루트로 사용한다. 호출한 작업 폴더가 `docs`나 `tools/installer`여도 모든 명령의 작업 디렉터리는 이 루트로 지정한다. 개인 PC의 고정 경로나 다른 Job-Finish 체크아웃으로 대체하지 않는다.
-- 루트 `package.json`의 `name`이 `job-finish`, `publisher`가 `lsc892`인지 확인한다. 일치하지 않거나 파일이 없으면 경로부터 해결하고 빌드·설치를 시작한다.
-- 해당 저장소의 `AGENTS.md`, `package.json`, `tools/installer/package.json`과 Git 변경 상태를 읽는다. 확장 식별자는 `lsc892.job-finish`이며, 기존 수정사항을 포함해 빌드한다.
+- 루트 `package.json`의 `name`이 `JobFinish`, `publisher`가 `JobFinish`인지 확인한다. 일치하지 않거나 파일이 없으면 경로부터 해결하고 빌드·설치를 시작한다.
+- 해당 저장소의 `AGENTS.md`, `package.json`, `tools/installer/package.json`과 Git 변경 상태를 읽는다. 확장 식별자는 `JobFinish.JobFinish`이며, 기존 수정사항을 포함해 빌드한다.
 - Windows x64, Node.js 22 이상, 로컬 VS Code가 필요하다. PowerShell에서는 `npm.cmd`와 `code.cmd`를 사용한다. CLI가 PATH에 없으면 실제 설치 경로를 찾는다.
 - 사용자 지정 VS Code 실행 파일, 프로필, 사용자 데이터 또는 확장 폴더가 있으면 조회·설치·검증에 같은 대상을 사용한다. 지정이 없으면 기본 사용자 프로필을 대상으로 한다.
 - 두 패키지의 의존성이 이미 정상 설치되어 있으면 재사용한다. 누락되었거나 lockfile과 맞지 않으면 해당 패키지만 `npm.cmd ci` 또는 `npm.cmd --prefix tools/installer ci`로 설치한다.
@@ -60,9 +60,9 @@ code.cmd --install-extension ./job-finish-win32-x64.vsix --force
 
 ```powershell
 code.cmd --list-extensions --show-versions
-code.cmd --locate-extension lsc892.job-finish
+code.cmd --locate-extension JobFinish.JobFinish
 ```
 
-조회 명령에도 동일한 대상 옵션을 전달한다. 목록에 `lsc892.job-finish@<빌드 버전>`이 있는지 확인하고, `--locate-extension`이 반환한 실제 폴더의 `dist/extension.cjs`와 저장소의 `dist/extension.cjs`를 `Get-FileHash -Algorithm SHA256`로 비교한다. 같은 버전 재설치에서는 버전 문자열만으로 성공을 판단하지 않는다. CLI가 위치 조회를 지원하지 않으면 대상 확장 폴더의 `extensions.json`에서 해당 식별자의 등록 위치를 찾는다.
+조회 명령에도 동일한 대상 옵션을 전달한다. 목록에 `JobFinish.JobFinish@<빌드 버전>`이 있는지 확인하고, `--locate-extension`이 반환한 실제 폴더의 `dist/extension.cjs`와 저장소의 `dist/extension.cjs`를 `Get-FileHash -Algorithm SHA256`로 비교한다. 같은 버전 재설치에서는 버전 문자열만으로 성공을 판단하지 않는다. CLI가 위치 조회를 지원하지 않으면 대상 확장 폴더의 `extensions.json`에서 해당 식별자의 등록 위치를 찾는다.
 
 최종 응답에는 검증 결과, VSIX 경로, 실제 설치 여부를 짧게 보고한다. 설치 파일 검증과 실행 중인 Extension Host의 재로딩 여부를 구분한다. 재로딩을 확인하지 못했다면 열린 VS Code에 `Developer: Reload Window`가 필요할 수 있음을 안내한다. 활성 사용자 창이나 진행 중인 작업을 임의로 종료하지 않는다.

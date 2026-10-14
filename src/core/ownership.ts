@@ -39,7 +39,7 @@ export class Ownership {
   private gate(path: string, fn: () => void): void {
     const gate = path + '.gate'; let fd: number;
     if (process.platform === 'win32') { withWindowsFileGate(gate, fn); return; }
-    try { fd = openSync(gate, 'wx'); } catch { throw new Error(`Ownership operation busy or interrupted. Retry; if persistent, inspect ${gate} with all Job-Finish windows closed.`); }
+    try { fd = openSync(gate, 'wx'); } catch { throw new Error(`Ownership operation busy or interrupted. Retry; if persistent, inspect ${gate} with all Job Finish windows closed.`); }
     try { writeFileSync(fd, JSON.stringify({ pid: process.pid })); fn(); }
     finally { closeSync(fd); unlinkSync(gate); }
   }

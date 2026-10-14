@@ -79,7 +79,7 @@ test('Dry-run, invalid package, unsupported VS Code and failed cleanup never mut
   assert.throws(() => installOrUpdate('new.vsix', false, { ...services,
     readPackage: () => { throw new Error('invalid ZIP'); } }, () => {}), /invalid ZIP/);
   assert.throws(() => installOrUpdate('new.vsix', false, { ...services,
-    readPackage: () => ({ id: 'another.extension', version: '1.0.0', vscodeEngine: '*' }) }, () => {}), /Job-Finish VSIX/);
+    readPackage: () => ({ id: 'another.extension', version: '1.0.0', vscodeEngine: '*' }) }, () => {}), /Job Finish VSIX/);
   assert.throws(() => installOrUpdate('new.vsix', false, { ...services,
     validateCompatibility: () => { throw new Error('unsupported VS Code'); } }, () => {}), /unsupported VS Code/);
   assert.deepEqual(calls, []);
@@ -100,9 +100,9 @@ test('Failed VS Code installation or unexpected resulting version is reported as
 });
 
 test('Extension listing ignores other IDs and logs; malformed installed versions fail closed', () => {
-  assert.equal(parseInstalledVersion('warning\r\nother.job-finish@2.0.0\r\nlsc892.job-finish@0.9.0\r\nlsc892.job-finish@0.10.0\r\n', EXTENSION_ID), '0.10.0');
+  assert.equal(parseInstalledVersion('warning\r\nother.job-finish@2.0.0\r\nJobFinish.JobFinish@0.9.0\r\nJobFinish.JobFinish@0.10.0\r\n', EXTENSION_ID), '0.10.0');
   assert.equal(parseInstalledVersion('other.job-finish@1.0.0', EXTENSION_ID), null);
-  assert.throws(() => parseInstalledVersion('lsc892.job-finish@broken', EXTENSION_ID), /버전/);
+  assert.throws(() => parseInstalledVersion('JobFinish.JobFinish@broken', EXTENSION_ID), /버전/);
 });
 
 for (const [installed, legacy] of [[null, false], [null, true], ['0.1.0', false], ['0.1.0', true]] as const) {

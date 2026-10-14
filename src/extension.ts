@@ -22,8 +22,8 @@ interface SavedSession { provider: Provider; cwd: string; sessionId: string }
 let active: Application | undefined;
 export async function activate(context: vscode.ExtensionContext): Promise<unknown> {
   if (process.platform !== 'win32' || vscode.env.remoteName) {
-    const output = vscode.window.createOutputChannel('Job-Finish'); context.subscriptions.push(output);
-    output.appendLine('Job-Finish requires a local Windows desktop VS Code window.'); return;
+    const output = vscode.window.createOutputChannel('Job Finish'); context.subscriptions.push(output);
+    output.appendLine('Job Finish requires a local Windows desktop VS Code window.'); return;
   }
   active = new Application(context); await active.activate(); return active.api;
 }
@@ -33,7 +33,7 @@ class Application {
   readonly windowInstanceId = randomUUID();
   private readonly diagnostics = new Diagnostics(entry => this.output.appendLine(JSON.stringify(entry)));
   private readonly entries = new Map<string, Entry>();
-  private readonly output = vscode.window.createOutputChannel('Job-Finish');
+  private readonly output = vscode.window.createOutputChannel('Job Finish');
   private readonly status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
   private readonly ownership: Ownership;
   private native?: Win32;
@@ -126,7 +126,7 @@ class Application {
       detach: () => this.withEntry(e => this.detach(e)), results: () => this.results(),
       bindWindow: async () => {
         if (!await this.identity?.observe()) throw new Error('Could not verify a stable focused Code window. Focus this window and retry.');
-        void vscode.window.showInformationMessage(`Job-Finish: window ${this.windowInstanceId.slice(0, 8)} connected.`);
+        void vscode.window.showInformationMessage(`Job Finish: window ${this.windowInstanceId.slice(0, 8)} connected.`);
       },
       stopFlash: () => this.flash?.stop(), diagnostics: () => {
         this.output.clear(); this.output.appendLine(JSON.stringify(this.api.snapshot(), (_key, value: unknown) => typeof value === 'bigint' ? value.toString() : value, 2)); this.output.show();
@@ -146,7 +146,7 @@ class Application {
     await this.identity?.observe(750);
   }
   private async prompt(): Promise<string | undefined> {
-    return vscode.window.showInputBox({ title: 'Job-Finish · Agent task', prompt: 'Run in this workspace. Tool approvals will appear in Answer Pending Request.', ignoreFocusOut: true, validateInput: value => value.trim() ? undefined : 'Enter a task' });
+    return vscode.window.showInputBox({ title: 'Job Finish · Agent task', prompt: 'Run in this workspace. Tool approvals will appear in Answer Pending Request.', ignoreFocusOut: true, validateInput: value => value.trim() ? undefined : 'Enter a task' });
   }
   private async cwd(): Promise<string | undefined> {
     const folders = vscode.workspace.workspaceFolders;
@@ -192,11 +192,11 @@ class Application {
   }
   private async resume(): Promise<void> {
     const saved = this.context.workspaceState.get<SavedSession[]>('sessions', []);
-    const pick = await vscode.window.showQuickPick(saved.map(s => ({ label: `${s.provider} · ${s.sessionId}`, description: s.cwd, value: s })), { title: 'Resume a Job-Finish session (history does not trigger notifications)' });
+    const pick = await vscode.window.showQuickPick(saved.map(s => ({ label: `${s.provider} · ${s.sessionId}`, description: s.cwd, value: s })), { title: 'Resume a Job Finish session (history does not trigger notifications)' });
     if (pick) await this.open(pick.value.provider, pick.value.cwd, pick.value.sessionId);
   }
   private async withEntry(fn: (entry: Entry) => unknown): Promise<void> {
-    const pick = await vscode.window.showQuickPick([...this.entries.values()].map(e => ({ label: `${e.provider} · ${e.session.binding.sessionId}`, description: e.session.pendingStart ? 'unknown (start request)' : [...e.session.turns.values()].map(t => t.status).join(', ') || 'idle', value: e })), { title: 'Job-Finish session' });
+    const pick = await vscode.window.showQuickPick([...this.entries.values()].map(e => ({ label: `${e.provider} · ${e.session.binding.sessionId}`, description: e.session.pendingStart ? 'unknown (start request)' : [...e.session.turns.values()].map(t => t.status).join(', ') || 'idle', value: e })), { title: 'Job Finish session' });
     if (!pick) return;
     const id = pick.value.session.binding.sessionId;
     if (this.busy.has(id)) throw new Error('Another session command is in progress');
@@ -270,7 +270,7 @@ class Application {
     const waiting = [...this.entries.values()].reduce((n, e) => n + e.session.requests.size, 0);
     this.status.text = `${!this.config('enabled', true) ? '$(bell-slash)' : waiting ? '$(question)' : '$(bell)'} JF ${this.windowInstanceId.slice(0, 8)} · ${!this.config('enabled', true) ? 'off' : waiting ? `${waiting} input` : 'on'}`;
     this.status.command = waiting ? 'jobFinish.respond' : 'jobFinish.results';
-    this.status.tooltip = 'Job-Finish · automatic notifications · Settings: Job-Finish Enabled · Show Results';
+    this.status.tooltip = 'Job Finish · automatic notifications · Settings: Job Finish Enabled · Show Results';
   }
   private detach(entry: Entry): void {
     try { entry.execution.dispose(); }
@@ -279,7 +279,7 @@ class Application {
       finally { this.entries.delete(entry.session.binding.sessionId); this.flash?.stop(); }
     }
   }
-  private report(error: unknown): void { this.diagnostics.add(error); void vscode.window.showErrorMessage(`Job-Finish: ${error}`); }
+  private report(error: unknown): void { this.diagnostics.add(error); void vscode.window.showErrorMessage(`Job Finish: ${error}`); }
   dispose(): void {
     if (this.disposed) return; this.disposed = true;
     this.observer.dispose();

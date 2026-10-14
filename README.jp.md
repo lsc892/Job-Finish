@@ -146,7 +146,7 @@ npm uninstall -g job-finish
 VS Code の拡張機能（`Ctrl+Shift+X`）で **Job-Finish** を探し、**Uninstall** を選択します。再読み込みを求められたら実行してください。次のコマンドも使用できます。
 
 ```powershell
-code --uninstall-extension lsc892.job-finish
+code --uninstall-extension JobFinish.JobFinish
 ```
 
 </details>

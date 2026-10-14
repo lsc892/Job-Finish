@@ -24,7 +24,7 @@ function object(value: unknown): Record<string, unknown> {
 }
 function id(value: unknown): string { if (typeof value !== 'string' || !value) throw new Error('Missing Codex identifier'); return value; }
 
-/** Input panels handled by the existing Codex extension, never by Job-Finish's direct execution UI. */
+/** Input panels handled by the existing Codex extension, never by Job Finish's direct execution UI. */
 export function observedCodexQuestion(message: RpcMessage): string | undefined {
   const p = object(message.params);
   let input: Record<string, unknown>;
@@ -212,7 +212,7 @@ export class CodexExecution {
     }, message => this.options.diagnostic.add(message));
     this.rpc = rpc;
     const command = codexCommand(this.options.executable); rpc.start(command.executable, command.args, this.options.cwd);
-    const p: InitializeParams = { clientInfo: { name: 'job_finish', title: 'Job-Finish', version: '0.1.2' },
+    const p: InitializeParams = { clientInfo: { name: 'job_finish', title: 'Job Finish', version: '0.1.2' },
       capabilities: { experimentalApi: true, requestAttestation: false, optOutNotificationMethods: ['item/agentMessage/delta', 'item/reasoning/textDelta', 'item/reasoning/summaryTextDelta', 'item/commandExecution/outputDelta', 'turn/diff/updated'] } };
     await rpc.request('initialize', p); rpc.notify('initialized');
   }
@@ -334,7 +334,7 @@ export class CodexExecution {
     }
     this.adapter!.handle(message, this.rpc!.connectionId, this.starting);
     if (message.id !== undefined && message.method && !this.session!.requests.has(JSON.stringify(message.id))) {
-      this.rpc!.reject(message.id, 'Unsupported or unbound Job-Finish request'); this.options.diagnostic.add(`Unsupported server request: ${message.method}`);
+      this.rpc!.reject(message.id, 'Unsupported or unbound Job Finish request'); this.options.diagnostic.add(`Unsupported server request: ${message.method}`);
     }
   }
   async readResult(turnId: string): Promise<string | undefined> {

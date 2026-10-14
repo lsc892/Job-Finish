@@ -12,10 +12,10 @@ if (codeAvailable) { try { resolveCode(); } catch { codeAvailable = false; } }
 
 function vsix(root: string, version: string): string {
   const source = join(root, `source-${version}`); mkdirSync(join(source, 'extension'), { recursive: true });
-  writeFileSync(join(source, 'extension', 'package.json'), JSON.stringify({ name: 'job-finish', publisher: 'lsc892',
-    displayName: 'Job-Finish Installer Test', version, engines: { vscode: '^1.99.0' }, main: './extension.cjs' }));
+  writeFileSync(join(source, 'extension', 'package.json'), JSON.stringify({ name: 'JobFinish', publisher: 'JobFinish',
+    displayName: 'Job Finish Installer Test', version, engines: { vscode: '^1.99.0' }, main: './extension.cjs' }));
   writeFileSync(join(source, 'extension', 'extension.cjs'), 'exports.activate = () => {};');
-  writeFileSync(join(source, 'extension.vsixmanifest'), `<PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011"><Metadata><Identity Id="job-finish" Version="${version}" Publisher="lsc892" /><DisplayName>Job-Finish Installer Test</DisplayName><Description>Isolated test</Description></Metadata><Installation><InstallationTarget Id="Microsoft.VisualStudio.Code" /></Installation><Dependencies /><Assets><Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true" /></Assets></PackageManifest>`);
+  writeFileSync(join(source, 'extension.vsixmanifest'), `<PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011"><Metadata><Identity Id="JobFinish" Version="${version}" Publisher="JobFinish" /><DisplayName>Job Finish Installer Test</DisplayName><Description>Isolated test</Description></Metadata><Installation><InstallationTarget Id="Microsoft.VisualStudio.Code" /></Installation><Dependencies /><Assets><Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true" /></Assets></PackageManifest>`);
   const path = join(root, `${version}.vsix`);
   execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
     "$ErrorActionPreference = 'Stop'; Add-Type -AssemblyName System.IO.Compression.FileSystem; Add-Type -AssemblyName System.IO.Compression; $zip = [IO.Compression.ZipFile]::Open($env:JOB_FINISH_TEST_VSIX, [IO.Compression.ZipArchiveMode]::Create); try { Get-ChildItem -LiteralPath $env:JOB_FINISH_TEST_SOURCE -Recurse -File | ForEach-Object { $name = $_.FullName.Substring($env:JOB_FINISH_TEST_SOURCE.Length + 1).Replace('\\', '/'); [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $_.FullName, $name) | Out-Null } } finally { $zip.Dispose() }"],

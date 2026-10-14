@@ -18,7 +18,7 @@ async function until(fn: () => boolean): Promise<void> {
 export async function run(): Promise<void> {
   const root = process.env.JOB_FINISH_HOST_ARTIFACTS!;
   const role = vscode.workspace.workspaceFile ? basename(vscode.workspace.workspaceFile.fsPath, '.code-workspace') : 'single';
-  const extension = vscode.extensions.getExtension<Api>('lsc892.job-finish'); assert.ok(extension);
+  const extension = vscode.extensions.getExtension<Api>('JobFinish.JobFinish'); assert.ok(extension);
   return runWithApi(await extension.activate(), root, role);
 }
 export async function runWithApi(api: Api, root: string, role: string): Promise<void> {

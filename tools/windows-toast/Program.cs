@@ -73,7 +73,7 @@ internal static class Program
             }
             using (var app = Registry.CurrentUser.CreateSubKey($@"Software\Classes\AppUserModelId\{AppId}"))
             {
-                app.SetValue("DisplayName", "Job-Finish"); app.SetValue("ShowInSettings", 1, RegistryValueKind.DWord); app.SetValue("CustomActivator", $"{{{Registration.Activator}}}");
+                app.SetValue("DisplayName", "Job Finish"); app.SetValue("ShowInSettings", 1, RegistryValueKind.DWord); app.SetValue("CustomActivator", $"{{{Registration.Activator}}}");
                 if (!Equals(app.GetValue("IconUri"), icon?.Image))
                 {
                     if (icon?.Image != null) app.SetValue("IconUri", icon.Image, RegistryValueKind.ExpandString);

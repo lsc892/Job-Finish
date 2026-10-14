@@ -1,6 +1,6 @@
 import { gt, valid } from 'semver';
 
-export const EXTENSION_ID = 'lsc892.job-finish';
+export const EXTENSION_ID = 'JobFinish.JobFinish';
 export interface ExtensionPackage { id: string; version: string; vscodeEngine: string }
 export interface LegacyInstallation {
   found: boolean;
@@ -45,7 +45,7 @@ export function planInstall(installed: string | null, target: string, legacy: bo
 export function installOrUpdate(path: string, dryRun: boolean, services: InstallServices,
   log: (message: string) => void = console.log): InstallPlan {
   const extension = services.readPackage(path);
-  if (extension.id.toLowerCase() !== EXTENSION_ID) throw new Error(`Job-Finish VSIX가 아닙니다: ${extension.id}`);
+  if (extension.id.toLowerCase() !== EXTENSION_ID.toLowerCase()) throw new Error(`Job Finish VSIX가 아닙니다: ${extension.id}`);
   const installed = services.installedVersion(EXTENSION_ID);
   const legacy = services.inspectLegacy();
   const plan = planInstall(installed, extension.version, legacy.found);
@@ -89,6 +89,6 @@ export function uninstall(dryRun: boolean, services: UninstallServices,
     for (const backup of legacy.remove()) log(`설정 백업: ${backup}`);
     log('PowerShell/C# 레거시 정리 완료.');
   }
-  log('Job-Finish 제거 완료. npm 전역 패키지도 제거하려면: npm rm -g job-finish');
+  log('Job Finish 제거 완료. npm 전역 패키지도 제거하려면: npm rm -g job-finish');
   return plan;
 }
