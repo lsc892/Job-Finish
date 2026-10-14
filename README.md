@@ -1,6 +1,6 @@
 # Job-Finish
 
-**English · [한국어](README.ko.md) · [中文](README.zh.md) · [日本語](README.jp.md)**
+**English · [한국어](https://github.com/lsc892/Job-Finish/blob/HEAD/README.ko.md) · [中文](https://github.com/lsc892/Job-Finish/blob/HEAD/README.zh.md) · [日本語](https://github.com/lsc892/Job-Finish/blob/HEAD/README.jp.md)**
 
 Stop watching the chat to see whether your AI agent is done.
 When **Claude Code or Codex finishes, needs input, or encounters an error**, Job-Finish notifies you and brings you back to the right VS Code window.
@@ -43,7 +43,7 @@ To update:
 npx job-finish@latest update
 ```
 
-Add `--dry-run` to preview changes or `--profile "Profile name"` to choose a VS Code profile. Equal or newer extension versions are preserved. See the [installer guide](tools/installer/README.md) for details.
+Add `--dry-run` to preview changes or `--profile "Profile name"` to choose a VS Code profile. Equal or newer extension versions are preserved. See the [installer guide](https://github.com/lsc892/Job-Finish/blob/HEAD/tools/installer/README.md) for details.
 
 <details>
 <summary>Install the CLI globally</summary>
@@ -162,12 +162,12 @@ npm run uninstall:legacy -- --dry-run
 npm run uninstall:legacy
 ```
 
-This removes old Job-Finish hooks and installation files; it does not uninstall the VS Code extension. Use `--project "C:\Projects\MyProject"` for each additional project installation. See the [installer guide](tools/installer/README.md) for backup behavior and other options.
+This removes old Job-Finish hooks and installation files; it does not uninstall the VS Code extension. Use `--project "C:\Projects\MyProject"` for each additional project installation. See the [installer guide](https://github.com/lsc892/Job-Finish/blob/HEAD/tools/installer/README.md) for backup behavior and other options.
 
 </details>
 
-For implementation details and verification, see the [development document](docs/requirements-and-verification.md) and [verification report](docs/verification.md).
+For implementation details and verification, see the [development document](https://github.com/lsc892/Job-Finish/blob/HEAD/docs/requirements-and-verification.md) and [verification report](https://github.com/lsc892/Job-Finish/blob/HEAD/docs/verification.md).
 
 ## License
 
-[MIT](LICENSE). Bundled third-party components retain their respective licenses.
+[MIT](https://github.com/lsc892/Job-Finish/blob/HEAD/LICENSE). Bundled third-party components retain their respective licenses.

@@ -110,8 +110,6 @@ npm run install:extension -- --vsix ./job-finish-win32-x64.vsix
 
 자동 감지는 같은 VS Code Extension Host에서 실행되는 로컬 에이전트를 지원합니다. WSL·원격 작업 폴더·외부 터미널·데스크톱 에이전트 앱은 대상에 포함되지 않습니다. 에이전트 확장 업데이트 후 감지가 안 되면 **Show Diagnostics**에서 상태를 확인하세요.
 
-완료 판정은 런타임 이벤트를 사용합니다. 세션 로그 감시나 추가 AI 요약 호출은 사용하지 않습니다. 토스트 상단의 Job-Finish 왼쪽에는 VS Code 아이콘을 표시하고, 본문은 대화·작업 제목 1줄과 AI 응답 최대 4줄로 구성합니다. 제목이 없으면 해당 사용자 요청이나 workspace 이름을 사용합니다. 질문·승인 대기에는 작업 제목 앞에 `Answer needed` 또는 `Approval needed`를 표시합니다. 알림 미리보기의 Markdown 기호와 빈 줄은 정리하며 최대 360자로 제한합니다. 결과는 창별 20개·각 16 KiB로 원문을 보관합니다. 잘린 Codex 결과는 연결된 런타임에 원문을 요청하며, 조회할 수 없으면 화면에 표시합니다.
-
 ## 기본 설정 한눈에 보기
 
 VS Code 설정(`Ctrl+,`)에서 **Job-Finish**를 검색합니다.
@@ -120,25 +118,9 @@ VS Code 설정(`Ctrl+,`)에서 **Job-Finish**를 검색합니다.
 | --- | --- | --- |
 | `jobFinish.enabled` | `true` | 자동 감지와 알림을 즉시 켜거나 끕니다. |
 | `jobFinish.toast` | `true` | Windows 토스트 알림을 표시합니다. |
-| `jobFinish.toastIcon` | `true` | 토스트 본문 왼쪽에 기본 잠자는 캐릭터 이미지를 표시합니다. 끄면 이미지 없이 표시합니다. |
-| `jobFinish.toastIconPath` | 빈 값 | 빈 값은 기본 이미지입니다. 로컬 PNG·JPEG·GIF·BMP로 교체할 수 있으며 상대 경로는 첫 workspace 폴더 기준입니다. |
 | `jobFinish.flash` | `true` | 작업하던 VS Code 창의 작업 표시줄 버튼을 깜빡입니다. |
 | `jobFinish.flashMode` | `manual` | `manual`: 0.5초마다 직접 깜빡임. `system`: Windows 기본 깜빡임 방식 사용. |
 | `jobFinish.flashTimeoutSeconds` | `300` | 깜빡임 유지 시간(초). `0`이면 창 복귀·토스트 클릭·**Stop Flash**까지 유지합니다. |
-
-<details>
-<summary>직접 실행과 세션 설정 더 보기</summary>
-
-| 설정 | 기본값과 설명 |
-| --- | --- |
-| `jobFinish.codexExecutable` | 빈 값은 PATH 탐색. `codex.exe` 또는 npm `bin/codex.js` 경로 |
-| `jobFinish.codexModel` | 빈 값은 Codex 설정 사용 |
-| `jobFinish.codexMode` | `default`; `plan`은 구조화된 질문을 사용하는 계획 모드. 새로 연결할 세션에 적용 |
-| `jobFinish.claudeExecutable` | 빈 값은 포함된 SDK CLI 사용 |
-| `jobFinish.maxSessions`, `jobFinish.maxConnections` | `8`, `4` |
-| `jobFinish.claudeMaxTurns` | `50`; 계정 사용량 한도와 별개의 실행 제한 |
-
-</details>
 
 ## 삭제
 
