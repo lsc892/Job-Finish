@@ -173,7 +173,7 @@ For implementation details and verification, see the [development document](http
 <details>
 <summary>Installer commands, migration, and options</summary>
 
-The npm package is `job-finish` **2.0.2**; the bundled extension is `lsc892.job-finish` **0.1.2**. CLI and extension versions are managed separately. The installer compares the installed extension version with the version inside the VSIX, rather than the npm version.
+The npm package is `job-finish` **2.0.3**; the bundled extension is `lsc892.job-finish` **2.0.2**. CLI and extension versions are managed separately. The installer compares the installed extension version with the version inside the VSIX, rather than the npm version.
 
 | Command | Behavior |
 | --- | --- |
@@ -224,12 +224,12 @@ npm run package
 npm run package:npm
 ```
 
-`npm run package` creates the Windows x64 VSIX. `npm run package:npm` builds the installer with that VSIX and packs `tools/installer`, producing `job-finish-2.0.2.tgz`. It does not publish the package. The npm archive includes the built JavaScript CLI, the bundled VSIX, README, and license; source builds are not needed on users' machines.
+`npm run package` creates the Windows x64 VSIX. `npm run package:npm` builds the installer with that VSIX and packs `tools/installer`, producing `job-finish-2.0.3.tgz`. It does not publish the package. The npm archive includes the built JavaScript CLI, the bundled VSIX, README, and license; source builds are not needed on users' machines.
 
 The repository root contains the VS Code extension and is marked private for npm publishing. The npm package to publish is the archive built from `tools/installer`. After checking that archive, publish it with:
 
 ```powershell
-npm publish ./job-finish-2.0.2.tgz --access public
+npm publish ./job-finish-2.0.3.tgz --access public
 ```
 
 Publishing requires an npm account with access to the existing [`job-finish` package](https://www.npmjs.com/package/job-finish). Update the installer package version and rebuild the bundled VSIX when preparing a new npm release; the extension version is managed separately.
