@@ -4,7 +4,7 @@
   "displayName": "Job-Finish",
   "icon": "resources/icon/JobFinish_Icon.png",
   "description": "Window-scoped Codex and Claude execution notifications for Windows.",
-  "version": "2.0.2",
+  "version": "2.1.0",
   "publisher": "lsc892",
   "license": "MIT",
   "repository": { "type": "git", "url": "https://github.com/lsc892/Job-Finish.git" },
