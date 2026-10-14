@@ -74,11 +74,14 @@ interface SessionBinding {
 | Codex App Server | `turn/completed`, `turn.status: interrupted` → `cancelled` | thread ID·`turn.id` |
 | Claude Agent SDK | `type: result`, `subtype: success`, `is_error: false` → `completed` | `session_id`, `result`, 결과 ID와 실행 바인딩 |
 | Claude Agent SDK | 실패·한도 도달 `result` → `error` | 결과 유형과 오류 본문 |
+| Claude Agent SDK | foreground `assistant`, `error: server_error`와 OAuth 갱신 충돌 본문 → 즉시 오류 알림 | `session_id`, 실행 요청과 오류 본문; 종료 확정은 후속 `result` 사용 |
 | 연결 단절·해석 불가 | 종료 상태를 확인할 수 없으면 `unknown` | 마지막 확인 세션·턴과 진단 |
 
 Codex의 최종 응답은 같은 thread·turn에 속한 `item/completed`의 `agentMessage` 등 지원 버전에서 확인한 결과 이벤트로 보관한다. 본문만 수신한 상태에서 완료를 만들지 않는다. 상태 확정 전에 본문이 누락되어도 이전 턴의 응답을 대신 표시하지 않는다. 일반 오류 통지만으로 턴 종료를 확정하지 않으며, 확인된 실행 시작 실패는 해당 요청의 오류로 구분한다.
 
 Claude는 SDK의 `result`를 판정하고 스트림의 뒤따르는 이벤트도 정리한다. 일반 assistant 응답을 전체 실행 완료로 바꾸지 않는다. 취소는 해당 실행의 명시적 취소 근거가 있을 때만 `cancelled`로 처리한다.
+
+설치된 Claude Code 2.1.296에서 확인한 `Failed to refresh OAuth token: another Claude Code process is refreshing it or exited mid-refresh`와 대체 표현 `Could not refresh your login because another Claude Code process is refreshing it (or exited mid-refresh)`는 foreground assistant의 `server_error` 표식과 함께 수신하면 즉시 오류 알림을 보낸다. 같은 실행의 재전달과 동일 오류의 후속 결과는 중복 알림을 억제하지만, 실제 결과의 저장·입력 대기 정리는 수행한다. 이 알림만으로 턴을 종료하지 않으며 이후 성공·다른 오류·취소 결과는 별도로 알린다. 일반 답변에서 인용한 문구, 도구 출력과 하위 에이전트 메시지는 탐지 대상에서 제외한다.
 
 Codex는 런타임이 제공한 turn ID를 사용한다. Claude에 동등한 턴 ID가 없으면 실행 시작 때 만든 요청 ID와 SDK 결과 ID를 해당 실행에 바인딩한다. 단일 응답·턴 종료와 관련 백그라운드 작업 전체의 종료를 구분한다.
 

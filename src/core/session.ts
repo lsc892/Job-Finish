@@ -55,7 +55,8 @@ export class Session {
     const turn = this.turns.get(id);
     if (turn && turn.status === 'unknown') { turn.status = 'running'; this.persist(); }
   }
-  finish(id: string, status: TerminalStatus, connectionId: string, detail?: string, resultId?: string): void {
+  /** A matching earlier error notice can suppress delivery while still committing the real result. */
+  finish(id: string, status: TerminalStatus, connectionId: string, detail?: string, resultId?: string, notify = true): void {
     if (!this.valid(connectionId)) return;
     const previous = this.completed.get(id);
     if (previous) {
@@ -69,7 +70,14 @@ export class Session {
     while (this.completed.size > LIMITS.dedup) this.completed.delete(this.completed.keys().next().value!);
     this.clearRequests(id); this.turns.delete(id);
     this.persist(); // Durable before delivery: crash may lose delivery, never promise exactly-once.
-    this.signal(turn, detail);
+    if (notify) this.signal(turn, detail);
+  }
+  /** Report an explicit runtime error without claiming that the foreground execution has ended. */
+  notifyError(id: string, text: string, connectionId: string, detail: string): boolean {
+    if (!this.valid(connectionId)) return false;
+    const turn = this.turns.get(id); if (!turn) return false;
+    this.signal({ ...turn, status: 'error', ...boundedText(text) }, detail);
+    return true;
   }
   waiting(request: InputRequest): void {
     if (!this.valid(request.connectionId) || !this.turns.has(request.turnId)) return;

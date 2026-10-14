@@ -3,19 +3,22 @@ import type { CanUseTool, PermissionResult, Query, SDKMessage, SDKResultMessage,
 import { Session } from '../core/session';
 import { LIMITS } from '../core/model';
 import { inputQuestionText } from '../core/input';
+import { CLAUDE_OAUTH_REFRESH_ERROR, claudeOAuthRefreshError, isClaudeOAuthRefreshError } from './claude-errors';
 
 /** An assistant message is not a result. A bound query has exactly one foreground turn. */
-export function acceptClaudeResult(session: Session, requestId: string, message: SDKResultMessage, connectionId: string): void {
+export function acceptClaudeResult(session: Session, requestId: string, message: SDKResultMessage, connectionId: string, notifiedError?: string): void {
   if (message.session_id !== session.binding.sessionId) throw new Error('Claude session identity mismatch');
   if (!message.uuid || (message.user_message_uuid && message.user_message_uuid !== requestId)) throw new Error('Claude result is not bound to this execution');
   const success = message.subtype === 'success' && message.is_error === false;
   const body = message.subtype === 'success' ? message.result : message.errors.join('\n');
+  const detail = success ? undefined : isClaudeOAuthRefreshError(body) ? CLAUDE_OAUTH_REFRESH_ERROR
+    : message.subtype === 'error_max_turns' ? 'Execution turn limit reached (not account quota)' : message.subtype;
   session.body(requestId, body, connectionId);
-  session.finish(requestId, success ? 'completed' : 'error', connectionId,
-    success ? undefined : message.subtype === 'error_max_turns' ? 'Execution turn limit reached (not account quota)' : message.subtype, message.uuid);
+  session.finish(requestId, success ? 'completed' : 'error', connectionId, detail, message.uuid,
+    !notifiedError || detail !== notifiedError);
 }
 export interface ClaudeOptions { cwd: string; executable?: string; maxTurns: number; session: Session; resume: boolean; model?: string; onEvent?: (message: SDKMessage) => void; createQuery?: typeof query }
-interface ExecutionContext { requestId: string; connectionId: string; acceptingInput: boolean }
+interface ExecutionContext { requestId: string; connectionId: string; acceptingInput: boolean; notifiedError?: string }
 export class ClaudeExecution {
   readonly session: Session;
   private query?: Query;
@@ -72,8 +75,14 @@ export class ClaudeExecution {
     if ('session_id' in message && message.session_id !== this.session.binding.sessionId) throw new Error('Claude session identity mismatch');
     if (message.type === 'result') {
       context.acceptingInput = false;
-      acceptClaudeResult(this.session, context.requestId, message, context.connectionId); this.clearPending();
-    } else if (message.type === 'rate_limit_event') {
+      acceptClaudeResult(this.session, context.requestId, message, context.connectionId, context.notifiedError); this.clearPending();
+    } else if (this.accepts(context) && !context.notifiedError) {
+      const error = claudeOAuthRefreshError(message);
+      if (error && this.session.notifyError(context.requestId, error, context.connectionId, CLAUDE_OAUTH_REFRESH_ERROR)) {
+        context.notifiedError = CLAUDE_OAUTH_REFRESH_ERROR;
+      }
+    }
+    if (message.type === 'rate_limit_event') {
       this.session.diagnostics.add(`Claude rate limit advisory: ${JSON.stringify(message)}`);
     }
   }

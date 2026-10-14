@@ -4,6 +4,7 @@ import { Diagnostics, LIMITS, Provider, Signal, taskTitle } from '../core/model'
 import { Session } from '../core/session';
 import { inputQuestionText } from '../core/input';
 import { acceptClaudeResult } from './claude';
+import { CLAUDE_OAUTH_REFRESH_ERROR, claudeOAuthRefreshError } from './claude-errors';
 import { CodexAdapter, observedCodexQuestion } from './codex';
 import type { RpcMessage } from './transport';
 import { inputTitle } from './titles';
@@ -24,6 +25,8 @@ export class AgentEventRouter {
   private readonly codexInputEpisodes = new Map<string, { waiting: boolean; episode: number }>();
   private readonly claudeRequests: { id: string; supplied: boolean; title?: string }[] = [];
   private readonly claudeResults = new Set<string>();
+  private readonly claudeErrorTurns = new Set<string>();
+  private readonly claudeErrorMessages = new Set<string>();
   private readonly claudeInitializations = new Set<string>();
   private readonly claudeDialogs = new Set<string>();
   private claudeSessionId?: string;
@@ -160,6 +163,28 @@ export class AgentEventRouter {
     if (sessionId) this.claudeSessionId = sessionId;
     if (message.type === 'system' && message.subtype === 'init' && sessionId && this.claudeRequests.length) {
       this.session(sessionId)?.start(this.claudeRequests[0]!.id, this.connectionId, this.claudeRequests[0]!.title);
+    } else if (message.type === 'assistant' && sessionId) {
+      const error = claudeOAuthRefreshError(message); if (!error) return;
+      const uuid = identifier(message.uuid); if (!uuid) return;
+      const messageKey = JSON.stringify([sessionId, uuid]);
+      if (this.claudeErrorMessages.has(messageKey)) return;
+      const queued = this.claudeRequests[0]; const userId = identifier(message.user_message_uuid);
+      if (userId && queued?.supplied && userId !== queued.id) return;
+      const session = this.session(sessionId); if (!session) return;
+      if (userId && session.completed.has(userId)) return;
+      // A live foreground error also admits a turn already running when observation began.
+      const turnId = queued?.id ?? (session.turns.size === 1 ? session.turns.keys().next().value : undefined)
+        ?? userId ?? uuid;
+      if (!turnId) return;
+      const key = JSON.stringify([sessionId, turnId]);
+      if (this.claudeErrorTurns.has(key)) {
+        this.claudeErrorMessages.add(messageKey); this.bound(this.claudeErrorMessages); return;
+      }
+      session.start(turnId, this.connectionId, queued?.title);
+      if (session.notifyError(turnId, error, this.connectionId, CLAUDE_OAUTH_REFRESH_ERROR)) {
+        this.claudeErrorTurns.add(key); this.bound(this.claudeErrorTurns);
+        this.claudeErrorMessages.add(messageKey); this.bound(this.claudeErrorMessages);
+      }
     } else if (message.type === 'result' && sessionId) {
       if (!identifier(message.uuid) || typeof message.is_error !== 'boolean' || typeof message.subtype !== 'string') throw new Error('Malformed observed Claude result');
       if (message.subtype === 'success' ? typeof message.result !== 'string' : !Array.isArray(message.errors) || message.errors.some(e => typeof e !== 'string')) throw new Error('Malformed observed Claude result body');
@@ -170,6 +195,9 @@ export class AgentEventRouter {
       if (userId && queued?.supplied && queued.id !== userId) return;
       const turnId = userId ?? queued?.id ?? message.uuid as string;
       const previousId = queued?.id ?? (session.turns.size === 1 ? session.turns.keys().next().value : undefined);
+      const previousErrorKey = JSON.stringify([sessionId, previousId]);
+      const errorKey = JSON.stringify([sessionId, turnId]);
+      const notifiedError = this.claudeErrorTurns.has(previousErrorKey) || this.claudeErrorTurns.has(errorKey);
       if (previousId && previousId !== turnId) {
         // Some extension versions add the UUID after writing the user input. Transfer the observed state.
         const previous = session.turns.get(previousId);
@@ -183,7 +211,9 @@ export class AgentEventRouter {
       session.start(turnId, this.connectionId, queued?.title);
       if (queued?.title) session.turnTitle(turnId, queued.title, this.connectionId);
       for (const request of session.requests.values()) if (request.turnId === turnId) this.claudeDialogs.delete(request.id);
-      acceptClaudeResult(session, turnId, message as unknown as SDKResultMessage, this.connectionId);
+      acceptClaudeResult(session, turnId, message as unknown as SDKResultMessage, this.connectionId,
+        notifiedError ? CLAUDE_OAUTH_REFRESH_ERROR : undefined);
+      this.claudeErrorTurns.delete(previousErrorKey); this.claudeErrorTurns.delete(errorKey);
       this.claudeResults.add(message.uuid as string); this.bound(this.claudeResults);
       if (queued) this.claudeRequests.shift();
     } else if (message.type === 'control_request') {
@@ -212,6 +242,7 @@ export class AgentEventRouter {
         if (this.pendingThreads.delete(id) && response?.subtype === 'success') {
           const turn = this.claudeRequests.shift();
           if (turn) {
+            this.claudeErrorTurns.delete(JSON.stringify([this.claudeSessionId, turn.id]));
             for (const request of session?.requests.values() ?? []) if (request.turnId === turn.id) this.claudeDialogs.delete(request.id);
             session?.finish(turn.id, 'cancelled', this.connectionId, 'Interrupt acknowledged by the existing Claude runtime');
           }
@@ -289,5 +320,5 @@ export class AgentEventRouter {
     activeTurns: [...this.sessions.values()].reduce((count, s) => count + s.turns.size, 0),
     pendingRequests: [...this.sessions.values()].reduce((count, s) => count + s.requests.size, 0) }; }
   dispose(): void { this.disposed = true; this.sessions.clear(); this.pendingThreads.clear(); this.codexInputEpisodes.clear(); this.ignored.clear(); this.titles.clear();
-    this.codexStartTitles.clear(); this.codexTurnTitles.clear(); this.claudeResults.clear(); this.claudeInitializations.clear(); this.claudeDialogs.clear(); this.claudeRequests.length = 0; }
+    this.codexStartTitles.clear(); this.codexTurnTitles.clear(); this.claudeResults.clear(); this.claudeErrorTurns.clear(); this.claudeErrorMessages.clear(); this.claudeInitializations.clear(); this.claudeDialogs.clear(); this.claudeRequests.length = 0; }
 }
