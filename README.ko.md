@@ -60,7 +60,7 @@ job-finish install
 <details>
 <summary>VSIX 파일로 직접 설치하기</summary>
 
-1. 아래 소스 빌드 안내로 `job-finish-win32-x64.vsix`를 준비합니다.
+1. 아래 소스 빌드 안내로 `JobFinish-win32-x64.vsix`를 준비합니다.
 2. VS Code에서 `Ctrl+Shift+P` → **Extensions: Install from VSIX…**를 선택합니다.
 3. VSIX 파일을 선택하고, 다시 로드 안내가 나오면 실행합니다.
 
@@ -79,13 +79,13 @@ npm run check
 npm run package
 ```
 
-`job-finish-win32-x64.vsix`가 생성됩니다. 개발용 창을 열려면 `F5`를 사용합니다.
+`JobFinish-win32-x64.vsix`가 생성됩니다. 개발용 창을 열려면 `F5`를 사용합니다.
 
 예전 PowerShell/C# 버전을 사용했다면, 설치 도구로 기존 설치를 백업·정리하면서 확장을 설치할 수 있습니다.
 
 ```powershell
 npm --prefix tools/installer ci
-npm run install:extension -- --vsix ./job-finish-win32-x64.vsix
+npm run install:extension -- --vsix ./JobFinish-win32-x64.vsix
 ```
 
 </details>

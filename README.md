@@ -60,7 +60,7 @@ After installing the latest CLI, you can also use `job-finish update` and `job-f
 <details>
 <summary>Install a VSIX manually</summary>
 
-1. Prepare `job-finish-win32-x64.vsix` using the source build steps below.
+1. Prepare `JobFinish-win32-x64.vsix` using the source build steps below.
 2. In VS Code, press `Ctrl+Shift+P` and select **Extensions: Install from VSIX…**.
 3. Select the VSIX file and reload VS Code if prompted.
 
@@ -79,13 +79,13 @@ npm run check
 npm run package
 ```
 
-The output is `job-finish-win32-x64.vsix`. Press `F5` instead to open a development window.
+The output is `JobFinish-win32-x64.vsix`. Press `F5` instead to open a development window.
 
 If you used the old PowerShell/C# version, the installer can back up and remove it before installing the extension:
 
 ```powershell
 npm --prefix tools/installer ci
-npm run install:extension -- --vsix ./job-finish-win32-x64.vsix
+npm run install:extension -- --vsix ./JobFinish-win32-x64.vsix
 ```
 
 </details>

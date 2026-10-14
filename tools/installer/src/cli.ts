@@ -31,7 +31,7 @@ function main(): void {
   if (!['install', 'update', 'uninstall', 'uninstall-legacy'].includes(command)) throw new Error(`지원하지 않는 명령: ${command}\n${usage}`);
   const caller = resolve(process.env.INIT_CWD ?? process.cwd());
   let project = caller;
-  let vsix = resolve(__dirname, '../assets/job-finish-win32-x64.vsix');
+  let vsix = resolve(__dirname, '../assets/JobFinish-win32-x64.vsix');
   let dryRun = false;
   let keepFiles = false;
   const code: { executable?: string; profile?: string; userDataDir?: string; extensionsDir?: string } = {};

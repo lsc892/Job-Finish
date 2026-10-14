@@ -60,7 +60,7 @@ job-finish install
 <details>
 <summary>手动安装 VSIX</summary>
 
-1. 按照下方的源码构建步骤生成 `job-finish-win32-x64.vsix`。
+1. 按照下方的源码构建步骤生成 `JobFinish-win32-x64.vsix`。
 2. 在 VS Code 中按 `Ctrl+Shift+P`，选择 **Extensions: Install from VSIX…**。
 3. 选择 VSIX 文件，并在出现提示时重新加载 VS Code。
 
@@ -79,13 +79,13 @@ npm run check
 npm run package
 ```
 
-生成的文件为 `job-finish-win32-x64.vsix`。开发时也可以按 `F5` 打开开发窗口。
+生成的文件为 `JobFinish-win32-x64.vsix`。开发时也可以按 `F5` 打开开发窗口。
 
 如果你使用过旧的 PowerShell/C# 版本，安装程序可以在安装扩展前备份并移除旧版：
 
 ```powershell
 npm --prefix tools/installer ci
-npm run install:extension -- --vsix ./job-finish-win32-x64.vsix
+npm run install:extension -- --vsix ./JobFinish-win32-x64.vsix
 ```
 
 </details>

@@ -13,7 +13,7 @@ const cli = process.env.JOB_FINISH_CODE_EXECUTABLE ?? join(process.env.LOCALAPPD
 const launcher = readFileSync(join(dirname(cli), 'bin/code.cmd'), 'utf8');
 const relativeCli = launcher.match(/%~dp0\.\.\\([^"\r\n]+cli\.js)/)?.[1];
 const cliScript = join(dirname(cli), relativeCli ?? 'resources/app/out/cli.js');
-const { stdout } = await promisify(execFile)(cli, [cliScript, '--user-data-dir', join(root, 'profile'), '--extensions-dir', join(root, 'extensions'), '--install-extension', resolve('job-finish-win32-x64.vsix'), '--force'], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', VSCODE_CLI: '1' }, windowsHide: true, timeout: 60_000 });
+const { stdout } = await promisify(execFile)(cli, [cliScript, '--user-data-dir', join(root, 'profile'), '--extensions-dir', join(root, 'extensions'), '--install-extension', resolve('JobFinish-win32-x64.vsix'), '--force'], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', VSCODE_CLI: '1' }, windowsHide: true, timeout: 60_000 });
 console.log(stdout.trim());
 const installed = JSON.parse(readFileSync(join(root, 'extensions/extensions.json'), 'utf8')).find(entry => entry.identifier.id.toLowerCase() === extensionId.toLowerCase());
 if (!installed) throw new Error('Extension installation not registered');

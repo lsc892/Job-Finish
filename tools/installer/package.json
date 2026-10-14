@@ -1,6 +1,6 @@
 {
   "name": "job-finish",
-  "version": "2.1.0",
+  "version": "2.1.2",
   "description": "Windows notifications for Claude Code and Codex. Install, update or uninstall the Job-Finish VS Code extension.",
   "license": "MIT",
   "engines": {

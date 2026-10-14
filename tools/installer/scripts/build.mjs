@@ -10,10 +10,10 @@ if (args.length && !requireVSIX) {
   const source = resolve(args[1]);
   if (!existsSync(source)) throw new Error(`VSIX missing: ${source}`);
   mkdirSync(resolve(root, 'assets'), { recursive: true });
-  const target = resolve(root, 'assets/job-finish-win32-x64.vsix');
+  const target = resolve(root, 'assets/JobFinish-win32-x64.vsix');
   if (source !== target) copyFileSync(source, target);
 }
-if (requireVSIX && !existsSync(resolve(root, 'assets/job-finish-win32-x64.vsix'))) {
+if (requireVSIX && !existsSync(resolve(root, 'assets/JobFinish-win32-x64.vsix'))) {
   throw new Error('Build with --vsix <path> before packing the installer.');
 }
 await build({ entryPoints: [resolve(root, 'src/cli.ts')], outfile: resolve(root, 'dist/cli.cjs'),

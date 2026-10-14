@@ -1,10 +1,10 @@
 {
   "name": "JobFinish",
   "private": true,
-  "displayName": "Job Finish",
+  "displayName": "JobFinish",
   "icon": "resources/icon/JobFinish_Icon.png",
   "description": "Window-scoped Codex and Claude execution notifications for Windows.",
-  "version": "2.1.0",
+  "version": "2.1.2",
   "publisher": "JobFinish",
   "license": "MIT",
   "repository": { "type": "git", "url": "https://github.com/lsc892/Job-Finish.git" },
@@ -19,7 +19,7 @@
     "install:extension": "npm --prefix tools/installer run install:extension --",
     "update:extension": "npm --prefix tools/installer run update:extension --",
     "uninstall:legacy": "npm --prefix tools/installer run uninstall:legacy --",
-    "build:installer": "npm --prefix tools/installer run build -- --vsix ../../job-finish-win32-x64.vsix",
+    "build:installer": "npm --prefix tools/installer run build -- --vsix ../../JobFinish-win32-x64.vsix",
     "package:npm": "npm run build:installer && npm pack ./tools/installer",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
@@ -37,7 +37,7 @@
     "test:toast": "tsx scripts/native-toast.ts",
     "test:native": "node scripts/native-toast-contract.mjs",
     "vscode:prepublish": "npm run build",
-    "package": "vsce package --target win32-x64 --out job-finish-win32-x64.vsix"
+    "package": "vsce package --target win32-x64 --out JobFinish-win32-x64.vsix"
   },
   "contributes": {
     "commands": [
