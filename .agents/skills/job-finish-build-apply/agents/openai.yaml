@@ -1,0 +1,4 @@
+﻿interface:
+  display_name: "Job-Finish 프로젝트 빌드 및 적용"
+  short_description: "이 프로젝트의 Job-Finish 확장을 검증하고 빌드하여 VS Code에 적용"
+  default_prompt: "$job-finish-build-apply 스킬로 이 프로젝트의 Job-Finish를 빌드하고 로컬 VS Code에 적용해줘."

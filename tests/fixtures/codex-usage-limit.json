@@ -1,0 +1,54 @@
+{
+  "source": "actual-runtime",
+  "cliVersion": "0.160.0",
+  "capturedDateKst": "2026-10-05",
+  "provider": "codex",
+  "scenario": "usage-limit",
+  "sessionId": "captured-session",
+  "turnId": "captured-turn",
+  "expectedStatus": "error",
+  "expectedStatuses": [
+    "error"
+  ],
+  "events": [
+    {
+      "method": "turn/started",
+      "params": {
+        "threadId": "captured-session",
+        "turn": {
+          "id": "captured-turn",
+          "items": [],
+          "itemsView": "notLoaded",
+          "status": "inProgress",
+          "error": null,
+          "startedAt": 1791132877,
+          "completedAt": null,
+          "durationMs": null
+        }
+      },
+      "emittedAtMs": 1791132877433
+    },
+    {
+      "method": "turn/completed",
+      "params": {
+        "threadId": "captured-session",
+        "turn": {
+          "id": "captured-turn",
+          "items": [],
+          "itemsView": "notLoaded",
+          "status": "failed",
+          "error": {
+            "message": "You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 6:22 AM.",
+            "codexErrorInfo": "usageLimitExceeded",
+            "additionalDetails": null,
+            "misalignment": null
+          },
+          "startedAt": 1791132877,
+          "completedAt": 1791132879,
+          "durationMs": 2468
+        }
+      },
+      "emittedAtMs": 1791132879889
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PlatformTarget>x64</PlatformTarget>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="../../tools/windows-toast/Registration.cs" Link="Registration.cs" />
+    <Compile Include="../../tools/windows-toast/Branding.cs" Link="Branding.cs" />
+    <Compile Include="../../tools/windows-toast/ToastContent.cs" Link="ToastContent.cs" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,135 @@
+{
+  "source": "actual-runtime",
+  "cliVersion": "0.160.0",
+  "capturedDateKst": "2026-10-05",
+  "provider": "codex",
+  "scenario": "permissions",
+  "sessionId": "captured-session",
+  "turnId": "captured-turn",
+  "expectedStatus": "completed",
+  "expectedStatuses": [
+    "waitingForInput",
+    "completed"
+  ],
+  "events": [
+    {
+      "method": "turn/started",
+      "params": {
+        "threadId": "captured-session",
+        "turn": {
+          "id": "captured-turn",
+          "items": [],
+          "itemsView": "notLoaded",
+          "status": "inProgress",
+          "error": null,
+          "startedAt": 1791172460,
+          "completedAt": null,
+          "durationMs": null
+        }
+      },
+      "emittedAtMs": 1791172460809
+    },
+    {
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "agentMessage",
+          "id": "msg_079f4480e3f51560016ac31f6e317487d093a7833d9cea2504",
+          "text": "I’ll request write permission for the specified temporary directory only, without changing any files.\n",
+          "phase": "commentary",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "captured-session",
+        "turnId": "captured-turn",
+        "completedAtMs": 1791172465833
+      },
+      "emittedAtMs": 1791172465849
+    },
+    {
+      "method": "item/permissions/requestApproval",
+      "id": 0,
+      "params": {
+        "threadId": "captured-session",
+        "turnId": "captured-turn",
+        "itemId": "exec-b4e8f752-bb17-4c6e-a5e5-2ef5d29ebc99",
+        "environmentId": "local",
+        "startedAtMs": 1791172468665,
+        "cwd": "CAPTURED_TEMP",
+        "reason": "Request write permission for the single temporary directory for this bounded permissions integration test.",
+        "permissions": {
+          "network": null,
+          "fileSystem": {
+            "read": null,
+            "write": [
+              "CAPTURED_TEMP"
+            ],
+            "entries": [
+              {
+                "path": {
+                  "type": "path",
+                  "path": "CAPTURED_TEMP"
+                },
+                "access": "write"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "serverRequest/resolved",
+      "params": {
+        "threadId": "captured-session",
+        "requestId": 0
+      },
+      "emittedAtMs": 1791172468734
+    },
+    {
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "agentMessage",
+          "id": "msg_079f4480e3f51560016ac31f757dec87d0b871b341169c10ee",
+          "text": "JOB_FINISH_PERMISSION_DENIED",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "captured-session",
+        "turnId": "captured-turn",
+        "completedAtMs": 1791172472367
+      },
+      "emittedAtMs": 1791172472375
+    },
+    {
+      "method": "turn/completed",
+      "params": {
+        "threadId": "captured-session",
+        "turn": {
+          "id": "captured-turn",
+          "items": [
+            {
+              "type": "agentMessage",
+              "id": "msg_079f4480e3f51560016ac31f757dec87d0b871b341169c10ee",
+              "text": "JOB_FINISH_PERMISSION_DENIED",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            }
+          ],
+          "itemsView": "summary",
+          "status": "completed",
+          "error": null,
+          "startedAt": 1791172460,
+          "completedAt": 1791172476,
+          "durationMs": 15974
+        }
+      },
+      "emittedAtMs": 1791172476772
+    }
+  ]
+}

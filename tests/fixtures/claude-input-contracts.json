@@ -1,0 +1,114 @@
+{
+  "source": "actual-runtime",
+  "sdkVersion": "0.3.289",
+  "capturedDateKst": "2026-10-05",
+  "note": "Control callback payloads captured by the product adapter; temporary paths redacted. Cancellation uses a real interrupt acknowledgment, not an invented result event.",
+  "scenarios": [
+    {
+      "scenario": "question",
+      "requests": [
+        {
+          "tool": "AskUserQuestion",
+          "input": {
+            "questions": [
+              {
+                "question": "Which color should be used?",
+                "header": "Color",
+                "options": [
+                  {
+                    "label": "Blue",
+                    "description": "Use the color Blue."
+                  },
+                  {
+                    "label": "Green",
+                    "description": "Use the color Green."
+                  }
+                ],
+                "multiSelect": false
+              }
+            ]
+          },
+          "requestId": "3c0c9600-1df1-476d-a0d7-d3cc8cd82b0a",
+          "toolUseID": "toolu_01LoduNSbjV531Zadt3QrJUh"
+        }
+      ],
+      "observedStatuses": [
+        "waitingForInput",
+        "completed"
+      ],
+      "terminalSubtype": "success"
+    },
+    {
+      "scenario": "approval",
+      "requests": [
+        {
+          "tool": "Write",
+          "input": {
+            "file_path": "CAPTURED_TEMP\\approval.txt",
+            "content": "JOB_FINISH_APPROVAL_OK"
+          },
+          "requestId": "2bf63f1b-9ba3-45c4-b723-02b8d6f177a9",
+          "toolUseID": "toolu_011q3TmEsnB2w34gydhGpajK"
+        }
+      ],
+      "observedStatuses": [
+        "waitingForInput",
+        "completed"
+      ],
+      "terminalSubtype": "success"
+    },
+    {
+      "scenario": "cancel",
+      "requests": [
+        {
+          "tool": "AskUserQuestion",
+          "input": {
+            "questions": [
+              {
+                "question": "Which color should be used?",
+                "header": "Color",
+                "options": [
+                  {
+                    "label": "Blue",
+                    "description": "Use the color blue."
+                  },
+                  {
+                    "label": "Green",
+                    "description": "Use the color green."
+                  }
+                ],
+                "multiSelect": false
+              }
+            ]
+          },
+          "requestId": "e9ce1f42-0012-44e1-9c89-a081627c2bf5",
+          "toolUseID": "toolu_01DccX7hm7AsBehS6ciAXpAY"
+        }
+      ],
+      "observedStatuses": [
+        "waitingForInput",
+        "cancelled"
+      ],
+      "terminalSubtype": "error_during_execution"
+    },
+    {
+      "scenario": "turn-limit",
+      "requests": [
+        {
+          "tool": "Write",
+          "input": {
+            "file_path": "CAPTURED_TEMP\\turn-limit.txt",
+            "content": "JOB_FINISH_APPROVAL_OK"
+          },
+          "requestId": "bceb8419-9068-4224-aea0-297a0e78edb3",
+          "toolUseID": "toolu_01Q6LeB6auzR6oz1Wus9YVin"
+        }
+      ],
+      "observedStatuses": [
+        "waitingForInput",
+        "error"
+      ],
+      "terminalSubtype": "error_max_turns"
+    }
+  ]
+}

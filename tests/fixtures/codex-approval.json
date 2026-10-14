@@ -1,0 +1,141 @@
+{
+  "source": "actual-runtime",
+  "cliVersion": "0.160.0",
+  "capturedDateKst": "2026-10-05",
+  "provider": "codex",
+  "scenario": "approval",
+  "sessionId": "captured-session",
+  "turnId": "captured-turn",
+  "expectedStatus": "completed",
+  "expectedStatuses": [
+    "waitingForInput",
+    "completed"
+  ],
+  "events": [
+    {
+      "method": "turn/started",
+      "params": {
+        "threadId": "captured-session",
+        "turn": {
+          "id": "captured-turn",
+          "items": [],
+          "itemsView": "notLoaded",
+          "status": "inProgress",
+          "error": null,
+          "startedAt": 1791132650,
+          "completedAt": null,
+          "durationMs": null
+        }
+      },
+      "emittedAtMs": 1791132650793
+    },
+    {
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "agentMessage",
+          "id": "msg_0c866407c168d28b016ac283ecb56887d0aa2b7e268faf8929",
+          "text": "I’ll request approval to print the integration-test marker.\n",
+          "phase": "commentary",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "captured-session",
+        "turnId": "captured-turn",
+        "completedAtMs": 1791132655081
+      },
+      "emittedAtMs": 1791132655140
+    },
+    {
+      "method": "item/commandExecution/requestApproval",
+      "id": 0,
+      "params": {
+        "kind": "command",
+        "threadId": "captured-session",
+        "turnId": "captured-turn",
+        "itemId": "exec-90dae3ad-88a0-4588-80b5-ece3e8241eac",
+        "startedAtMs": 1791132656622,
+        "environmentId": "local",
+        "reason": "May I print the integration-test marker?",
+        "command": "\"C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\" -Command 'Write-Output JOB_FINISH_APPROVAL_OK'",
+        "cwd": "CAPTURED_TEMP",
+        "commandActions": [
+          {
+            "type": "unknown",
+            "command": "Write-Output JOB_FINISH_APPROVAL_OK"
+          }
+        ],
+        "proposedExecpolicyAmendment": [
+          "Write-Output",
+          "JOB_FINISH_APPROVAL_OK"
+        ],
+        "availableDecisions": [
+          "accept",
+          {
+            "acceptWithExecpolicyAmendment": {
+              "execpolicy_amendment": [
+                "Write-Output",
+                "JOB_FINISH_APPROVAL_OK"
+              ]
+            }
+          },
+          "cancel"
+        ]
+      }
+    },
+    {
+      "method": "serverRequest/resolved",
+      "params": {
+        "threadId": "captured-session",
+        "requestId": 0
+      },
+      "emittedAtMs": 1791132656687
+    },
+    {
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "agentMessage",
+          "id": "msg_0c866407c168d28b016ac283f0a25c87d0abba176c2e7945f4",
+          "text": "JOB_FINISH_APPROVAL_DENIED",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "captured-session",
+        "turnId": "captured-turn",
+        "completedAtMs": 1791132658640
+      },
+      "emittedAtMs": 1791132658696
+    },
+    {
+      "method": "turn/completed",
+      "params": {
+        "threadId": "captured-session",
+        "turn": {
+          "id": "captured-turn",
+          "items": [
+            {
+              "type": "agentMessage",
+              "id": "msg_0c866407c168d28b016ac283f0a25c87d0abba176c2e7945f4",
+              "text": "JOB_FINISH_APPROVAL_DENIED",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            }
+          ],
+          "itemsView": "summary",
+          "status": "completed",
+          "error": null,
+          "startedAt": 1791132650,
+          "completedAt": 1791132668,
+          "durationMs": 17575
+        }
+      },
+      "emittedAtMs": 1791132668359
+    }
+  ]
+}

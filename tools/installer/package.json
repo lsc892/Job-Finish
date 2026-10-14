@@ -1,0 +1,67 @@
+{
+  "name": "job-finish",
+  "version": "2.1.0",
+  "description": "Windows notifications for Claude Code and Codex. Install, update or uninstall the Job-Finish VS Code extension.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "bin": {
+    "job-finish": "dist/cli.cjs"
+  },
+  "files": [
+    "dist/cli.cjs",
+    "assets/*.vsix",
+    "LICENSE",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lsc892/Job-Finish.git"
+  },
+  "homepage": "https://github.com/lsc892/Job-Finish#readme",
+  "bugs": {
+    "url": "https://github.com/lsc892/Job-Finish/issues"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "vscode",
+    "windows",
+    "notification",
+    "toast",
+    "installer"
+  ],
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "scripts": {
+    "install:extension": "tsx src/cli.ts install",
+    "update:extension": "tsx src/cli.ts update",
+    "uninstall:extension": "tsx src/cli.ts uninstall",
+    "uninstall:legacy": "tsx src/cli.ts uninstall-legacy",
+    "build": "node scripts/build.mjs",
+    "prepack": "node scripts/build.mjs --require-vsix",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "check": "npm run typecheck && npm test && npm run build"
+  },
+  "dependencies": {
+    "@iarna/toml": "2.2.5",
+    "semver": "^7.7.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/semver": "^7.7.1",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}

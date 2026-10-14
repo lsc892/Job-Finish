@@ -2,166 +2,172 @@
 
 **[English](README.md) · [한국어](README.ko.md) · [中文](README.zh.md) · 日本語**
 
-AIエージェントが終わったかどうかを確認するために、ターミナルをずっと見張っている必要はありません。
-Claude Codeが入力を待っている瞬間や、Claude Code / Codexの作業が完了した瞬間に、Windows通知で呼び戻します。
+AI エージェントの作業が終わったか、チャットを見続ける必要はありません。
+**Claude Code や Codex の作業完了・入力待ち・エラー**を Job-Finish が通知し、作業中の VS Code ウィンドウへ戻れます。
 
-| トースト通知 | タスクバーの点滅 |
+| Windows のトースト通知 | タスクバーの点滅 |
 | :---: | :---: |
-| <img src="resources/Toast.gif" alt="トースト通知のデモ" width="380"> | <img src="resources/Flash.gif" alt="タスクバー点滅のデモ" width="380"> |
-| トーストをクリックすると VS Code に復帰 | 戻るまで対象ウィンドウが点滅 |
+| <img src="https://raw.githubusercontent.com/lsc892/Job-Finish/877024beb5f86c390c1beec4992cf64c862dbc67/resources/Toast.gif" alt="Windows のトースト通知から VS Code に戻るデモ" width="380"> | <img src="https://raw.githubusercontent.com/lsc892/Job-Finish/877024beb5f86c390c1beec4992cf64c862dbc67/resources/Flash.gif" alt="VS Code のタスクバーボタンが点滅するデモ" width="380"> |
+| 通知をクリックして、作業中の VS Code ウィンドウへ | 通知を見逃しても、応答を待つウィンドウがわかる |
 
-![Platform](https://img.shields.io/badge/platform-Windows-0078D4)
-![Node](https://img.shields.io/badge/node-%3E%3D18-339933)
+*この GIF は旧バージョンの通知動作を示しています。現在の拡張機能ではトーストの外観が異なる場合があります。*
+
+![Windows x64](https://img.shields.io/badge/platform-Windows%20x64-0078D4)
+![VS Code](https://img.shields.io/badge/VS%20Code-1.99%2B-007ACC)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ## 主な機能
 
-- Claude Code + Codex 対応 - Claude Codeの `Stop` / `AskUserQuestion` と、Codexの `Stop` ライフサイクルイベントをまとめて連携します。
-- Windowsネイティブ通知 - 作業の完了、入力待ち、エージェントの最後のメッセージをトースト通知で表示します。
-- 異常終了の通知 - トークン・セッション上限の超過やAPIエラーでClaude Codeが停止したときも通知し、タイトル（`Usage limit reached` / `API error`）を変えて通常の完了と一目で見分けられます。
-- 通知クリックでVS Codeに復帰 - トーストを押すと既存のVS Codeウィンドウを探し出し、最前面に持ってきます。
-- ウィンドウがなくてもプロジェクトを開く - 対象のVS Codeウィンドウが閉じている場合は、`code -n <project>` 方式でプロジェクトのウィンドウを開き直します。
-- フォーカス検知 - すでにVS Codeを見ているときは通知を省略でき、再びフォーカスされるとそのウィンドウの通知だけを片付けます。
-- タスクバーの点滅 - 通知を見逃しても、対象のウィンドウがタスクバーで点滅します。`30s`、`5m`、`10m`、`infinite` から選べます。
-- サウンド通知 - OS標準の通知音で作業の完了を耳でも確認できます。
-- global / project インストール - アカウント全体向け、または現在のプロジェクト向けにインストール範囲を選べます。
-- 安全な設定マージ - Claude / Codexの設定を上書きせず、必要なhookだけを追加し、変更前に `.bak` バックアップを残します。
-- 重複通知の防止 - 以前のJob-Finish hookを整理し、従来のCodex `notify` インストールを即時実行される `Stop` hookへ移行します。
-- 診断とプレビュー - `doctor`、`preview` コマンドで、現在のインストール状態と通知動作をすばやく確認できます。
-- VS Code環境専用 - Codex Desktop、Claude Desktop、Orca ADEといったデスクトップクライアントには独自の通知機能があり、Job-Finishと競合します。そのため通知とタスクバーの点滅は、エージェントがVS Code内で動作しているときだけ発火し、それ以外の環境から起動されたhookはスキップされます。
+| 機能 | できること |
+| --- | --- |
+| **Claude Code + Codex** | 既存の VS Code 拡張機能で、対応するエージェントの動作を自動検出します。 |
+| **作業完了・入力待ち・エラーの通知** | 作業の完了・エラーと、選択肢の選択・質問への回答・承認待ちを知らせます。 |
+| **クリックして戻る** | 複数のウィンドウを開いていても、通知を送った VS Code ウィンドウを前面に表示します。 |
+| **タスクバーの点滅** | ウィンドウに戻るか、設定した時間が経過するまで、作業中のウィンドウを目立たせます。 |
+| **フォーカスを考慮した通知** | そのウィンドウを操作している間は、新しいトースト通知や点滅を行いません。 |
+| **最近の結果** | **Job-Finish: Show Results** でエージェントの応答を確認できます。 |
 
-## 対応対象
+## インストールと更新
 
-| 対象 | 連携方式 | 通知タイミング |
+**Windows x64、VS Code 1.99 以降、Node.js 22 以降、信頼済みのローカルワークスペース**が必要です。使用する Codex または Claude Code の VS Code 拡張機能をインストールし、ログインしてから実行してください。
+
+```powershell
+npx job-finish@latest install
+```
+
+パッケージに同梱された VS Code 拡張機能をインストールし、検出した旧 PowerShell/C# 版をバックアップ・削除します。プロジェクトのフォルダーで実行すると、そのプロジェクトの旧版も整理します。再読み込みを求められたら VS Code を再読み込みしてください。Job-Finish は自動的に起動し、.NET を別途インストールする必要はありません。
+
+更新する場合は次のコマンドを実行します。
+
+```powershell
+npx job-finish@latest update
+```
+
+`--dry-run` を追加すると変更内容を確認でき、`--profile "Profile name"` で VS Code のプロファイルを選べます。同じバージョンまたは新しいバージョンの拡張機能は維持します。詳細は [インストーラーガイド](tools/installer/README.md) を参照してください。
+
+<details>
+<summary>CLI をグローバルにインストールする</summary>
+
+```powershell
+npm install -g job-finish@latest
+job-finish install
+```
+
+最新の CLI をインストールした後は、`job-finish update` と `job-finish uninstall` も使用できます。
+
+</details>
+
+<details>
+<summary>VSIX を手動でインストールする</summary>
+
+1. 以下のソースビルド手順で `job-finish-win32-x64.vsix` を用意します。
+2. VS Code で `Ctrl+Shift+P` を押し、**Extensions: Install from VSIX…** を選択します。
+3. VSIX ファイルを選択し、再読み込みを求められたら実行します。
+
+更新も同じ手順で新しい VSIX をインストールします。手動インストールでは旧 PowerShell/C# 版を削除しません。
+
+</details>
+
+<details>
+<summary>ソースから VSIX をビルドする</summary>
+
+**Node.js 22 以降と .NET SDK 8 以降**を用意し、リポジトリのルートで次のコマンドを実行します。
+
+```powershell
+npm ci
+npm run check
+npm run package
+```
+
+`job-finish-win32-x64.vsix` が生成されます。開発用ウィンドウを開く場合は、代わりに `F5` を押します。
+
+旧 PowerShell/C# 版を使用していた場合は、インストーラーで旧版をバックアップ・削除してから拡張機能をインストールできます。
+
+```powershell
+npm --prefix tools/installer ci
+npm run install:extension -- --vsix ./job-finish-win32-x64.vsix
+```
+
+</details>
+
+## 拡張機能の使い方
+
+1. VS Code の普段の Codex または Claude Code チャットで作業します。Job-Finish は初期状態で有効です。
+2. 作業中のウィンドウが非アクティブなとき、完了・エラー・選択や回答、承認の依頼をトースト通知とタスクバーの点滅で知らせます。
+3. 通知をクリックしてそのウィンドウに戻り、元のチャットで選択・回答・承認を行います。
+
+`Ctrl+Shift+P` でコマンドパレットを開き、**Job-Finish** を検索します。
+
+| コマンド | 用途 |
+| --- | --- |
+| **Show Results** | 最近の応答を確認します。 |
+| **Stop Flash** | タスクバーの点滅をすぐに停止します。 |
+| **Show Diagnostics** | 検出と通知の状態を確認します。 |
+| **Run Codex / Run Claude** | Job-Finish から直接タスクを開始します。 |
+| **Answer Pending Request** | Job-Finish から開始したタスクの質問や承認に応答します。 |
+
+直接実行には、インストール・認証済みの Codex CLI、または同梱の Claude SDK CLI で有効な認証が必要です。Codex が PATH にない場合は、`jobFinish.codexExecutable` を設定してください。
+
+自動検出の対象は、同じ VS Code Extension Host 内で動作するローカルエージェントです。WSL、リモートワークスペース、外部ターミナルのエージェント、エージェントのデスクトップアプリは対象外です。プロバイダーの更新後に検出できなくなった場合は、**Show Diagnostics** を確認してください。
+
+## 主な設定
+
+VS Code の設定（`Ctrl+,`）を開き、**Job-Finish** を検索します。
+
+| 設定 | 初期値 | 説明 |
 | --- | --- | --- |
-| Claude Code | `~/.claude/settings.json` または `./.claude/settings.json` の hooks | 作業完了、`AskUserQuestion` の入力待ち、上限超過・APIエラーによる停止 |
-| Codex | `~/.codex/config.toml` の `hooks.Stop` | 作業完了、最後の assistant メッセージ |
-
-> Job-FinishはWindows専用ツールです。PowerShellとWindowsのtoast API、VS Codeのウィンドウフォーカス処理を利用します。
->
-> Codexは信頼されていないcommand hookを実行しません。ターミナルで`codex`を起動すると`Hooks need review`画面が表示されるので、**Trust all and continue**を選んでください。設定は初回の1回だけで、以降は再確認されません。
-
-## インストール
-
-```powershell
-npx job-finish init jp
-```
-
-インストールウィザードは既定で英語表示です。コマンドの末尾に言語コードを付けると、韓国語、中国語、または日本語で実行できます。
-
-```powershell
-npx job-finish init     # 英語
-npx job-finish init ko  # 韓国語
-npx job-finish init zh  # 中国語
-```
-
-インストールウィザードでは、次の項目を選択します。
-
-| 設定 | 説明 |
-| --- | --- |
-| インストール範囲 | 現在のプロジェクト（`./.claude`）または全体（`~/.claude`、`~/.job-finish`） |
-| エージェント | Claude Code、Codex のうち連携するツール |
-| 通知モード | Windowsトースト、タスクバーの点滅 |
-| 点滅時間 | `30s`、`5m`、`10m`、`infinite` |
-| サウンド | Windows標準サウンドを使うかどうか |
-| フォーカス抑制 | すでに対象のVS Codeウィンドウを見ているときに通知を省略するかどうか |
-
-インストールが完了すると、すぐにテスト通知を送信できます。
-
-## 使い方
-
-```powershell
-# 日本語の対話型インストール（言語コードを省略すると英語）
-npx job-finish init jp
-
-# インストール状態と依存関係の確認 + テスト通知
-npx job-finish doctor
-
-# 現在の設定で通知をプレビュー
-npx job-finish preview
-
-# hook とインストール済みファイルを削除
-npx job-finish uninstall
-```
-
-ローカルの開発版で実行する場合は、次のようにします。
-
-```powershell
-npm install
-npm run build
-node dist/index.js init jp
-```
-
-## 仕組み
-
-```text
-Claude Code Stop / AskUserQuestion
-または Codex Stop
-  -> job-finish-notify.ps1 を実行
-  -> Windows toast / タスクバーの点滅 / サウンド
-  -> toast クリック時に jobfinish-focus://open を起動
-  -> jf-focus-vscode.exe が既存の VS Code ウィンドウを探索
-  -> 該当ウィンドウを前面に出すか、プロジェクトを新しいウィンドウで開く
-```
-
-Job-Finishは、単に通知を出すだけではありません。開いているVS Codeウィンドウが複数あっても、プロジェクト名、cwd、ウィンドウハンドル、プロセスIDを活用して、もっとも適したウィンドウを見つけ出します。通知のクリックとタスクバーの点滅が同じウィンドウを指すように設計されているため、複数のプロジェクトを同時に進めていても迷いません。
-
-## インストールされるファイル
-
-インストール範囲に応じて、以下のいずれかの場所にファイルが作成されます。
-
-| 範囲 | 場所 |
-| --- | --- |
-| project | `./.claude/job-finish/` |
-| global | `~/.job-finish/` |
-
-作成されるファイル:
-
-- `job-finish-notify.ps1`
-- `job-finish.config.json`
-- `jf-focus-vscode.exe`
-
-また、Windowsでトーストのクリックを処理するために、`jobfinish-focus://` プロトコルハンドラが現在のユーザー（`HKCU`）に登録されます。
-
-## 設定ファイル
-
-`job-finish.config.json` はインストールフォルダに保存されます。再インストールしなくても、直接編集できます。
-
-```json
-{
-  "version": 1,
-  "platform": "win32",
-  "modes": ["os", "flash"],
-  "flashTimeout": "5m",
-  "sound": { "enabled": true },
-  "suppressWhenFocused": true,
-  "clearToastOnFocus": true,
-  "debug": false,
-  "watchApp": ""
-}
-```
-
-デバッグログは既定でオフになっています。`job-finish.config.json` で `"debug": true` に変更すると `job-finish.log`、`jf-focus-vscode.log` が生成され、そうでなければログは作成されません。
-
-## 要件
-
-- Windows
-- Node.js 18+
-- PowerShell
-- VS Code
-
-`jf-focus-vscode.exe` はself-containedバイナリとして配布されるため、別途.NETランタイムをインストールする必要はありません。
+| `jobFinish.enabled` | `true` | 自動検出と通知の有効・無効をすぐに切り替えます。 |
+| `jobFinish.toast` | `true` | Windows のトースト通知を表示します。 |
+| `jobFinish.flash` | `true` | 作業中の VS Code ウィンドウをタスクバーで点滅させます。 |
+| `jobFinish.flashMode` | `manual` | `manual`：0.5 秒ごとに点滅。`system`：Windows 標準の点滅動作を使用。 |
+| `jobFinish.flashTimeoutSeconds` | `300` | 指定した秒数で点滅を停止します。`0` の場合は、ウィンドウに戻る、通知をクリックする、または **Stop Flash** を実行するまで続きます。 |
 
 ## アンインストール
 
-```powershell
-# Claude/Codex の hook とインストールしたファイルを削除
-npx job-finish uninstall
+VS Code 拡張機能と検出した旧版を削除します。
 
-# hook のみ削除し、生成されたファイルは残す
-npx job-finish uninstall --keep-files
+```powershell
+npx job-finish@latest uninstall
 ```
+
+再読み込みを求められたら VS Code を再読み込みしてください。`--dry-run` で削除内容を確認でき、`--profile "Profile name"` で VS Code のプロファイルを指定できます。他のプロジェクトの旧版は `--project "C:\Projects\MyProject"` で指定します。
+
+CLI をグローバルにインストールした場合は、拡張機能を削除した後に CLI も削除します。
+
+```powershell
+npm uninstall -g job-finish
+```
+
+最後のコマンドは npm CLI のみを削除し、VS Code 拡張機能は削除しません。
+
+<details>
+<summary>VS Code 拡張機能だけを手動で削除する</summary>
+
+VS Code の拡張機能（`Ctrl+Shift+X`）で **Job-Finish** を探し、**Uninstall** を選択します。再読み込みを求められたら実行してください。次のコマンドも使用できます。
+
+```powershell
+code --uninstall-extension lsc892.job-finish
+```
+
+</details>
+
+<details>
+<summary>旧 PowerShell/C# 版だけを削除する</summary>
+
+`npx job-finish@latest uninstall-legacy` を使用するか、リポジトリのルートで次のコマンドを実行します。
+
+```powershell
+npm --prefix tools/installer ci
+npm run uninstall:legacy -- --dry-run
+npm run uninstall:legacy
+```
+
+旧 Job-Finish のフックとインストールファイルを削除します。VS Code 拡張機能は削除されません。他のプロジェクトにも旧版をインストールしている場合は、プロジェクトごとに `--project "C:\Projects\MyProject"` を指定します。バックアップの動作やその他のオプションについては、[インストーラーガイド](tools/installer/README.md) を参照してください。
+
+</details>
+
+実装と検証の詳細は、[開発ドキュメント](docs/requirements-and-verification.md) と [検証レポート](docs/verification.md) を参照してください。
 
 ## ライセンス
 
-MIT
+[MIT](LICENSE)。同梱するサードパーティのコンポーネントには、それぞれのライセンスが適用されます。

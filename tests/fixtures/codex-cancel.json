@@ -1,0 +1,88 @@
+{
+  "source": "actual-runtime",
+  "cliVersion": "0.160.0",
+  "capturedDateKst": "2026-10-05",
+  "provider": "codex",
+  "scenario": "cancel",
+  "sessionId": "captured-session",
+  "turnId": "captured-turn",
+  "expectedStatus": "cancelled",
+  "expectedStatuses": [
+    "waitingForInput",
+    "cancelled"
+  ],
+  "events": [
+    {
+      "method": "turn/started",
+      "params": {
+        "threadId": "captured-session",
+        "turn": {
+          "id": "captured-turn",
+          "items": [],
+          "itemsView": "notLoaded",
+          "status": "inProgress",
+          "error": null,
+          "startedAt": 1791132458,
+          "completedAt": null,
+          "durationMs": null
+        }
+      },
+      "emittedAtMs": 1791132458366
+    },
+    {
+      "method": "item/tool/requestUserInput",
+      "id": 0,
+      "params": {
+        "threadId": "captured-session",
+        "turnId": "captured-turn",
+        "itemId": "call_2XNz7nzl1P5McgDmBZ7dzBHJ",
+        "questions": [
+          {
+            "id": "color",
+            "header": "Color",
+            "question": "Which color should I use?",
+            "isOther": true,
+            "isSecret": false,
+            "options": [
+              {
+                "label": "Blue",
+                "description": "Use blue."
+              },
+              {
+                "label": "Green",
+                "description": "Use green."
+              }
+            ]
+          }
+        ],
+        "isBlocking": true,
+        "autoResolutionMs": null
+      }
+    },
+    {
+      "method": "turn/completed",
+      "params": {
+        "threadId": "captured-session",
+        "turn": {
+          "id": "captured-turn",
+          "items": [],
+          "itemsView": "notLoaded",
+          "status": "interrupted",
+          "error": null,
+          "startedAt": 1791132458,
+          "completedAt": 1791132466,
+          "durationMs": 8383
+        }
+      },
+      "emittedAtMs": 1791132466742
+    },
+    {
+      "method": "serverRequest/resolved",
+      "params": {
+        "threadId": "captured-session",
+        "requestId": 0
+      },
+      "emittedAtMs": 1791132466742
+    }
+  ]
+}

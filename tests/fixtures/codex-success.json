@@ -1,0 +1,72 @@
+{
+  "source": "actual-runtime",
+  "capturedDateKst": "2026-10-05",
+  "provider": "codex",
+  "expectedStatus": "completed",
+  "sessionId": "captured-session",
+  "turnId": "captured-turn",
+  "events": [
+    {
+      "method": "turn/started",
+      "params": {
+        "threadId": "captured-session",
+        "turn": {
+          "id": "captured-turn",
+          "items": [],
+          "itemsView": "notLoaded",
+          "status": "inProgress",
+          "error": null,
+          "startedAt": 1791128952,
+          "completedAt": null,
+          "durationMs": null
+        }
+      },
+      "emittedAtMs": 1791128952637
+    },
+    {
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "agentMessage",
+          "id": "msg_0288c7f4e8a75aac016ac2757c878c87d0a7eeeb90ef0d3238",
+          "text": "JOB_FINISH_LIVE_OK",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "captured-session",
+        "turnId": "captured-turn",
+        "completedAtMs": 1791128958589
+      },
+      "emittedAtMs": 1791128958598
+    },
+    {
+      "method": "turn/completed",
+      "params": {
+        "threadId": "captured-session",
+        "turn": {
+          "id": "captured-turn",
+          "items": [
+            {
+              "type": "agentMessage",
+              "id": "msg_0288c7f4e8a75aac016ac2757c878c87d0a7eeeb90ef0d3238",
+              "text": "JOB_FINISH_LIVE_OK",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            }
+          ],
+          "itemsView": "summary",
+          "status": "completed",
+          "error": null,
+          "startedAt": 1791128952,
+          "completedAt": 1791128968,
+          "durationMs": 16153
+        }
+      },
+      "emittedAtMs": 1791128968778
+    }
+  ]
+}

@@ -1,167 +1,173 @@
 # Job-Finish
 
-**English · [한국어](README.ko.md) · [中文](README.zh.md) · [日本語](README.jp.md)**
+**English · [한국어](https://github.com/lsc892/Job-Finish/blob/HEAD/README.ko.md) · [中文](https://github.com/lsc892/Job-Finish/blob/HEAD/README.zh.md) · [日本語](https://github.com/lsc892/Job-Finish/blob/HEAD/README.jp.md)**
 
-Stop staring at your terminal to check whether the AI agent is done.
-The instant Claude Code is waiting for your input or a Claude Code/Codex task finishes, a Windows notification brings you back.
+Stop watching the chat to see whether your AI agent is done.
+When **Claude Code or Codex finishes, needs input, or encounters an error**, Job-Finish notifies you and brings you back to the right VS Code window.
 
-| Toast notification | Taskbar flashing |
+| Windows toast notification | Taskbar flashing |
 | :---: | :---: |
-| <img src="resources/Toast.gif" alt="Toast notification demo" width="380"> | <img src="resources/Flash.gif" alt="Taskbar flashing demo" width="380"> |
-| Click the toast to jump back to VS Code | The target window flashes until you return |
+| <img src="https://raw.githubusercontent.com/lsc892/Job-Finish/877024beb5f86c390c1beec4992cf64c862dbc67/resources/Toast.gif" alt="Demo of a Windows toast notification and returning to VS Code" width="380"> | <img src="https://raw.githubusercontent.com/lsc892/Job-Finish/877024beb5f86c390c1beec4992cf64c862dbc67/resources/Flash.gif" alt="Demo of the VS Code taskbar button flashing" width="380"> |
+| Click the toast to return to the task's VS Code window | Spot the waiting window even if you miss the toast |
 
-![Platform](https://img.shields.io/badge/platform-Windows-0078D4)
-![Node](https://img.shields.io/badge/node-%3E%3D18-339933)
+*These GIFs show the earlier version's notification behavior; the current extension's toast appearance may differ.*
+
+![Windows x64](https://img.shields.io/badge/platform-Windows%20x64-0078D4)
+![VS Code](https://img.shields.io/badge/VS%20Code-1.99%2B-007ACC)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-## Features
+## Features at a glance
 
-- Claude Code + Codex support - Hooks up Claude Code's `Stop` / `AskUserQuestion` and Codex's `Stop` lifecycle event in one shot.
-- Native Windows notifications - Shows task completions, input prompts, and the last agent message as toast notifications.
-- Abnormal-stop alerts - Also notifies when Claude Code halts on a usage/session limit or an API error, with a distinct title (`Usage limit reached` / `API error`) so you can tell it apart from a normal finish at a glance.
-- Click the notification to return to VS Code - Tapping the toast finds your existing VS Code window and brings it to the front.
-- Open the project even when the window is gone - If the target VS Code window was closed, it reopens the project window with `code -n <project>`.
-- Focus awareness - Skips the notification if you are already looking at VS Code, and when it regains focus, clears only that window's notifications.
-- Taskbar flashing - Even if you miss the notification, the target window flashes in the taskbar. Choose from `30s`, `5m`, `10m`, or `infinite`.
-- Sound alerts - Hear task completions through the OS default notification sound.
-- global / project install - Choose an install scope for your entire account or just the current project.
-- Safe settings merge - Adds only the hooks it needs without overwriting your Claude/Codex settings, and leaves a `.bak` backup before making changes.
-- Duplicate notification prevention - Cleans up previous Job-Finish hooks and migrates legacy Codex `notify` installs to the immediate `Stop` hook.
-- Diagnostics and preview - Use the `doctor` and `preview` commands to quickly check the current install and notification behavior.
-- VS Code only, by design - Desktop clients like Codex Desktop, Claude Desktop, and Orca ADE ship their own built-in alerts, which would collide with Job-Finish. So notifications and taskbar flashing fire only when the agent is running inside VS Code; hooks triggered from those other environments are skipped.
+| Feature | What you get |
+| --- | --- |
+| **Claude Code + Codex** | Automatically detects supported activity in the existing VS Code extensions. |
+| **Completion, input, and error alerts** | Alerts you when tasks finish, fail, or wait for a choice, answer, or approval. |
+| **Click to return** | Brings the VS Code window that sent the notification to the front, including when several windows are open. |
+| **Taskbar flashing** | Highlights the task's window until you return or the configured timeout expires. |
+| **Focus awareness** | Skips new toasts and flashing while you are already looking at that window. |
+| **Recent results** | Review the agent's responses with **Job-Finish: Show Results**. |
 
-## Supported Targets
+## Install and update
 
-| Target | Integration | Notification timing |
+Requires **Windows x64, VS Code 1.99+, Node.js 22+, and a trusted local workspace**. Install and sign in to the Codex or Claude Code VS Code extension you use, then run:
+
+```powershell
+npx job-finish@latest install
+```
+
+The installer installs the bundled VS Code extension and backs up and removes detected old PowerShell/C# installations. Run it from your project folder to include that project's old installation. Reload VS Code if prompted; Job-Finish starts automatically. No separate .NET installation is needed.
+
+To update:
+
+```powershell
+npx job-finish@latest update
+```
+
+Add `--dry-run` to preview changes or `--profile "Profile name"` to choose a VS Code profile. Equal or newer extension versions are preserved. See the [installer guide](https://github.com/lsc892/Job-Finish/blob/HEAD/tools/installer/README.md) for details.
+
+<details>
+<summary>Install the CLI globally</summary>
+
+```powershell
+npm install -g job-finish@latest
+job-finish install
+```
+
+After installing the latest CLI, you can also use `job-finish update` and `job-finish uninstall`.
+
+</details>
+
+<details>
+<summary>Install a VSIX manually</summary>
+
+1. Prepare `job-finish-win32-x64.vsix` using the source build steps below.
+2. In VS Code, press `Ctrl+Shift+P` and select **Extensions: Install from VSIX…**.
+3. Select the VSIX file and reload VS Code if prompted.
+
+To update, install the new VSIX the same way. Manual installation does not remove old PowerShell/C# installations.
+
+</details>
+
+<details>
+<summary>Build the VSIX from source</summary>
+
+With **Node.js 22+ and .NET SDK 8+**, run these commands from the repository root:
+
+```powershell
+npm ci
+npm run check
+npm run package
+```
+
+The output is `job-finish-win32-x64.vsix`. Press `F5` instead to open a development window.
+
+If you used the old PowerShell/C# version, the installer can back up and remove it before installing the extension:
+
+```powershell
+npm --prefix tools/installer ci
+npm run install:extension -- --vsix ./job-finish-win32-x64.vsix
+```
+
+</details>
+
+## Use the extension
+
+1. Work in your usual Codex or Claude Code chat in VS Code. Job-Finish is enabled by default.
+2. While the task's window is inactive, completion, errors, and requests for a choice, answer, or approval trigger a toast and taskbar flashing.
+3. Click the toast to return to that window and respond in the original chat.
+
+Open the command palette with `Ctrl+Shift+P` and search for **Job-Finish**:
+
+| Command | Purpose |
+| --- | --- |
+| **Show Results** | Review recent responses. |
+| **Stop Flash** | Stop taskbar flashing immediately. |
+| **Show Diagnostics** | Check detection and notification status. |
+| **Run Codex / Run Claude** | Start a task directly through Job-Finish. |
+| **Answer Pending Request** | Answer questions or approvals for tasks started through Job-Finish. |
+
+Direct execution requires an installed, authenticated Codex CLI or valid authentication for the bundled Claude SDK CLI. If Codex is not on PATH, set `jobFinish.codexExecutable`.
+
+Automatic detection supports local agents in the same VS Code Extension Host. WSL, remote workspaces, external terminal agents, and desktop agent apps are outside this scope. If detection stops working after a provider update, check **Show Diagnostics**.
+
+## Settings at a glance
+
+Open VS Code Settings (`Ctrl+,`) and search for **Job-Finish**.
+
+| Setting | Default | Description |
 | --- | --- | --- |
-| Claude Code | `~/.claude/settings.json` or `./.claude/settings.json` hooks | Task completion, `AskUserQuestion` input prompt, usage-limit / API-error stop |
-| Codex | `~/.codex/config.toml` `hooks.Stop` | Task completion, last assistant message |
-
-> Job-Finish is a Windows-only tool. It relies on PowerShell, the Windows toast API, and VS Code window focus handling.
->
-> Codex does not run command hooks it has not trusted. Start `codex` in a terminal and it shows a `Hooks need review` screen on startup. Pick **Trust all and continue** there. This is a one-time step; Codex will not ask again.
-
-## Installation
-
-```powershell
-npx job-finish init
-```
-
-The install wizard uses English by default. Append a language code to run it in Korean, Chinese, or Japanese:
-
-```powershell
-npx job-finish init ko  # Korean
-npx job-finish init zh  # Chinese
-npx job-finish init jp  # Japanese
-```
-
-The install wizard lets you choose the following.
-
-| Setting | Description |
-| --- | --- |
-| Install scope | Current project (`./.claude`) or global (`~/.claude`, `~/.job-finish`) |
-| Agent | Which tools to connect: Claude Code or Codex |
-| Notification mode | Windows toast, taskbar flashing |
-| Flash duration | `30s`, `5m`, `10m`, `infinite` |
-| Sound | Whether to use the Windows default sound |
-| Focus suppression | Whether to skip notifications when you are already looking at the target VS Code window |
-
-Once installation finishes, you can send a test notification right away.
-
-## Usage
-
-```powershell
-# Interactive install (English by default; append ko, zh, or jp to change the wizard language)
-npx job-finish init
-
-# Check install status and dependencies + test notification
-npx job-finish doctor
-
-# Preview a notification with the current settings
-npx job-finish preview
-
-# Remove the hooks and the installed files
-npx job-finish uninstall
-```
-
-To run the local development build:
-
-```powershell
-npm install
-npm run build
-node dist/index.js init
-```
-
-## How It Works
-
-```text
-Claude Code Stop / AskUserQuestion
-or Codex Stop
-  -> run job-finish-notify.ps1
-  -> Windows toast / taskbar flash / sound
-  -> on toast click, launch jobfinish-focus://open
-  -> jf-focus-vscode.exe locates the existing VS Code window
-  -> bring the exact window to the front, or open the project in a new window
-```
-
-Job-Finish does more than just pop up a notification. Even when several VS Code windows are open, it uses the project name, cwd, window handle, and process id to find the best-matching window. The notification click and the taskbar flash are designed to point at the same window, so you never get confused even when working on multiple projects at once.
-
-## Installed Files
-
-Depending on the install scope, files are created in one of the locations below.
-
-| Scope | Location |
-| --- | --- |
-| project | `./.claude/job-finish/` |
-| global | `~/.job-finish/` |
-
-Created files:
-
-- `job-finish-notify.ps1`
-- `job-finish.config.json`
-- `jf-focus-vscode.exe`
-
-In addition, to handle toast clicks on Windows, the `jobfinish-focus://` protocol handler is registered for the current user (`HKCU`).
-
-## Configuration File
-
-`job-finish.config.json` is saved in the install folder. You can edit it directly without reinstalling.
-
-```json
-{
-  "version": 1,
-  "platform": "win32",
-  "modes": ["os", "flash"],
-  "flashTimeout": "5m",
-  "sound": { "enabled": true },
-  "suppressWhenFocused": true,
-  "clearToastOnFocus": true,
-  "debug": false,
-  "watchApp": ""
-}
-```
-
-Debug logging is off by default. Setting `"debug": true` in `job-finish.config.json` generates `job-finish.log` and `jf-focus-vscode.log`; otherwise no logs are created.
-
-## Requirements
-
-- Windows
-- Node.js 18+
-- PowerShell
-- VS Code
-
-`jf-focus-vscode.exe` ships as a self-contained binary, so no separate .NET runtime installation is required.
+| `jobFinish.enabled` | `true` | Turn automatic detection and notifications on or off immediately. |
+| `jobFinish.toast` | `true` | Show Windows toast notifications. |
+| `jobFinish.flash` | `true` | Flash the task's VS Code window in the taskbar. |
+| `jobFinish.flashMode` | `manual` | `manual`: flash every 0.5 seconds. `system`: use Windows' default flashing behavior. |
+| `jobFinish.flashTimeoutSeconds` | `300` | Stop flashing after this many seconds. `0` keeps it going until focus returns, the toast is clicked, or **Stop Flash** is used. |
 
 ## Uninstall
 
-```powershell
-# Remove the Claude/Codex hooks and the installed files
-npx job-finish uninstall
+Remove the VS Code extension and detected old installations:
 
-# Remove only the hooks, keep the generated files
-npx job-finish uninstall --keep-files
+```powershell
+npx job-finish@latest uninstall
 ```
+
+Reload VS Code if prompted. Add `--dry-run` to preview removal, `--profile "Profile name"` for a specific VS Code profile, or `--project "C:\Projects\MyProject"` for another project's old installation.
+
+If you installed the CLI globally, remove it after uninstalling the extension:
+
+```powershell
+npm uninstall -g job-finish
+```
+
+This last command removes only the npm CLI, not the VS Code extension.
+
+<details>
+<summary>Remove only the VS Code extension manually</summary>
+
+In VS Code Extensions (`Ctrl+Shift+X`), find **Job-Finish**, choose **Uninstall**, and reload if prompted. You can also use:
+
+```powershell
+code --uninstall-extension lsc892.job-finish
+```
+
+</details>
+
+<details>
+<summary>Remove only the old PowerShell/C# version</summary>
+
+Use `npx job-finish@latest uninstall-legacy`, or run these commands from the repository root:
+
+```powershell
+npm --prefix tools/installer ci
+npm run uninstall:legacy -- --dry-run
+npm run uninstall:legacy
+```
+
+This removes old Job-Finish hooks and installation files; it does not uninstall the VS Code extension. Use `--project "C:\Projects\MyProject"` for each additional project installation. See the [installer guide](https://github.com/lsc892/Job-Finish/blob/HEAD/tools/installer/README.md) for backup behavior and other options.
+
+</details>
+
+For implementation details and verification, see the [development document](https://github.com/lsc892/Job-Finish/blob/HEAD/docs/requirements-and-verification.md) and [verification report](https://github.com/lsc892/Job-Finish/blob/HEAD/docs/verification.md).
 
 ## License
 
-MIT
+[MIT](https://github.com/lsc892/Job-Finish/blob/HEAD/LICENSE). Bundled third-party components retain their respective licenses.
