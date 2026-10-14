@@ -99,11 +99,20 @@ export class AgentEventRouter {
     const thread = record(params?.thread ?? result?.thread);
     if (thread && identifier(thread.id)) {
       const pendingKey = JSON.stringify(message.id);
-      if (thread.ephemeral === true || thread.parentThreadId || record(thread.source)?.subAgent || this.pendingThreads.get(pendingKey)) {
-        this.ignored.add(thread.id as string); this.bound(this.ignored);
-      }
+      if (this.pendingThreads.get(pendingKey)) this.ignoreCodexThread(thread.id as string);
       this.pendingThreads.delete(pendingKey);
-      if (!this.ignored.has(thread.id as string) && ('name' in thread || 'preview' in thread)) this.rememberTitle(thread.id as string, thread.name || thread.preview);
+      this.codexThread(thread);
+    }
+    // Thread listings can be the only metadata observed for an already running child.
+    if (Array.isArray(result?.data)) for (const entry of result.data) {
+      const listed = record(entry);
+      if (listed && ('parentThreadId' in listed || 'source' in listed && 'turns' in listed)) this.codexThread(listed);
+    }
+    // Learn child IDs before dispatch, even when the sender is itself an ignored child.
+    const senderId = identifier(params?.threadId);
+    if (senderId) {
+      if (message.method === 'item/started' || message.method === 'item/completed') this.codexAgentItem(params?.item, senderId);
+      this.codexAgentItems(record(params?.turn)?.items, senderId);
     }
     if (message.id !== undefined) {
       const requestKey = JSON.stringify(message.id); const pending = this.codexStartTitles.get(requestKey);
@@ -156,6 +165,39 @@ export class AgentEventRouter {
       this.codexInputEpisodes.set(id, { waiting, episode: statusEpisode }); this.bound(this.codexInputEpisodes);
     }
     new CodexAdapter(session, statusEpisode).handle(message as RpcMessage, this.connectionId, true);
+  }
+
+  private codexThread(thread: Record<string, unknown>): void {
+    const id = identifier(thread.id); if (!id) return;
+    if (thread.ephemeral === true || thread.parentThreadId || record(thread.source)?.subAgent) this.ignoreCodexThread(id);
+    if (Array.isArray(thread.turns)) for (const value of thread.turns) this.codexAgentItems(record(value)?.items, id);
+    if (!this.ignored.has(id) && ('name' in thread || 'preview' in thread)) this.rememberTitle(id, thread.name || thread.preview);
+  }
+
+  private codexAgentItems(items: unknown, senderId: string): void {
+    if (Array.isArray(items)) for (const item of items) this.codexAgentItem(item, senderId);
+  }
+
+  private codexAgentItem(value: unknown, senderId: string): void {
+    const item = record(value); if (!item) return;
+    if (item.type === 'subAgentActivity') {
+      const childId = identifier(item.agentThreadId);
+      if (childId && childId !== senderId) this.ignoreCodexThread(childId);
+    } else if (item.type === 'collabAgentToolCall' && item.tool === 'spawnAgent' && Array.isArray(item.receiverThreadIds)) {
+      // Other collaboration tools can address a parent or peer; only spawn proves a child.
+      for (const value of item.receiverThreadIds) {
+        const childId = identifier(value);
+        if (childId && childId !== senderId && childId !== item.senderThreadId) this.ignoreCodexThread(childId);
+      }
+    }
+  }
+
+  private ignoreCodexThread(id: string): void {
+    this.ignored.add(id); this.bound(this.ignored);
+    // Metadata can arrive after live items: discard that child's previously admitted state.
+    this.sessions.delete(id); this.titles.delete(id); this.codexInputEpisodes.delete(id);
+    for (const [key, pending] of this.codexStartTitles) if (pending.threadId === id) this.codexStartTitles.delete(key);
+    for (const key of this.codexTurnTitles.keys()) if (JSON.parse(key)[0] === id) this.codexTurnTitles.delete(key);
   }
 
   private claude(message: Record<string, unknown>): void {

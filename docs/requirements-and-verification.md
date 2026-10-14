@@ -79,6 +79,8 @@ interface SessionBinding {
 
 Codex의 최종 응답은 같은 thread·turn에 속한 `item/completed`의 `agentMessage` 등 지원 버전에서 확인한 결과 이벤트로 보관한다. 본문만 수신한 상태에서 완료를 만들지 않는다. 상태 확정 전에 본문이 누락되어도 이전 턴의 응답을 대신 표시하지 않는다. 일반 오류 통지만으로 턴 종료를 확정하지 않으며, 확인된 실행 시작 실패는 해당 요청의 오류로 구분한다.
 
+Codex의 완료 알림은 메인 에이전트의 턴 종료에만 보낸다. 기존 확장 관찰에서는 thread의 부모·source·ephemeral 정보 외에도 `collabAgentToolCall`의 `spawnAgent.receiverThreadIds`와 `subAgentActivity.agentThreadId`로 하위 에이전트를 식별한다. 하위 에이전트의 생성 metadata가 전달되지 않아도 해당 스레드의 종료를 전체 작업 완료로 알리지 않으며, 이미 관찰한 하위 스레드의 상태도 식별 즉시 제거한다. 중첩 에이전트와 이력·스레드 목록에서 확인한 관계도 같은 필터에 반영하지만 이력 자체로 알림을 만들지는 않는다. 다른 협업 도구의 수신자는 부모·동료 에이전트일 수 있으므로 수신자라는 이유만으로 제외하지 않는다.
+
 Claude는 SDK의 `result`를 판정하고 스트림의 뒤따르는 이벤트도 정리한다. 일반 assistant 응답을 전체 실행 완료로 바꾸지 않는다. 취소는 해당 실행의 명시적 취소 근거가 있을 때만 `cancelled`로 처리한다.
 
 설치된 Claude Code 2.1.296에서 확인한 `Failed to refresh OAuth token: another Claude Code process is refreshing it or exited mid-refresh`와 대체 표현 `Could not refresh your login because another Claude Code process is refreshing it (or exited mid-refresh)`는 foreground assistant의 `server_error` 표식과 함께 수신하면 즉시 오류 알림을 보낸다. 같은 실행의 재전달과 동일 오류의 후속 결과는 중복 알림을 억제하지만, 실제 결과의 저장·입력 대기 정리는 수행한다. 이 알림만으로 턴을 종료하지 않으며 이후 성공·다른 오류·취소 결과는 별도로 알린다. 일반 답변에서 인용한 문구, 도구 출력과 하위 에이전트 메시지는 탐지 대상에서 제외한다.
