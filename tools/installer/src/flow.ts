@@ -24,9 +24,13 @@ export interface InstallPlan {
 
 export function planInstall(installed: string | null, target: string, legacy: boolean): InstallPlan {
   if (!valid(target) || (installed !== null && !valid(installed))) throw new Error('확장 버전이 올바르지 않습니다.');
+  if (installed === null) {
+    return { state: legacy ? 'legacy' : 'empty', action: 'install',
+      installedVersion: installed, targetVersion: target, removeLegacy: legacy };
+  }
   return {
-    state: installed === null ? legacy ? 'legacy' : 'empty' : legacy ? 'both' : 'current',
-    action: installed === null ? 'install' : gt(target, installed) ? 'update' : 'unchanged',
+    state: legacy ? 'both' : 'current',
+    action: gt(target, installed) ? 'update' : 'unchanged',
     installedVersion: installed, targetVersion: target, removeLegacy: legacy
   };
 }
@@ -44,7 +48,8 @@ export function installOrUpdate(path: string, dryRun: boolean, services: Install
   log(`발견한 상태: ${states[plan.state]}`);
   log(`현재 확장: ${installed ?? '없음'} / 설치 패키지: ${extension.version}`);
   if (legacy.found) for (const target of legacy.targets) log(`레거시 정리 대상: ${target}`);
-  log(plan.action === 'install' ? '처리: 새 확장 설치' : plan.action === 'update' ? '처리: 현재 확장 업데이트' : '처리: 같은 버전 또는 더 최신 버전이므로 확장 설치 생략');
+  const actions = { install: '처리: 새 확장 설치', update: '처리: 현재 확장 업데이트', unchanged: '처리: 같은 버전 또는 더 최신 버전이므로 확장 설치 생략' };
+  log(actions[plan.action]);
   if (dryRun) { log('미리보기 완료. 변경한 항목이 없습니다.'); return plan; }
   if (legacy.found) {
     for (const backup of legacy.remove()) log(`설정 백업: ${backup}`);

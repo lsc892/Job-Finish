@@ -21,9 +21,7 @@ const usage = `Job-Finish 설치·업데이트·레거시 제거
   --keep-files      uninstall에서 훅만 제거하고 파일·Windows 등록 유지
   --help            도움말 표시`;
 
-function main(): void {
-  const args = process.argv.slice(2);
-  if (args.includes('--help') || args.includes('-h')) { console.log(usage); return; }
+function parseOptions(args: string[]) {
   const command = args[0] && !args[0].startsWith('-') ? args.shift()! : 'install';
   if (!['install', 'update', 'uninstall'].includes(command)) throw new Error(`지원하지 않는 명령: ${command}\n${usage}`);
   const caller = resolve(process.env.INIT_CWD ?? process.cwd());
@@ -39,13 +37,22 @@ function main(): void {
     if (!['--project', '--vsix', '--code', '--profile', '--user-data-dir', '--extensions-dir'].includes(arg!)) throw new Error(`지원하지 않는 인수: ${arg}\n${usage}`);
     const value = args[++index];
     if (!value || value.startsWith('--')) throw new Error(`${arg}에 값을 지정하세요.`);
-    if (arg === '--project') project = resolve(caller, value);
-    if (arg === '--vsix') vsix = resolve(caller, value);
-    if (arg === '--code') code.executable = resolve(caller, value);
-    if (arg === '--profile') code.profile = value;
-    if (arg === '--user-data-dir') code.userDataDir = resolve(caller, value);
-    if (arg === '--extensions-dir') code.extensionsDir = resolve(caller, value);
+    switch (arg) {
+      case '--project': project = resolve(caller, value); break;
+      case '--vsix': vsix = resolve(caller, value); break;
+      case '--code': code.executable = resolve(caller, value); break;
+      case '--profile': code.profile = value; break;
+      case '--user-data-dir': code.userDataDir = resolve(caller, value); break;
+      case '--extensions-dir': code.extensionsDir = resolve(caller, value); break;
+    }
   }
+  return { command, project, vsix, dryRun, keepFiles, code };
+}
+
+function main(): void {
+  const args = process.argv.slice(2);
+  if (args.includes('--help') || args.includes('-h')) { console.log(usage); return; }
+  const { command, project, vsix, dryRun, keepFiles, code } = parseOptions(args);
   if (process.platform !== 'win32') throw new Error('이 제거 명령은 Windows 전용입니다.');
   if (keepFiles && command !== 'uninstall') throw new Error('--keep-files는 uninstall에서만 사용할 수 있습니다.');
   // Old versions used the default home even when the runtime had a custom config home.
