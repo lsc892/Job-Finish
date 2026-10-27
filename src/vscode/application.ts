@@ -57,7 +57,6 @@ export class Application {
 
   async activate(): Promise<void> {
     this.notifications.configure();
-    this.status.command = 'jobFinish.results';
     this.updateStatus();
     this.status.show();
     this.commands.register(this.context.subscriptions);
