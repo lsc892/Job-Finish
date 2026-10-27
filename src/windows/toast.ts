@@ -85,10 +85,40 @@ export class WindowsToast {
     if (this.disposed || generation !== this.generation || !stillAllowed()) return;
     const pipe = `job-finish-${randomUUID()}`;
     const sockets = new Set<Socket>();
+    const server = this.createClickServer(request, sockets);
+    const timer = setTimeout(() => this.clear(request.notificationId), 300_000);
+    this.active = { server, sockets, timer, id: request.notificationId };
+    await new Promise<void>((resolve, reject) => {
+      this.active!.cancel = resolve;
+      server.once('error', error => { this.clear(request.notificationId); reject(error); });
+      server.listen(`\\\\.\\pipe\\${pipe}`, () => {
+        if (this.disposed || generation !== this.generation || !stillAllowed()) { this.clear(request.notificationId); resolve(); return; }
+        try {
+          let submitted = false; let observed = false; let failed = false;
+          void this.runNative(['--show'], { notificationId: request.notificationId, windowInstanceId: request.windowInstanceId,
+            title: request.title, message: toastText(request.message), appId: request.appId, target: request.target, pipe }, event => {
+            if (event.notificationId !== request.notificationId || event.windowInstanceId !== request.windowInstanceId) throw new Error('Native toast diagnostic IDs do not match');
+            if (!['toast.submitted', 'toast.history.confirmed', 'toast.history.error', 'toast.failed', 'toast.observation.complete'].includes(String(event.event))) throw new Error('Unknown native toast diagnostic');
+            submitted ||= event.event === 'toast.submitted'; observed ||= event.event === 'toast.observation.complete'; failed ||= event.event === 'toast.failed';
+            this.diagnostics.trace(String(event.event), { notificationId: request.notificationId, windowInstanceId: request.windowInstanceId,
+              errorCode: event.errorCode, historyConfirmed: event.historyConfirmed, notificationState: event.notificationState, bannerVerified: false });
+          }, child => {
+            this.active!.child = child;
+            this.diagnostics.trace('toast.launched', { notificationId: request.notificationId, windowInstanceId: request.windowInstanceId, helperPid: child.pid, hwnd: request.target?.hwnd });
+          }).then(() => {
+            if (!submitted || !observed || failed) throw new Error('Native toast delivery was not confirmed by the helper');
+            if (this.active?.id === request.notificationId) this.active.child = undefined;
+            resolve();
+          }).catch(error => { this.clear(request.notificationId); reject(error); });
+        } catch (error) { this.clear(request.notificationId); reject(error); }
+      });
+    });
+  }
+  private createClickServer(request: ToastRequest, sockets: Set<Socket>): Server {
     let clicked = false;
     let authorizedSocket: Socket | undefined;
     let completed = false;
-    const server = createServer(socket => {
+    return createServer(socket => {
       if (sockets.size >= 4) { socket.destroy(); return; }
       sockets.add(socket); socket.on('close', () => sockets.delete(socket));
       socket.on('error', error => this.diagnostics.add(error));
@@ -123,33 +153,6 @@ export class WindowsToast {
             }
           } catch (error) { this.diagnostics.add(error); socket.destroy(); }
         }
-      });
-    });
-    const timer = setTimeout(() => this.clear(request.notificationId), 300_000);
-    this.active = { server, sockets, timer, id: request.notificationId };
-    await new Promise<void>((resolve, reject) => {
-      this.active!.cancel = resolve;
-      server.once('error', error => { this.clear(request.notificationId); reject(error); });
-      server.listen(`\\\\.\\pipe\\${pipe}`, () => {
-        if (this.disposed || generation !== this.generation || !stillAllowed()) { this.clear(request.notificationId); resolve(); return; }
-        try {
-          let submitted = false; let observed = false; let failed = false;
-          void this.runNative(['--show'], { notificationId: request.notificationId, windowInstanceId: request.windowInstanceId,
-            title: request.title, message: toastText(request.message), appId: request.appId, target: request.target, pipe }, event => {
-            if (event.notificationId !== request.notificationId || event.windowInstanceId !== request.windowInstanceId) throw new Error('Native toast diagnostic IDs do not match');
-            if (!['toast.submitted', 'toast.history.confirmed', 'toast.history.error', 'toast.failed', 'toast.observation.complete'].includes(String(event.event))) throw new Error('Unknown native toast diagnostic');
-            submitted ||= event.event === 'toast.submitted'; observed ||= event.event === 'toast.observation.complete'; failed ||= event.event === 'toast.failed';
-            this.diagnostics.trace(String(event.event), { notificationId: request.notificationId, windowInstanceId: request.windowInstanceId,
-              errorCode: event.errorCode, historyConfirmed: event.historyConfirmed, notificationState: event.notificationState, bannerVerified: false });
-          }, child => {
-            this.active!.child = child;
-            this.diagnostics.trace('toast.launched', { notificationId: request.notificationId, windowInstanceId: request.windowInstanceId, helperPid: child.pid, hwnd: request.target?.hwnd });
-          }).then(() => {
-            if (!submitted || !observed || failed) throw new Error('Native toast delivery was not confirmed by the helper');
-            if (this.active?.id === request.notificationId) this.active.child = undefined;
-            resolve();
-          }).catch(error => { this.clear(request.notificationId); reject(error); });
-        } catch (error) { this.clear(request.notificationId); reject(error); }
       });
     });
   }

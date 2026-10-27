@@ -5,6 +5,8 @@ import type { AgentEvents, AgentProviderRegistry } from './agent-provider';
 import { agentProviders } from './providers';
 import { record } from './providers/message';
 
+const MAX_OBSERVED_SESSIONS = 32;
+
 /** Owns connection/session lifetime; provider handlers interpret protocol messages. */
 export class AgentEventRouter {
   readonly connectionId = randomUUID();
@@ -30,7 +32,7 @@ export class AgentEventRouter {
     if (this.disposed || this.isOwned(this.provider, id)) return;
     let session = this.sessions.get(id);
     if (!session) {
-      if (this.sessions.size >= 32) {
+      if (this.sessions.size >= MAX_OBSERVED_SESSIONS) {
         const idle = [...this.sessions].find(([, s]) => s.turns.size === 0 && s.requests.size === 0);
         if (!idle) throw new Error('Observed session limit exceeded');
         this.sessions.delete(idle[0]);

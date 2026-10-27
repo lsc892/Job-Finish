@@ -247,7 +247,17 @@ class Application {
   }
   private updateStatus(): void {
     const waiting = [...this.entries.values()].reduce((n, e) => n + e.session.requests.size, 0);
-    this.status.text = `${!this.config('enabled', true) ? '$(bell-slash)' : waiting ? '$(question)' : '$(bell)'} JF ${this.windowInstanceId.slice(0, 8)} · ${!this.config('enabled', true) ? 'off' : waiting ? `${waiting} input` : 'on'}`;
+    const enabled = this.config('enabled', true);
+    let icon = '$(bell)';
+    let state = 'on';
+    if (!enabled) {
+      icon = '$(bell-slash)';
+      state = 'off';
+    } else if (waiting) {
+      icon = '$(question)';
+      state = `${waiting} input`;
+    }
+    this.status.text = `${icon} JF ${this.windowInstanceId.slice(0, 8)} · ${state}`;
     this.status.command = waiting ? 'jobFinish.respond' : 'jobFinish.results';
     this.status.tooltip = 'Job-Finish · automatic notifications · Settings: Job-Finish Enabled · Show Results';
   }

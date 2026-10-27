@@ -14,7 +14,12 @@ import { randomUUID } from 'node:crypto';
 import { CodexHistory } from './codex-history';
 
 export function codexStatus(value: string): TerminalStatus | undefined {
-  switch (value) { case 'completed': return 'completed'; case 'failed': return 'error'; case 'interrupted': return 'cancelled'; default: return undefined; }
+  switch (value) {
+    case 'completed': return 'completed';
+    case 'failed': return 'error';
+    case 'interrupted': return 'cancelled';
+    default: return undefined;
+  }
 }
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Malformed Codex object');
@@ -44,29 +49,40 @@ export class CodexAdapter {
     if (!methods.includes(message.method ?? '')) return;
     const p = object(message.params);
     if (id(p.threadId) !== this.session.binding.sessionId) return;
-    if (message.method === 'turn/started') {
-      const turn = object(p.turn);
-      if (admitStarted) this.session.start(id(turn.id), connectionId);
-      else this.session.running(id(turn.id), connectionId);
-    } else if (message.method === 'item/completed') {
-      const item = object(p.item);
-      if (item.type === 'agentMessage' && item.phase !== 'commentary') {
+    switch (message.method) {
+      case 'turn/started': {
+        const turn = object(p.turn);
+        if (admitStarted) this.session.start(id(turn.id), connectionId);
+        else this.session.running(id(turn.id), connectionId);
+        return;
+      }
+      case 'item/completed': {
+        const item = object(p.item);
+        if (item.type !== 'agentMessage' || item.phase === 'commentary') return;
         if (typeof item.text !== 'string') throw new Error('Malformed agent message');
         this.session.body(id(p.turnId), item.text, connectionId);
+        return;
       }
-    } else if (message.method === 'turn/completed') {
-      this.reconcileTurn(p.turn as Turn, connectionId);
-    } else if (message.method === 'serverRequest/resolved') {
-      this.session.resolve(JSON.stringify(p.requestId), connectionId);
-    } else if (message.method === 'error') {
-      this.session.diagnostics.add(`Codex non-terminal error: ${JSON.stringify(p.error)}`);
-    } else if (message.id !== undefined) {
-      const turnId = id(p.turnId);
-      const question = message.method === 'item/tool/requestUserInput';
-      this.session.waiting({ id: JSON.stringify(message.id), turnId, connectionId,
-        kind: question ? 'question' : 'approval', payload: message,
-        title: question ? JSON.stringify(p.questions) : String(p.command ?? p.reason ?? 'File change approval') });
+      case 'turn/completed':
+        this.reconcileTurn(p.turn as Turn, connectionId);
+        return;
+      case 'serverRequest/resolved':
+        this.session.resolve(JSON.stringify(p.requestId), connectionId);
+        return;
+      case 'error':
+        this.session.diagnostics.add(`Codex non-terminal error: ${JSON.stringify(p.error)}`);
+        return;
+      default:
+        this.requestInput(message, p, connectionId);
     }
+  }
+  private requestInput(message: RpcMessage, params: Record<string, unknown>, connectionId: string): void {
+    if (message.id === undefined) return;
+    const turnId = id(params.turnId);
+    const question = message.method === 'item/tool/requestUserInput';
+    this.session.waiting({ id: JSON.stringify(message.id), turnId, connectionId,
+      kind: question ? 'question' : 'approval', payload: message,
+      title: question ? JSON.stringify(params.questions) : String(params.command ?? params.reason ?? 'File change approval') });
   }
   reconcileTurn(value: Turn, connectionId: string): void {
     const turn = object(value); const turnId = id(turn.id);

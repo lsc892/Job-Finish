@@ -75,3 +75,45 @@ test('A Claude input request already pending when observation starts is cleared 
   f.router.outgoing({ type: 'control_response', response: { subtype: 'success', request_id: 'pending' } });
   f.router.incoming(result('done')); assert.equal(f.signals.at(-1)!.status, 'completed'); assert.equal(f.router.snapshot().activeTurns, 0);
 });
+
+test('Claude adopts a late user UUID without retaining the provisional active turn', () => {
+  const f = setup('claude');
+  f.router.outgoing({ type: 'user', session_id: 'session' });
+  f.router.incoming({ type: 'system', subtype: 'init', session_id: 'session' });
+  f.router.incoming({ type: 'control_request', request_id: 'approval', request: { subtype: 'can_use_tool', tool_name: 'Write' } });
+  const provisionalTurn = f.signals[0]!.turnId;
+  assert.notEqual(provisionalTurn, 'assigned-user');
+  f.router.incoming(result('first-result', 'assigned-user'));
+  assert.equal(f.signals.at(-1)!.turnId, 'assigned-user');
+  assert.equal(f.signals.at(-1)!.status, 'completed');
+  assert.equal(f.router.snapshot().activeTurns, 0);
+
+  f.router.outgoing({ type: 'user', uuid: 'next-user', session_id: 'session' });
+  f.router.incoming({ type: 'control_request', request_id: 'next-approval', request: { subtype: 'can_use_tool', tool_name: 'Write' } });
+  assert.equal(f.signals.at(-1)!.turnId, 'next-user');
+  assert.equal(f.signals.at(-1)!.status, 'waitingForInput');
+  f.router.incoming(result('second-result', 'next-user'));
+  assert.equal(f.signals.at(-1)!.turnId, 'next-user');
+  assert.equal(f.router.snapshot().activeTurns, 0);
+});
+
+test('A failed Claude interrupt response leaves the input queued for its actual result', () => {
+  const f = setup('claude');
+  f.router.outgoing({ type: 'user', uuid: 'request', session_id: 'session' });
+  f.router.outgoing({ type: 'control_request', request_id: 'interrupt', request: { subtype: 'interrupt' } });
+  f.router.incoming({ type: 'control_response', response: { subtype: 'error', request_id: 'interrupt' } });
+  f.router.incoming({ type: 'control_response', response: { subtype: 'success', request_id: 'interrupt' } });
+  assert.equal(f.signals.length, 0);
+  assert.equal(f.router.snapshot().activeTurns, 1);
+  f.router.incoming(result('done'));
+  assert.deepEqual(f.signals.map(signal => signal.status), ['completed']);
+  assert.equal(f.router.snapshot().activeTurns, 0);
+});
+
+test('Observed Claude validates duplicate result bodies before ignoring replay', () => {
+  const f = setup('claude');
+  f.router.incoming(result('done'));
+  assert.throws(() => f.router.incoming({ ...result('done'), result: null }), /Malformed observed Claude result body/);
+  assert.throws(() => f.router.incoming({ ...result('error'), subtype: 'error_during_execution', errors: ['failure', null] }), /Malformed observed Claude result body/);
+  assert.equal(f.signals.length, 1);
+});

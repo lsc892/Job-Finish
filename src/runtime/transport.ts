@@ -11,23 +11,30 @@ export class JsonLines {
   constructor(private readonly receive: (message: RpcMessage) => void, private readonly limit = LIMITS.messageBytes) {}
   push(chunk: Buffer): void {
     let start = 0;
-    for (let i = 0; i < chunk.length; i++) if (chunk[i] === 10) {
+    for (let i = 0; i < chunk.length; i++) {
+      if (chunk[i] !== 10) continue;
       this.append(chunk.subarray(start, i));
-      if (this.length) {
-        const text = new TextDecoder('utf-8', { fatal: true }).decode(this.partial.subarray(0, this.length));
-        this.length = 0;
-        const message: unknown = JSON.parse(text);
-        if (!message || typeof message !== 'object' || Array.isArray(message)) throw new Error('Invalid JSON-RPC message');
-        const rpc = message as RpcMessage;
-        if (rpc.id !== undefined && !(typeof rpc.id === 'string' || (typeof rpc.id === 'number' && Number.isFinite(rpc.id)))) throw new Error('Invalid JSON-RPC identifier');
-        if ('method' in rpc) {
-          if (typeof rpc.method !== 'string' || !rpc.method || 'result' in rpc || 'error' in rpc) throw new Error('Invalid JSON-RPC request/notification');
-        } else if (rpc.id === undefined || (('result' in rpc) === ('error' in rpc))) throw new Error('Invalid JSON-RPC response');
-        this.receive(rpc);
-      }
+      if (this.length) this.receive(this.decodeMessage());
       start = i + 1;
     }
     this.append(chunk.subarray(start));
+  }
+  private decodeMessage(): RpcMessage {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(this.partial.subarray(0, this.length));
+    this.length = 0;
+    const message: unknown = JSON.parse(text);
+    if (!message || typeof message !== 'object' || Array.isArray(message)) throw new Error('Invalid JSON-RPC message');
+    const rpc = message as RpcMessage;
+    const validId = typeof rpc.id === 'string' || (typeof rpc.id === 'number' && Number.isFinite(rpc.id));
+    if (rpc.id !== undefined && !validId) throw new Error('Invalid JSON-RPC identifier');
+    if ('method' in rpc) {
+      if (typeof rpc.method !== 'string' || !rpc.method || 'result' in rpc || 'error' in rpc) throw new Error('Invalid JSON-RPC request/notification');
+    } else {
+      const hasResult = 'result' in rpc;
+      const hasError = 'error' in rpc;
+      if (rpc.id === undefined || hasResult === hasError) throw new Error('Invalid JSON-RPC response');
+    }
+    return rpc;
   }
   private append(chunk: Buffer): void {
     const required = this.length + chunk.length;
