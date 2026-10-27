@@ -13,37 +13,90 @@ function alive(pid: number): boolean { if (!Number.isInteger(pid) || pid <= 0) r
  * Windows owns the gate handle lifetime; malformed owner records still fail closed. */
 export class Ownership {
   private readonly root: string;
-  constructor(storage: string) { this.root = join(storage, 'owners'); mkdirSync(this.root, { recursive: true }); }
+
+  constructor(storage: string) {
+    this.root = join(storage, 'owners');
+    mkdirSync(this.root, { recursive: true });
+  }
+
   claim(binding: SessionBinding): Lease {
     // The second key also prevents resuming the same stored thread through another runtime.
     const keys = [sessionKey(binding), JSON.stringify(['saved-session', binding.provider, binding.sessionId])];
-    const paths: string[] = []; const token = randomUUID();
+    const paths: string[] = [];
+    const token = randomUUID();
     try {
       for (const key of keys) {
-        const path = join(this.root, hash(key) + '.lock');
-        this.gate(path, () => {
-          if (existsSync(path)) {
-            const old = read(path);
-            if (!old || alive(old.pid)) throw new Error('Session is already owned by a live or unverifiable window');
-            if (read(path)?.token !== old.token) throw new Error('Session owner changed during recovery');
-            unlinkSync(path);
-          }
-          const fd = openSync(path, 'wx');
-          try { writeFileSync(fd, JSON.stringify({ token, pid: process.pid, windowInstanceId: binding.windowInstanceId, key } satisfies RecordData)); }
-          finally { closeSync(fd); }
-        }); paths.push(path);
+        paths.push(this.claimLock(key, binding, token));
       }
-    } catch (error) { for (const path of paths) this.release(path, token); throw error; }
-    return new Lease(paths, token, () => paths.forEach(path => this.release(path, token)), join(this.root, hash(keys[0]!) + '.state.json'));
+    } catch (error) {
+      this.releaseAll(paths, token);
+      throw error;
+    }
+    const statePath = join(this.root, hash(keys[0]!) + '.state.json');
+    return new Lease(paths, token, () => this.releaseAll(paths, token), statePath);
   }
-  private gate(path: string, fn: () => void): void {
-    const gate = path + '.gate'; let fd: number;
-    if (process.platform === 'win32') { withWindowsFileGate(gate, fn); return; }
-    try { fd = openSync(gate, 'wx'); } catch { throw new Error(`Ownership operation busy or interrupted. Retry; if persistent, inspect ${gate} with all Job-Finish windows closed.`); }
-    try { writeFileSync(fd, JSON.stringify({ pid: process.pid })); fn(); }
-    finally { closeSync(fd); unlinkSync(gate); }
+
+  private claimLock(key: string, binding: SessionBinding, token: string): string {
+    const path = join(this.root, hash(key) + '.lock');
+    this.gate(path, () => {
+      this.reclaimStaleOwner(path);
+      this.writeOwner(path, { token, pid: process.pid, windowInstanceId: binding.windowInstanceId, key });
+    });
+    return path;
   }
-  private release(path: string, token: string): void { this.gate(path, () => { if (read(path)?.token === token) unlinkSync(path); }); }
+
+  private reclaimStaleOwner(path: string): void {
+    if (!existsSync(path)) return;
+    const owner = read(path);
+    if (!owner || alive(owner.pid)) {
+      throw new Error('Session is already owned by a live or unverifiable window');
+    }
+    if (read(path)?.token !== owner.token) {
+      throw new Error('Session owner changed during recovery');
+    }
+    unlinkSync(path);
+  }
+
+  private writeOwner(path: string, record: RecordData): void {
+    const fd = openSync(path, 'wx');
+    try {
+      writeFileSync(fd, JSON.stringify(record));
+    } finally {
+      closeSync(fd);
+    }
+  }
+
+  private gate(path: string, action: () => void): void {
+    const gatePath = path + '.gate';
+    if (process.platform === 'win32') {
+      withWindowsFileGate(gatePath, action);
+      return;
+    }
+    let fd: number;
+    try {
+      fd = openSync(gatePath, 'wx');
+    } catch {
+      throw new Error(`Ownership operation busy or interrupted. Retry; if persistent, inspect ${gatePath} with all Job-Finish windows closed.`);
+    }
+    try {
+      writeFileSync(fd, JSON.stringify({ pid: process.pid }));
+      action();
+    } finally {
+      closeSync(fd);
+      unlinkSync(gatePath);
+    }
+  }
+
+  private releaseAll(paths: string[], token: string): void {
+    for (const path of paths) this.release(path, token);
+  }
+
+  private release(path: string, token: string): void {
+    this.gate(path, () => {
+      if (read(path)?.token !== token) return;
+      unlinkSync(path);
+    });
+  }
 }
 export class Lease {
   private released = false;
