@@ -54,17 +54,17 @@ export class JsonLines {
   get bufferedBytes(): number { return this.length; }
 }
 export class EventQueue {
-  private items: { message: RpcMessage; bytes: number }[] = [];
+  private items: RpcMessage[] = [];
   private bytes = 0;
   push(message: RpcMessage): void {
     const bytes = Buffer.byteLength(JSON.stringify(message));
     if (this.items.length >= LIMITS.queueCount || this.bytes + bytes > LIMITS.queueBytes) throw new Error('Event queue overflow; reconciliation required');
-    this.items.push({ message, bytes }); this.bytes += bytes;
+    this.items.push(message); this.bytes += bytes;
   }
   drain(handle: (message: RpcMessage) => void): void {
     const items = this.items;
     this.clear();
-    for (const { message } of items) handle(message);
+    for (const message of items) handle(message);
   }
   clear(): void { this.items = []; this.bytes = 0; }
   get size(): number { return this.items.length; }
@@ -111,7 +111,8 @@ export class StdioRpc {
   private write(message: RpcMessage): void {
     if (this.closed || !this.child) throw new Error('Connection closed');
     const data = JSON.stringify(message) + '\n';
-    if (Buffer.byteLength(data) > LIMITS.messageBytes || this.child.stdin.writableLength + Buffer.byteLength(data) > LIMITS.queueBytes) throw new Error('RPC outgoing buffer overflow');
+    const bytes = Buffer.byteLength(data);
+    if (bytes > LIMITS.messageBytes || this.child.stdin.writableLength + bytes > LIMITS.queueBytes) throw new Error('RPC outgoing buffer overflow');
     this.child.stdin.write(data);
   }
   private dispatch(message: RpcMessage): void {

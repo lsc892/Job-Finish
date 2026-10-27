@@ -102,8 +102,10 @@ export class CodexConnection {
   }
 
   replayAnswer(message: RpcMessage): boolean {
-    if (message.id === undefined || !message.method || !this.answered.has(JSON.stringify(message.id))) return false;
-    this.transport!.respond(message.id, this.answered.get(JSON.stringify(message.id)));
+    if (message.id === undefined || !message.method) return false;
+    const requestId = JSON.stringify(message.id);
+    if (!this.answered.has(requestId)) return false;
+    this.transport!.respond(message.id, this.answered.get(requestId));
     return true;
   }
 
