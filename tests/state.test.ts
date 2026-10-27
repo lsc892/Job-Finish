@@ -1,3 +1,4 @@
+// 세션의 종료·중복·체크포인트·입력·소유권·보관 상한과 제공자 상태 변환을 검증한다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CodexAdapter, codexStatus } from '../src/runtime/codex';

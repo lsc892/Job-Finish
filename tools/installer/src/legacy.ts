@@ -1,3 +1,4 @@
+// 레거시 설정·설치 폴더와 Windows 등록의 검사·제거를 연결한다.
 import { applyLegacyUninstall, planLegacyUninstall, type LegacyUninstallOptions } from './uninstall';
 import { FOCUS_PROTOCOL, inspectWindowsResidue, removeWindowsResidue } from './windows';
 import type { LegacyInstallation } from './flow';

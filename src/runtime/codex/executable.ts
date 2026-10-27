@@ -1,3 +1,4 @@
+// 설정과 PATH에서 셸을 거치지 않고 실행할 Codex App Server 명령을 결정한다.
 import { existsSync } from 'node:fs';
 import { delimiter, dirname, join } from 'node:path';
 export function codexCommand(configured = ''): { executable: string; args: string[] } {

@@ -1,3 +1,4 @@
+// 실제 Codex 입력 검증 기록에서 필요한 이벤트를 추려 식별자와 임시 경로를 치환한 fixture를 저장한다.
 // Preserve only actual probe events used by the adapter. No config, stderr or reasoning items.
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 const records = readdirSync('test-artifacts').filter(f => /^codex-input-\d+\.json$/.test(f)).flatMap(f => {

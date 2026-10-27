@@ -1,3 +1,4 @@
+// 네이티브 창 식별·포커스·점멸 수명과 알림 소유권 정책을 검증한다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FlashClock, FlashController } from '../src/windows/flash';
@@ -15,6 +16,7 @@ test('The master switch suppresses delivery immediately, including a toast still
   await notifications.deliver(signal); assert.equal(flashes, 1); assert.equal(notifications.results.length, 2);
 });
 
+/** 전경 창·창 정보·점멸 호출을 모사해 네이티브 창 정책 검증을 지원한다. */
 class FakeNative implements NativeApi {
   front = 2n; windows = new Map<bigint, NativeWindow>([1n, 2n].map(hwnd => [hwnd, { hwnd, pid: 123, title: 'same folder - Code', executable: 'C:\\Code.exe' }]));
   calls: unknown[][] = [];

@@ -1,3 +1,4 @@
+// VS Code CLI 실행과 VSIX 메타데이터 검증을 제공한다.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { delimiter, dirname, extname, join, resolve } from 'node:path';
@@ -40,6 +41,7 @@ export function parseInstalledVersion(output: string, id: string): string | null
   return version;
 }
 
+/** 선택한 VS Code 저장 범위에서 확장 버전·호환성을 확인하고 설치를 실행한다. */
 export class VSCode {
   private readonly command: CodeCommand;
   private readonly scope: string[] = [];

@@ -1,7 +1,8 @@
+// 소유권과 연결을 검증하며 실행 상태·입력 요청·완료 알림의 중복을 관리한다.
 import { randomUUID } from 'node:crypto';
 import { boundedText, Checkpoint, Diagnostics, InputRequest, isTerminal, LIMITS, SessionBinding, Signal, TerminalStatus, TurnState } from './model';
 
-/** Only explicitly admitted turns can notify. History and evicted replay never admit a turn. */
+/** 소유한 세션의 허용된 실행·입력 요청·완료 기록을 관리하고 중복 없는 신호를 생성한다. */
 export class Session {
   readonly turns = new Map<string, TurnState>();
   readonly completed = new Map<string, TerminalStatus>();

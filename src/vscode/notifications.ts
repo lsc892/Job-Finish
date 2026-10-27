@@ -1,3 +1,4 @@
+// 자동 실행 관찰과 알림 전달을 현재 VS Code 창·설정·소유권에 연결한다.
 import * as vscode from 'vscode';
 import type { ApplicationSessions } from '../application/sessions';
 import { Diagnostics, Signal } from '../core/model';
@@ -12,7 +13,7 @@ interface NotificationPorts {
   changed(): void;
 }
 
-/** Connects automatic observation and notification delivery to the owning window and settings. */
+/** 자동 관찰·결과 알림·Windows 토스트를 현재 창의 설정과 소유권에 연결한다. */
 export class WindowNotifications {
   readonly window: CodeWindow;
   private readonly observer: AgentStreamObserver;

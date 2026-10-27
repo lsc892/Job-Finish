@@ -1,8 +1,10 @@
+// 관찰한 Codex 실시간 이벤트를 해석하고 임시·하위 스레드를 제외해 세션에 반영한다.
 import type { AgentEvents, EventContext } from '../agent-provider';
 import { CodexAdapter } from './adapter';
 import type { RpcMessage } from '../transport';
 import { bound, identifier, record } from '../message';
 
+/** 관찰한 Codex 연결에서 알림 대상 스레드를 선별하고 실시간 이벤트를 세션에 반영한다. */
 export class CodexEvents implements AgentEvents {
   private readonly pendingThreads = new Map<string, boolean>();
   private readonly ignored = new Set<string>();

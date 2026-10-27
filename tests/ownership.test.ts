@@ -1,3 +1,4 @@
+// 창·연결·런타임별 독점 소유권과 소유자 복구·Windows 파일 잠금을 검증한다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';

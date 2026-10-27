@@ -1,3 +1,4 @@
+// Claude 실행·관찰 구성과 승인·질문 응답을 공통 제공자 계약에 연결한다.
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -7,6 +8,7 @@ import type { AgentEvents, AgentInteraction, EventContext, ExecutionContext } fr
 import { ClaudeExecution } from './execution';
 import { ClaudeEvents } from './events';
 
+/** Claude 프로세스 식별·실행·관찰 생성과 승인·질문 응답을 제공한다. */
 export class ClaudeProvider extends AgentProvider {
   readonly id = 'claude';
   readonly extensionId = 'anthropic.claude-code';

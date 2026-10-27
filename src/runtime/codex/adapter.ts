@@ -1,3 +1,4 @@
+// Codex 프로토콜 이벤트와 승인 응답을 공통 세션 상태로 변환한다.
 import type { Turn } from '../../protocol/v2/Turn';
 import type { PermissionsRequestApprovalParams } from '../../protocol/v2/PermissionsRequestApprovalParams';
 import type { PermissionsRequestApprovalResponse } from '../../protocol/v2/PermissionsRequestApprovalResponse';
@@ -36,7 +37,7 @@ export function codexApprovalResponse(message: RpcMessage, allow: boolean): unkn
   return { decision: allow ? 'accept' : 'decline' };
 }
 
-/** Converts Codex protocol events to Session updates for owned and observed executions. */
+/** 소유·관찰 실행의 Codex 프로토콜 이벤트를 공통 세션 상태로 변환한다. */
 export class CodexAdapter {
   constructor(readonly session: Session) {}
 

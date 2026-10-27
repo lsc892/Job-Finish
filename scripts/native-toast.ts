@@ -1,3 +1,4 @@
+// 실제 Windows 알림 전송과 선택한 VS Code 창의 클릭 활성화 결과를 기록한다.
 import { join, resolve } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';

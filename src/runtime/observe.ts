@@ -1,3 +1,4 @@
+// 현재 Extension Host의 제공자 자식 프로세스 입출력을 관찰해 실행 신호를 전달한다.
 import { ChildProcess } from 'node:child_process';
 import { isAbsolute, resolve } from 'node:path';
 import type { Writable } from 'node:stream';
@@ -10,7 +11,7 @@ export interface AgentRoot { provider: Provider; path: string }
 interface Spawnable { spawn: (...args: unknown[]) => unknown }
 const canonical = (path: string) => path.replace(/\\/g, '/').toLowerCase();
 
-/** Independent, bounded decoder: errors stop observation, never the original stream. */
+/** 관찰 스트림을 크기가 제한된 JSON 프레임으로 분리해 전달한다. */
 class Frames {
   private buffer = Buffer.alloc(0);
   private length = 0;
@@ -48,10 +49,8 @@ class Frames {
   get capacity(): number { return this.buffer.length; }
 }
 
-/** Observes agent children in this window's Extension Host, including children already alive.
- * Node's spawn method and active-handle discovery are internal compatibility points, not vendor APIs.
- * No polling, child creation, stream redirection, hooks, or provider configuration changes.
- */
+// Node's spawn method and active-handle discovery are internal compatibility points, not vendor APIs.
+/** 현재 Extension Host의 기존·신규 제공자 프로세스를 관찰하고 확인된 실행 신호를 전달한다. */
 export class AgentStreamObserver {
   private readonly connections = new Map<ChildProcess, { router: AgentEventRouter; dispose(): void; bytes(): number }>();
   private restoreSpawn?: () => void;

@@ -1,3 +1,4 @@
+// Claude SDK 질의와 도구 권한 요청의 수명을 세션 실행에 연결한다.
 import { randomUUID } from 'node:crypto';
 import type { Query, SDKMessage, SDKUserMessage, query } from '@anthropic-ai/claude-agent-sdk' with { "resolution-mode": "import" };
 import { Session } from '../../core/session';
@@ -6,6 +7,7 @@ import { acceptClaudeResult } from './adapter';
 import { ClaudePermissions, ClaudeTurnContext } from './permissions';
 
 export interface ClaudeOptions extends RuntimeOptions<SDKMessage> { maxTurns: number; session: Session; resume: boolean; createQuery?: typeof query }
+/** 소유한 Claude 세션의 SDK 질의·결과·도구 권한·중단 수명을 관리한다. */
 export class ClaudeExecution extends AgentRuntime {
   readonly session: Session;
   private query?: Query;

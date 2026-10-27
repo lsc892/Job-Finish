@@ -1,3 +1,4 @@
+// 실행 제공자·세션 소유권·저장된 연결을 조율하며 세션 자원을 관리한다.
 import { Session } from '../core/session';
 import type { Diagnostics, Provider, SessionBinding, Signal } from '../core/model';
 import type { Lease } from '../core/ownership';
@@ -30,7 +31,7 @@ interface SessionResources {
 interface OwnedSession extends ApplicationSession { resources: SessionResources }
 const SAVED_SESSION_LIMIT = 32;
 
-/** Owns executions and leases from factory invocation through release, including pending opens. */
+/** 생성 중인 연결을 포함해 세션 실행·소유권 임대·저장 기록의 수명을 관리한다. */
 export class ApplicationSessions {
   private readonly entries = new Map<string, OwnedSession>();
   private readonly opening = new Set<SessionResources>();

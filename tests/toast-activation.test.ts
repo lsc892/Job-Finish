@@ -1,3 +1,4 @@
+// 알림 활성화 채널의 연결 상한·유휴 종료·만료와 현재 소유권 확인을 검증한다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { connect, Socket } from 'node:net';

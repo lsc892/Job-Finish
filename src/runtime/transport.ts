@@ -1,3 +1,4 @@
+// 관리하는 자식 프로세스와 용량이 제한된 JSON Lines RPC 통신을 제공한다.
 import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { LIMITS } from '../core/model';
@@ -8,7 +9,9 @@ const PROCESS_SHUTDOWN_GRACE_MS = 1500;
 
 export type RpcId = string | number;
 export interface RpcMessage { id?: RpcId; method?: string; params?: unknown; result?: unknown; error?: { code: number; message: string; data?: unknown } }
+/** RPC 응답의 오류 코드와 메시지를 호출자에게 전달한다. */
 export class RpcError extends Error { constructor(readonly code: number, message: string) { super(message); } }
+/** 수신 바이트를 크기가 제한된 JSON Lines 메시지로 나누고 RPC 형식을 검증한다. */
 export class JsonLines {
   private partial = Buffer.alloc(0);
   private length = 0;
@@ -53,6 +56,7 @@ export class JsonLines {
   clear(): void { this.partial = Buffer.alloc(0); this.length = 0; }
   get bufferedBytes(): number { return this.length; }
 }
+/** 개수·바이트 상한 안에서 초기화 전 RPC 이벤트를 보관하고 순서대로 전달한다. */
 export class EventQueue {
   private items: RpcMessage[] = [];
   private bytes = 0;
@@ -70,6 +74,7 @@ export class EventQueue {
   get size(): number { return this.items.length; }
 }
 
+/** 관리하는 자식 프로세스와 RPC 요청·응답·알림 및 연결 종료를 처리한다. */
 export class StdioRpc {
   readonly connectionId = randomUUID();
   private child?: ChildProcessWithoutNullStreams;

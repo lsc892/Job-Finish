@@ -1,3 +1,4 @@
+# 등록된 격리 테스트 알림의 프로토콜 URI를 찾아 네이티브 활성화를 실행한다.
 param([Parameter(Mandatory=$true)][string]$NotificationId, [Parameter(Mandatory=$true)][string]$WindowInstanceId)
 $ErrorActionPreference = 'Stop'
 $deadline = [DateTime]::UtcNow.AddSeconds(5)

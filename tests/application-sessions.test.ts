@@ -1,3 +1,4 @@
+// 세션 열기·용량 제한·소유권 등록·실패 정리와 종료 경쟁의 일관성을 검증한다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ApplicationSessions } from '../src/application/sessions';

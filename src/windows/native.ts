@@ -1,3 +1,4 @@
+// Win32 창 조회·깜박임 호출과 현재 VS Code 창의 네이티브 바인딩을 제공한다.
 type Koffi = typeof import('koffi', { with: { 'resolution-mode': 'import' } });
 import { resolve } from 'node:path';
 import { Diagnostics } from '../core/model';
@@ -9,6 +10,7 @@ export interface NativeApi {
   flash(hwnd: bigint, invert: boolean): void;
   flashEx(hwnd: bigint, flags: number): void;
 }
+/** Win32 API로 창·프로세스 정보를 조회하고 작업표시줄 깜박임을 호출한다. */
 export class Win32 implements NativeApi {
   private readonly koffi: Koffi = require('koffi');
   private readonly user = this.koffi.load('user32.dll');
@@ -52,6 +54,7 @@ export class Win32 implements NativeApi {
   }
 }
 export interface WindowBinding extends NativeWindow { windowInstanceId: string; verifiedAt: string; method: 'focused-observation' }
+/** 안정된 포커스 관찰로 현재 VS Code 창의 네이티브 바인딩을 확인·검증한다. */
 export class WindowIdentity {
   binding?: WindowBinding;
   private epoch = 0;

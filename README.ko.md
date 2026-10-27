@@ -112,6 +112,10 @@ Codex 복구는 최근 512개 턴의 상태를 페이지별로 조회하고, 필
 
 현재 구현과 실제 검증 결과·미검증 항목은 [검증 보고서](docs/verification.md)에 기록합니다. 원래 기준은 [요구사항](docs/requirements-and-verification.md), 과거 실험은 [일지](docs/일지.md)를 참고하세요.
 
+## 코드 안내
+
+[소스 책임](src/README.md) · [빌드·검증 스크립트](scripts/README.md) · [테스트](tests/README.md) · [보조 도구](tools/README.md) · [리소스](resources/README.md) · [설계·검증 문서](docs/README.md) · [VS Code 구성](.vscode/README.md)
+
 ## 라이선스
 
 [MIT](LICENSE). 포함된 외부 런타임과 native 구성요소는 각각의 라이선스를 따릅니다.

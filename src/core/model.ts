@@ -1,3 +1,4 @@
+// 세션·알림의 공통 타입과 용량 상한·텍스트 제한·진단 기록을 정의한다.
 /** Stable provider ID, resolved and validated by AgentProviderRegistry. */
 export type Provider = string;
 export type Status = 'idle' | 'running' | 'completed' | 'error' | 'cancelled' | 'waitingForInput' | 'unknown';
@@ -33,6 +34,7 @@ export function toastText(text: string): string { const chars = Array.from(text)
 export const sessionKey = (b: Pick<SessionBinding, 'provider' | 'runtimeId' | 'sessionId'>): string => JSON.stringify([b.provider, b.runtimeId, b.sessionId]);
 export const isTerminal = (s: Status): s is TerminalStatus => s === 'completed' || s === 'error' || s === 'cancelled';
 
+/** 용량을 제한한 진단 메시지·구조화 이벤트를 보관하고 기록 콜백에 전달한다. */
 export class Diagnostics {
   readonly entries: { at: string; message: string }[] = [];
   readonly events: { at: string; event: string; [key: string]: unknown }[] = [];

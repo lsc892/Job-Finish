@@ -1,3 +1,4 @@
+// 격리된 VS Code 저장 위치에서 설치·업데이트와 VSIX 검증을 확인한다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';

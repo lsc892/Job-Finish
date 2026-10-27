@@ -1,6 +1,8 @@
+// 토스트 클릭을 수신하는 COM 서버와 활성화 콜백의 수명을 관리한다.
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 
+/** 토스트 COM 서버를 등록하고 STA 메시지 루프의 수명을 관리한다. */
 public static class ComActivator
 {
     internal static int Run()
@@ -35,6 +37,7 @@ public static class ComActivator
         finally { CoUninitialize(); }
     }
 
+    /** Windows가 요청한 토스트 활성화 콜백의 COM 인스턴스를 생성한다. */
     [ComVisible(true), ClassInterface(ClassInterfaceType.None)]
     public sealed class ToastFactory : StandardOleMarshalObject, IClassFactory
     {
@@ -50,6 +53,7 @@ public static class ComActivator
     }
 
     // Standard marshaling keeps the callback and its quit message on the host STA.
+    /** COM 토스트 활성화를 클릭 처리에 전달하고 서버 종료를 요청한다. */
     [ComVisible(true), ClassInterface(ClassInterfaceType.None)]
     public sealed class ToastCallback : StandardOleMarshalObject, INotificationActivationCallback
     {

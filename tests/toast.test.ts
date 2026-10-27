@@ -1,3 +1,4 @@
+// 실제 Windows 파이프와 제어된 도우미로 알림 전송·등록·클릭 승인·취소를 검증한다.
 // Real Windows pipe IO with a controlled native sender boundary.
 import test from 'node:test';
 import assert from 'node:assert/strict';

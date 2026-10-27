@@ -1,3 +1,4 @@
+// 완료된 실제 Codex 검증 세션의 이력 복원과 결과 조회·재알림 방지를 검증한다.
 // Read-only verification using completed probe sessions. Never starts another model turn.
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';

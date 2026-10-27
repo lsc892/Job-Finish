@@ -1,4 +1,5 @@
-﻿import { join } from 'node:path';
+﻿// 네이티브 도우미의 등록·토스트 전달·클릭 채널 수명을 조율한다.
+import { join } from 'node:path';
 import { Diagnostics, toastText } from '../core/model';
 import { ToastActivation, ToastRequest } from './toast-activation';
 import { ToastProcessPorts, ToastProcessRun, ToastProcessRunner } from './toast-process';
@@ -6,7 +7,7 @@ import { ToastProcessPorts, ToastProcessRun, ToastProcessRunner } from './toast-
 export type { ToastTarget, ToastRequest } from './toast-activation';
 export type { ToastProcessPorts } from './toast-process';
 const DELIVERY_EVENTS = ['toast.submitted', 'toast.history.confirmed', 'toast.history.error', 'toast.failed', 'toast.observation.complete'];
-/** The extension authorizes a click; the native toast callback activates its HWND. */
+/** 토스트 도우미 등록·전달 확인과 현재 알림의 클릭 채널 수명을 조율한다. */
 export class WindowsToast {
   static readonly appId = 'JobFinish.VSCode';
   private active?: { process?: ToastProcessRun; activation: ToastActivation; id: string; cancel?: () => void };

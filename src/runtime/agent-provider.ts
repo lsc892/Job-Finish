@@ -1,3 +1,4 @@
+// 제공자별 실행·관찰·입력 응답 계약과 제공자 등록·조회 기능을 정의한다.
 import { createHash } from 'node:crypto';
 import { existsSync, realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -33,7 +34,8 @@ export interface AgentInteraction {
   question(question: string, options: { label: string; description?: string }[], settings: QuestionOptions): Promise<string[] | undefined>;
 }
 
-/** Add a runtime folder and register its provider in providers.ts to support another agent. */
+// Add a runtime folder and register its provider in providers.ts to support another agent.
+/** 제공자별 실행·관찰 생성과 사용자 승인·질문 응답의 공통 계약을 제공한다. */
 export abstract class AgentProvider {
   abstract readonly id: Provider;
   abstract readonly extensionId: string;
@@ -61,6 +63,7 @@ export abstract class AgentProvider {
   }
 }
 
+/** 중복 없는 제공자·명령 등록을 검증하고 식별자·프로세스 인자로 제공자를 조회한다. */
 export class AgentProviderRegistry {
   private readonly providers = new Map<Provider, AgentProvider>();
   constructor(providers: readonly AgentProvider[]) {

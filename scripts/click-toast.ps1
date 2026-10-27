@@ -1,3 +1,4 @@
+# 격리 테스트 알림을 Windows UI 자동화로 찾아 클릭하고 선택적으로 진단 자료를 저장한다.
 param([Parameter(Mandatory=$true)][string]$ToastTitle, [string]$DiagnosticFile)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes

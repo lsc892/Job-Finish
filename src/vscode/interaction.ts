@@ -1,10 +1,11 @@
+// VS Code 대화상자로 작업·작업 폴더·제공자 입력 요청을 받는다.
 import * as vscode from 'vscode';
 import type { ApplicationSession } from '../application/sessions';
 import type { InputRequest } from '../core/model';
 import type { AgentInteraction, QuestionOptions } from '../runtime/agent-provider';
 import { agentProviders } from '../runtime/providers';
 
-/** VS Code dialogs for tasks, working directories and provider input requests. */
+/** 작업·폴더·승인·질문을 VS Code 입력 대화상자로 제공한다. */
 export class AgentInput implements AgentInteraction {
   async prompt(): Promise<string | undefined> {
     return vscode.window.showInputBox({ title: 'Job-Finish · Agent task', prompt: 'Run in this workspace. Tool approvals will appear in Answer Pending Request.', ignoreFocusOut: true, validateInput: value => value.trim() ? undefined : 'Enter a task' });

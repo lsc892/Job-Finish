@@ -1,3 +1,4 @@
+// 격리된 두 VS Code 창에서 알림 클릭의 원래 창 복귀와 창 상태 보존을 검증한다.
 import { build } from 'esbuild';
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';

@@ -1,3 +1,4 @@
+// 토스트 클릭 파이프에서 현재 알림의 활성화 권한과 실행 결과를 확인한다.
 import { randomUUID } from 'node:crypto';
 import { createServer, Server, Socket } from 'node:net';
 import { Diagnostics } from '../core/model';
@@ -12,7 +13,7 @@ const MAX_CLICK_SOCKETS = 4;
 const CLICK_SOCKET_TIMEOUT_MS = 5000;
 const MAX_CALLBACK_BYTES = 8192;
 
-/** A click channel outlives the delivery helper and owns its authorization state. */
+/** 알림별 클릭 채널을 유지하고 활성화 권한·결과를 검증한다. */
 export class ToastActivation {
   readonly pipe = `job-finish-${randomUUID()}`;
   private readonly sockets = new Set<Socket>();

@@ -1,3 +1,4 @@
+// 관찰 연결의 제공자 이벤트 처리기와 세션 수명을 연결한다.
 import { randomUUID } from 'node:crypto';
 import { Diagnostics, Provider, Signal } from '../core/model';
 import { Session } from '../core/session';
@@ -7,7 +8,7 @@ import { record } from './message';
 
 const MAX_OBSERVED_SESSIONS = 32;
 
-/** Owns connection/session lifetime; provider handlers interpret protocol messages. */
+/** 관찰 연결의 세션 수명을 관리하고 메시지 해석을 제공자 처리기에 위임한다. */
 export class AgentEventRouter {
   readonly connectionId = randomUUID();
   private readonly sessions = new Map<string, Session>();

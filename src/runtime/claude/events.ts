@@ -1,3 +1,4 @@
+// 관찰한 Claude 입출력에서 사용자 실행·도구 입력·결과·중단을 세션에 반영한다.
 import { randomUUID } from 'node:crypto';
 import type { SDKResultMessage } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
 import { LIMITS } from '../../core/model';
@@ -6,6 +7,7 @@ import type { AgentEvents, EventContext } from '../agent-provider';
 import { acceptClaudeResult } from './adapter';
 import { bound, identifier, record } from '../message';
 
+/** 관찰한 Claude 연결의 요청·입력 대기·결과·중단 확인을 세션 상태로 변환한다. */
 export class ClaudeEvents implements AgentEvents {
   private readonly pendingInterrupts = new Map<string, boolean>();
   private readonly queuedInputs: { id: string; supplied: boolean }[] = [];

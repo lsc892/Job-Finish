@@ -1,3 +1,4 @@
+// Codex 연결의 초기 이벤트 버퍼·응답 재전송·복구 병합·재시도·종료를 검증한다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';

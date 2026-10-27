@@ -1,3 +1,4 @@
+// 실제 Codex App Server의 질문·승인·권한·취소와 재연결 경로를 검증한다.
 // Opt-in App Server probes using the product transport, adapter, ownership and response path.
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';

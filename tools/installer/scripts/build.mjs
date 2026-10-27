@@ -1,3 +1,4 @@
+// 설치 CLI를 번들링하고 배포할 VSIX를 설치 패키지에 준비한다.
 import { build } from 'esbuild';
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';

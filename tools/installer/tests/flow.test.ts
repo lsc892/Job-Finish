@@ -1,3 +1,4 @@
+// 설치 상태·버전에 따른 처리 순서와 변경 차단 조건을 검증한다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';

@@ -1,3 +1,4 @@
+// 관찰한 Codex·Claude 이벤트의 알림 변환·격리·중복 제거·입력 수명을 검증한다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

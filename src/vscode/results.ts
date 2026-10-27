@@ -1,3 +1,4 @@
+// 최근 결과를 표시하고 미리보기가 잘린 경우 실행 제공자에서 전체 본문을 조회한다.
 import * as vscode from 'vscode';
 import type { Signal } from '../core/model';
 import type { ApplicationSessions } from '../application/sessions';

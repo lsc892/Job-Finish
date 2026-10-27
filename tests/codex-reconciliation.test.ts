@@ -1,3 +1,4 @@
+// Codex 이력 대조 중 소유권·연결 상실과 충돌 결과·미관찰 실행 처리를 검증한다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setImmediate as nextTick } from 'node:timers/promises';

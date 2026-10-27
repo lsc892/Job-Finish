@@ -1,3 +1,4 @@
+// 레거시 훅과 설치 폴더의 제거 계획을 만들고 검증·백업 후 적용한다.
 import TOML from '@iarna/toml';
 import { copyFileSync, lstatSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';

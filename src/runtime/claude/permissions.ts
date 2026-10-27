@@ -1,3 +1,4 @@
+// 현재 Claude 실행의 도구 권한 요청을 기다리고 사용자 응답·철회를 처리한다.
 import type { CanUseTool, PermissionResult } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
 import type { Session } from '../../core/session';
 import { LIMITS } from '../../core/model';
@@ -5,7 +6,7 @@ import { LIMITS } from '../../core/model';
 export interface ClaudeTurnContext { requestId: string; connectionId: string; acceptingInput: boolean }
 type ToolPermissionOptions = Parameters<CanUseTool>[2];
 
-/** Owns pending SDK permissions and abort listeners for the current execution. */
+/** 현재 실행에 연결된 SDK 도구 권한 요청의 사용자 응답·취소·정리를 관리한다. */
 export class ClaudePermissions {
   private readonly pending = new Map<string, { context: ClaudeTurnContext; resolve: (answer: PermissionResult) => void; cleanup: () => void }>();
 

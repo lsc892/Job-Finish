@@ -1,3 +1,4 @@
+// 세션 실행·복구·입력 응답 명령을 등록하고 사용자 입력 동안 세션 명령을 직렬화한다.
 import * as vscode from 'vscode';
 import type { ApplicationSession, ApplicationSessions } from '../application/sessions';
 import type { Provider } from '../core/model';
@@ -14,7 +15,7 @@ interface CommandPorts {
   changed(): void;
 }
 
-/** Registers commands and owns the per-session exclusion while a command awaits user input. */
+/** 세션 명령을 등록하고 사용자 입력을 기다리는 동안 같은 세션의 명령 중복을 막는다. */
 export class SessionCommands {
   private readonly busy = new Set<string>();
 

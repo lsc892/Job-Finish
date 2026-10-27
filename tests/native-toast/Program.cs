@@ -1,5 +1,7 @@
+// 격리 경로에서 네이티브 알림 바로가기의 이전·백업·반복 등록·타 앱 보호를 검증한다.
 using System.Security.Cryptography;
 
+/** 네이티브 알림 바로가기 이전·백업·중복 등록과 타 앱 보호를 검증한다. */
 internal static class RegistrationTests
 {
     static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }

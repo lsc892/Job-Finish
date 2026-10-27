@@ -1,3 +1,4 @@
+// 현재 연결에서 Codex 턴·항목 이력을 제한된 페이지로 조회한다.
 import type { ThreadItem } from '../../protocol/v2/ThreadItem';
 import type { Turn } from '../../protocol/v2/Turn';
 import type { ThreadTurnsListParams } from '../../protocol/v2/ThreadTurnsListParams';
@@ -11,7 +12,7 @@ const MAX_LOOKUP_PAGES = 64;
 const TURNS_PER_PAGE = 32;
 const ITEMS_PER_PAGE = 16;
 
-/** Bound every lookup independently of the total stored conversation size. */
+/** 연결 유효성과 조회 상한을 검증하며 Codex 턴·요청 식별자·최종 본문을 조회한다. */
 export class CodexHistory {
   private pages = 0;
   constructor(private rpc: Pick<StdioRpc, 'request'>, private threadId: string, private check: () => void) {}

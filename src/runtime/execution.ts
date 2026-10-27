@@ -1,3 +1,4 @@
+// 제공자 공통 실행 계약과 소유권 검증 기반 클래스를 정의한다.
 import type { Session } from '../core/session';
 
 /** Structural contract shared by built-in runtimes and independently registered providers. */
@@ -19,7 +20,7 @@ export interface RuntimeOptions<TEvent> {
   onEvent?: (message: TEvent) => void;
 }
 
-/** Shares ownership validation while each runtime retains its own connection and recovery policy. */
+/** 제공자 실행의 공통 계약을 제공하고 세션 소유권을 검증한다. */
 export abstract class AgentRuntime implements AgentExecution {
   abstract readonly session: Session | undefined;
   abstract run(prompt: string): Promise<void>;

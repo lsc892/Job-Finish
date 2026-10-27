@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// 명령 인수를 해석해 확장 설치·업데이트와 레거시 제거 흐름을 실행한다.
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';

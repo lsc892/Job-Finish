@@ -1,3 +1,4 @@
+// 실제 Claude SDK의 질문·승인·취소·턴 제한 경로를 임시 작업 공간에서 검증한다.
 // Opt-in actual SDK checks. Tool access is restricted to one question or one file in an owned temporary directory.
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';

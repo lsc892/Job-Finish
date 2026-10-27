@@ -1,3 +1,4 @@
+// 네이티브 도우미의 진단 프레임·종료·시간 제한·취소·정리 계약을 검증한다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';

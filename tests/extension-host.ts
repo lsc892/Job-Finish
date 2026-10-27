@@ -1,3 +1,4 @@
+// 실제 VS Code 확장 호스트에서 명령·외부 스트림·창별 결과·독점 소유권을 검증한다.
 import * as vscode from 'vscode';
 import assert from 'node:assert/strict';
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';

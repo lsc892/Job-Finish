@@ -1,3 +1,4 @@
+// 로컬 Windows VS Code에서 확장을 활성화하고 애플리케이션 수명을 연결한다.
 import * as vscode from 'vscode';
 import { Application } from './vscode/application';
 

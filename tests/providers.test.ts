@@ -1,3 +1,4 @@
+// 제3 제공자 등록·관찰·실행·입력 변환으로 공통 제공자 확장 경계를 검증한다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -14,7 +15,7 @@ import { AgentEventRouter } from '../src/runtime/event-router';
 import { AgentStreamObserver } from '../src/runtime/observe';
 import { binding } from './helpers';
 
-/** An independent third protocol exercises the public provider extension points. */
+/** 독립 합성 프로토콜로 제공자의 관찰·실행·입력 응답 확장 지점을 검증한다. */
 class SampleProvider extends AgentProvider {
   readonly id: string = 'sample';
   readonly extensionId = 'example.sample';
@@ -87,7 +88,9 @@ test('A third subclass is selected by the registry; unknown IDs and duplicate re
   assert.throws(() => registry.get('missing'), /Unsupported agent provider/);
   assert.throws(() => new AgentEventRouter('missing', 'w', 'r', () => {}, new Diagnostics()), /Unsupported agent provider/);
   assert.throws(() => new AgentProviderRegistry([sample, new SampleProvider()]), /Duplicate agent provider/);
-  const other = new class extends SampleProvider { readonly id = 'other'; }();
+  const other = new
+    /** 별도 제공자 ID와 중복 명령을 조합해 등록 거부를 검증한다. */
+    class extends SampleProvider { readonly id = 'other'; }();
   assert.throws(() => new AgentProviderRegistry([sample, other]), /Duplicate agent command/);
 });
 
@@ -181,12 +184,16 @@ test('Registered execution factories run a third agent and the real Codex stdio 
 
 test('Runtime identity is stable across canonical directory aliases and separates provider IDs and homes', () => {
   let directory = tmpdir();
-  const sample = new class extends SampleProvider { runtimeDirectory(): string { return directory; } }();
+  const sample = new
+    /** 런타임 홈을 바꾸어 경로 정규화와 런타임 식별자 분리를 검증한다. */
+    class extends SampleProvider { runtimeDirectory(): string { return directory; } }();
   const original = sample.runtimeId();
   directory += '/.';
   assert.equal(sample.runtimeId(), original);
   if (process.platform === 'win32') { directory = directory.toUpperCase(); assert.equal(sample.runtimeId(), original); }
   directory = resolve(tmpdir(), 'other-agent-home'); assert.notEqual(sample.runtimeId(), original);
-  const other = new class extends SampleProvider { readonly id = 'other'; }();
+  const other = new
+    /** 제공자 ID를 바꾸어 같은 홈의 런타임 식별자 분리를 검증한다. */
+    class extends SampleProvider { readonly id = 'other'; }();
   assert.notEqual(original, other.runtimeId());
 });

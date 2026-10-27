@@ -1,3 +1,4 @@
+// Claude SDK 결과의 실행 식별자를 검증하고 세션 본문·종료 상태로 변환한다.
 import type { SDKResultMessage } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
 import type { Session } from '../../core/session';
 

@@ -1,7 +1,9 @@
+// Windows 토스트를 제출하고 전달 오류와 알림 기록 확인 결과를 보고한다.
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Windows.UI.Notifications;
 
+/** 토스트 제출 후 WinRT 콜백과 알림 기록을 관찰해 전달 결과를 보고한다. */
 internal static class ToastDelivery
 {
     internal static void Show(ToastNotifier notifier, ToastNotification toast, Request request)

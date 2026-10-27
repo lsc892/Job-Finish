@@ -52,6 +52,10 @@ The root command forwards arguments to the standalone package. You can also run 
 
 The command removes Job-Finish hooks from user and selected project settings, backs up changed settings beside their originals, and removes verified legacy installation folders, the focus protocol and its Start Menu shortcut. It also checks `CLAUDE_CONFIG_DIR` and `CODEX_HOME` when set. `--dry-run` only previews changes; `--keep-files` removes hooks while retaining files and Windows registrations. Changed Codex TOML is reformatted without comments; its original text remains in the backup. Run with `--project` for each additional project installation. C# source projects and the current VS Code extension are preserved. If the old npm package was installed globally, remove it separately with `npm rm -g job-finish`.
 
+## Code guide
+
+[Source responsibilities (Korean)](src/README.md) · [Scripts](scripts/README.md) · [Tests](tests/README.md) · [Tools](tools/README.md) · [Resources](resources/README.md) · [Documents](docs/README.md) · [VS Code configuration](.vscode/README.md)
+
 ## License
 
 MIT License

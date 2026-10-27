@@ -1,3 +1,4 @@
+// 레거시 제거의 설정 보존·백업·경로 경계와 CLI 미리보기를 검증한다.
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';

@@ -1,3 +1,4 @@
+// 기존·신규 에이전트 스트림의 비파괴 관찰과 프레임 경계·종료·설정 전환을 검증한다.
 import test from 'node:test';
 import type { TestContext } from 'node:test';
 import assert from 'node:assert/strict';

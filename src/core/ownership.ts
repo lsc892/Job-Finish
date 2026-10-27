@@ -1,3 +1,4 @@
+// 창 사이 세션 소유권을 잠금 파일로 조율하고 체크포인트를 저장한다.
 import { createHash, randomUUID } from 'node:crypto';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -9,8 +10,7 @@ const hash = (s: string): string => createHash('sha256').update(s).digest('hex')
 function read(path: string): RecordData | undefined { try { return JSON.parse(readFileSync(path, 'utf8')) as RecordData; } catch { return undefined; } }
 function alive(pid: number): boolean { if (!Number.isInteger(pid) || pid <= 0) return true; try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code !== 'ESRCH'; } }
 
-/** A short exclusive gate serializes stale reclaim, creation and token-checked release.
- * Windows owns the gate handle lifetime; malformed owner records still fail closed. */
+/** 배타적 파일 잠금으로 창 사이 세션 소유권의 확보·회수·해제를 조율한다. */
 export class Ownership {
   private readonly root: string;
 
@@ -98,6 +98,7 @@ export class Ownership {
     });
   }
 }
+/** 소유권 토큰을 검증하며 세션 체크포인트의 저장·복원과 임대 해제를 관리한다. */
 export class Lease {
   private released = false;
   constructor(private paths: string[], private token: string, private releaseFn: () => void, private statePath: string) {}

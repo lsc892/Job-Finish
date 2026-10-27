@@ -60,3 +60,14 @@ npm pack ./tools/installer
 ```
 
 `job-finish-installer`를 npm에 게시한 뒤에는 `npx job-finish-installer@latest install` 또는 `npx job-finish-installer@latest update`로 실행할 수 있습니다. 기본 VSIX는 패키지에 포함된 파일입니다. CLI와 확장 버전은 각각 관리하며, 배포할 VSIX를 `build:installer`로 함께 갱신해야 합니다. `install`, `update`를 생략하면 `install`을 실행합니다. 현재 작업은 배포 준비까지이며 npm 게시나 실제 사용자 설치 변경은 수행하지 않습니다.
+
+## 코드 책임
+
+- [src/](src/README.md): 명령 입력·설치 계획·VS Code 실행·레거시 제거를 담당한다.
+- [scripts/](scripts/README.md): 배포 CLI와 포함할 VSIX를 준비한다.
+- [tests/](tests/README.md): 설치 흐름·레거시 제거·격리된 VS Code 설치를 검증한다.
+- [package.json](package.json): 독립 설치 패키지의 의존성·명령·배포 파일을 정의한다.
+- [package-lock.json](package-lock.json): 설치 도구의 npm 의존성 해석 결과와 무결성을 고정한다.
+- [tsconfig.json](tsconfig.json): 설치 소스와 테스트의 TypeScript 검사 규칙을 정의한다.
+- [LICENSE](LICENSE): 설치 도구의 배포·사용 허용 조건을 명시한다.
+- [일지.md](일지.md): 설치 도구의 구조와 기능 변경에 대한 의사결정을 기록한다.

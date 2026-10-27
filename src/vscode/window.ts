@@ -1,9 +1,10 @@
+// 현재 VS Code 창의 네이티브 식별·포커스 관찰·작업표시줄 깜박임을 연결한다.
 import * as vscode from 'vscode';
 import { Diagnostics } from '../core/model';
 import { Win32, WindowIdentity } from '../windows/native';
 import { FlashController } from '../windows/flash';
 
-/** Owns native window identity, focus observation and flashing for one VS Code window. */
+/** 한 VS Code 창의 네이티브 식별·포커스 관찰·깜박임 수명을 관리한다. */
 export class CodeWindow {
   private native?: Win32;
   private identity?: WindowIdentity;

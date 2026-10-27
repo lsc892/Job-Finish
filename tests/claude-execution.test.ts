@@ -1,3 +1,4 @@
+// 제어된 SDK Query로 Claude 실행의 입력·취소·종료·소유권 경계를 검증한다.
 // Synthetic SDK boundary tests: the product adapter runs against a controlled Query.
 import test from 'node:test';
 import assert from 'node:assert/strict';

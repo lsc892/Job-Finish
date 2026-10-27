@@ -1,3 +1,4 @@
+// VS Code 창의 세션·명령·알림 서비스를 구성하고 확장 API·진단·상태바를 관리한다.
 import * as vscode from 'vscode';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
@@ -12,7 +13,7 @@ import { showResults } from './results';
 
 const INITIAL_WINDOW_OBSERVATION_DELAY_MS = 750;
 
-/** Composes window services and owns the extension API, diagnostics and status bar. */
+/** 창별 서비스를 구성하고 확장 API·진단·상태바와 활성화·해제를 관리한다. */
 export class Application {
   readonly windowInstanceId = randomUUID();
   private readonly diagnostics = new Diagnostics(entry => this.output.appendLine(JSON.stringify(entry)));

@@ -1,3 +1,4 @@
+// Codex 저장 이력으로 확인된 실행과 시작 요청·충돌 결과를 대조한다.
 import type { Thread } from '../../protocol/v2/Thread';
 import type { Turn } from '../../protocol/v2/Turn';
 import type { Diagnostics } from '../../core/model';
@@ -5,7 +6,7 @@ import { CodexAdapter, codexId, codexObject, codexStatus } from './adapter';
 import { CodexHistory } from './history';
 import type { RpcMessage, StdioRpc } from '../transport';
 
-/** Reconciles saved history without admitting unobserved turns or delivering conflicting results. */
+/** 저장 이력을 허용된 실행과 대조해 시작 요청·종료 상태·최종 본문을 복구한다. */
 export class CodexReconciliation {
   private reconcilingConflict = false;
 

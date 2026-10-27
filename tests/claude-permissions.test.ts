@@ -1,3 +1,4 @@
+// Claude 승인 콜백의 응답·철회·상한·체크포인트 실패와 리스너 정리를 검증한다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getEventListeners } from 'node:events';

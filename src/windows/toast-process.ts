@@ -1,3 +1,4 @@
+// 네이티브 토스트 도우미 프로세스의 입출력·시간 제한·종료를 관리한다.
 import { ChildProcess, spawn } from 'node:child_process';
 import { Diagnostics } from '../core/model';
 
@@ -8,7 +9,7 @@ const HELPER_TIMEOUT_MS = 15_000;
 const MAX_STDERR_CHARACTERS = 8192;
 const MAX_DIAGNOSTIC_BYTES = 32768;
 
-/** Owns every helper until its streams close, including canceled and registration helpers. */
+/** 등록·전달 도우미의 입출력·시간 제한을 처리하고 스트림 종료까지 프로세스를 관리한다. */
 export class ToastProcessRunner {
   private readonly children = new Set<ChildProcess>();
   constructor(private binary: string, private diagnostics: Diagnostics, private ports: ToastProcessPorts = processes) {}

@@ -1,3 +1,4 @@
+// 실제 stdio 전송과 합성 App Server로 Codex 실행·입력·취소·이력 복원을 통합 검증한다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';

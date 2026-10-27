@@ -1,3 +1,4 @@
+// 대량 세션 이벤트와 JSONL 디코딩 후 보관 상태와 힙 증가가 제한되는지 검증한다.
 import { Session } from '../src/core/session';
 import { Diagnostics, LIMITS } from '../src/core/model';
 import { JsonLines } from '../src/runtime/transport';

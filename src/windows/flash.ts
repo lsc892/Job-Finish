@@ -1,6 +1,8 @@
+// 검증된 창의 작업표시줄 깜박임을 포커스·알림 식별자·제한 시간에 따라 관리한다.
 import { NativeApi, WindowBinding } from './native';
 export interface FlashClock { now(): number; every(fn: () => void, ms: number): unknown; clear(timer: unknown): void }
 const clock: FlashClock = { now: Date.now, every: (fn, ms) => setInterval(fn, ms), clear: timer => clearInterval(timer as NodeJS.Timeout) };
+/** 검증된 창의 깜박임을 시작하고 포커스·만료·중지 요청에 따라 해제한다. */
 export class FlashController {
   private active?: { binding: WindowBinding; notificationId: string; timer: unknown };
   constructor(private native: NativeApi, private focused: () => boolean, private time: FlashClock = clock) {}

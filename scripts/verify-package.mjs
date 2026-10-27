@@ -1,3 +1,4 @@
+// VSIX를 격리 프로필에 설치해 번들 최신성·런타임 의존성·네이티브 도우미 포함을 검증한다.
 import { createRequire } from 'node:module';
 import { mkdtempSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';

@@ -1,3 +1,4 @@
+// Codex 스레드·턴 명령을 세션·연결·이력 복구와 조율한다.
 import { randomUUID } from 'node:crypto';
 import type { Thread } from '../../protocol/v2/Thread';
 import type { Turn } from '../../protocol/v2/Turn';
@@ -18,7 +19,7 @@ export interface CodexOptions extends CodexConnectionOptions, RuntimeOptions<Rpc
   createSession: (sessionId: string, connectionId: string) => Session;
 }
 
-/** Coordinates thread and turn commands; protocol, connection and history have separate owners. */
+/** Codex 스레드·턴 명령을 세션 상태·연결·이력 복구와 조율한다. */
 export class CodexExecution extends AgentRuntime {
   session: Session | undefined;
   private adapter?: CodexAdapter;

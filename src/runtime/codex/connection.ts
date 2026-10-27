@@ -1,3 +1,4 @@
+// Codex RPC 연결의 초기화·대기 이벤트·응답 캐시·재연결을 관리한다.
 import type { InitializeParams } from '../../protocol/InitializeParams';
 import { Diagnostics, LIMITS } from '../../core/model';
 import { EventQueue, RpcMessage, StdioRpc } from '../transport';
@@ -14,7 +15,7 @@ interface ConnectionEvents {
 const MAX_RECOVERY_ATTEMPTS = 3;
 const RECOVERY_BASE_DELAY_MS = 1000;
 
-/** Owns the transport, readiness queue and response cache for each connection generation. */
+/** 연결 세대별 RPC 초기화·이벤트 대기·응답 캐시·복구 재시도를 관리한다. */
 export class CodexConnection {
   private transport?: StdioRpc;
   private readonly queue = new EventQueue();

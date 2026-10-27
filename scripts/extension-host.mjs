@@ -1,3 +1,4 @@
+// 격리된 단일·이중 VS Code 확장 호스트를 실행하고 창별 검증 결과를 수집한다.
 import { build } from 'esbuild';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, copyFileSync } from 'node:fs';

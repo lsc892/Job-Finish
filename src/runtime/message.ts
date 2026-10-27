@@ -1,3 +1,4 @@
+// 관찰 메시지의 객체·식별자를 검증하고 중복 추적 컬렉션의 크기를 제한한다.
 import { LIMITS } from '../core/model';
 
 export const record = (value: unknown): Record<string, unknown> | undefined =>
