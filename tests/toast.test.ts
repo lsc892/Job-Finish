@@ -10,10 +10,10 @@ import { Diagnostics } from '../src/core/model';
 
 const pause = (ms = 10) => new Promise(resolve => setTimeout(resolve, ms));
 async function until(fn: () => boolean) { const end = Date.now() + 2000; while (!fn()) { if (Date.now() > end) throw new Error('Native toast pipe timeout'); await pause(); } }
-function setup(exitCode = 0, options: { registrationFailures?: number; holdRegistration?: boolean; delivery?: 'silent' | 'failed' | 'history-error' } = {}) {
+function setup(exitCode = 0, options: { registrationFailures?: number; holdRegistration?: boolean; holdDelivery?: boolean; delivery?: 'silent' | 'failed' | 'history-error' } = {}) {
   const launched: { args: string[]; payload: Record<string, unknown>; child: EventEmitter; killed: boolean }[] = [];
   const diagnostics = new Diagnostics(); let clicks = 0; let allowed = true;
-  let registrations = 0; let releaseRegistration: (() => void) | undefined;
+  let registrations = 0; let releaseRegistration: (() => void) | undefined; let releaseDelivery: (() => void) | undefined;
   const ports: ToastProcessPorts = { launch: (_binary, args) => {
     const child = new EventEmitter(); const stdin = new PassThrough(); const stderr = new PassThrough(); const stdout = new PassThrough();
     const item = { args, payload: {} as Record<string, unknown>, child, killed: false };
@@ -45,6 +45,7 @@ function setup(exitCode = 0, options: { registrationFailures?: number; holdRegis
     stdin.on('finish', () => {
       if (!register) item.payload = JSON.parse(input);
       if (register && options.holdRegistration) releaseRegistration = finish;
+      else if (!register && options.holdDelivery) releaseDelivery = finish;
       else setImmediate(finish);
     });
     Object.assign(child, { stdin, stderr, stdout, kill: () => { item.killed = true; setImmediate(() => child.emit('close', null, 'SIGTERM')); } });
@@ -53,7 +54,7 @@ function setup(exitCode = 0, options: { registrationFailures?: number; holdRegis
   const toast = new WindowsToast('JobFinish.Native.exe', diagnostics, ports);
   const request = (id: string) => ({ notificationId: id, windowInstanceId: 'window-A', title: 'test', message: '한글😀'.repeat(100), appId: WindowsToast.appId,
     target: { hwnd: '123456', pid: 42, executable: 'C:\\Code.exe' }, canActivate: () => allowed, onClick: () => { clicks++; } });
-  return { toast, launched, diagnostics, request, clicks: () => clicks, deny: () => { allowed = false; }, registrations: () => registrations, releaseRegistration: () => releaseRegistration?.() };
+  return { toast, launched, diagnostics, request, clicks: () => clicks, deny: () => { allowed = false; }, registrations: () => registrations, releaseRegistration: () => releaseRegistration?.(), releaseDelivery: () => releaseDelivery?.() };
 }
 async function client(pipe: unknown): Promise<Socket> {
   const socket = connect(`\\\\.\\pipe\\${String(pipe)}`); socket.on('error', () => {});
@@ -180,4 +181,25 @@ test('History observation and successful submission do not claim a visible banne
   const observed = f.diagnostics.events.find(event => event.event === 'toast.observation.complete');
   assert.equal(observed?.historyConfirmed, false); assert.equal(observed?.bannerVerified, false);
   assert.equal(observed?.notificationState, 1);
+});
+
+test('Replacing, stopping or disposing an in-flight sender resolves its show and cancels that helper', { skip: process.platform !== 'win32' }, async t => {
+  const f = setup(0, { holdDelivery: true }); t.after(() => f.toast.dispose());
+  const old = f.toast.show(f.request('old-sender'));
+  await until(() => f.launched.length === 1);
+  const next = f.toast.show(f.request('next-sender'));
+  await old;
+  assert.equal(f.launched[0]!.killed, true);
+  await until(() => f.launched.length === 2);
+  f.releaseDelivery();
+  await next;
+  assert.equal(f.launched[1]!.killed, false, 'delivery close does not cancel the completed helper');
+  for (const action of ['stop', 'dispose'] as const) {
+    const count = f.launched.length;
+    const pending = f.toast.show(f.request(action));
+    await until(() => f.launched.length > count);
+    f.toast[action]();
+    await pending;
+    assert.equal(f.launched[count]!.killed, true);
+  }
 });

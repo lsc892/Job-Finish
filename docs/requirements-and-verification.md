@@ -29,7 +29,7 @@ flowchart TD
 
 에이전트별 프로세스 식별·이벤트 해석기 생성·직접 실행 생성·승인 및 질문 응답 변환은 `AgentProvider` 추상 클래스를 상속한 Provider가 담당한다. 등록 목록은 `src/runtime/providers.ts` 한 곳이며, 공통 observer·router·애플리케이션은 이 목록을 사용한다. 연결별 프로토콜 상태는 Provider가 생성한 해석기에 두고, 세션·소유권·알림 수명은 공통 계층이 관리한다. 새 에이전트는 상속 구현과 등록으로 추가하며, 명령 팔레트·설정 공개에 필요한 VS Code 정적 선언은 별도다. 상세 계약은 [에이전트 Provider 확장](agent-providers.md)을 따른다.
 
-확장 조립부는 설정·명령·창 이벤트·입력 UI를 연결하고, 직접 실행의 세션 수명은 [ApplicationSessions](../src/application/sessions.ts)에 맡긴다. 이 객체는 VS Code에 의존하지 않으며 실행·Session·lease와 연결 중 자원을 함께 소유한다.
+확장 조립부는 설정·명령·창 이벤트·입력 UI를 연결하고, 직접 실행의 세션 수명은 [ApplicationSessions](../src/application/sessions.ts)에 맡긴다. 이 객체는 VS Code에 의존하지 않으며 실행·Session·lease와 연결 중 자원을 함께 소유한다. Windows 알림은 [WindowsToast](../src/windows/toast.ts)가 등록·세대·교체를 조율하고, [ToastProcessRunner](../src/windows/toast-process.ts)가 helper별 입출력·완료·취소를, [ToastActivation](../src/windows/toast-activation.ts)이 클릭 pipe·socket·만료·승인을 소유한다. 전송 helper가 종료돼도 클릭 채널은 유지되며, 하위 객체는 확장이나 facade의 내부 상태에 의존하지 않는다.
 
 확장 진입점 `src/extension.ts`는 지원 환경과 활성화·해제를 담당한다. `src/vscode/application.ts`가 구체 객체와 공개 API·상태 표시를 조립하며, 같은 폴더의 `commands.ts`·`interaction.ts`·`results.ts`가 명령·입력·결과 UI를, `notifications.ts`·`window.ts`가 관찰·신호 전달·설정과 native 창 식별·flash를 맡는다. 하위 모듈은 조립부의 비공개 상태를 참조하지 않는다.
 
