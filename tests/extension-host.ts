@@ -75,7 +75,13 @@ export async function runWithApi(api: Api, root: string, role: string): Promise<
         checks: ['windowRouting', 'exclusiveOwnership'], nativeChecks: canFocusNative ? 'See both window focus flags' : 'SKIPPED: Windows foreground activation refused; manual desktop verification required' }, null, 2));
       return;
     }
-    const commands = await vscode.commands.getCommands(true); assert.ok(commands.includes('jobFinish.runCodex')); assert.ok(commands.includes('jobFinish.respond'));
+    const commands = await vscode.commands.getCommands(true);
+    for (const command of ['runCodex', 'runClaude', 'continue', 'resume', 'cancel', 'respond', 'reconnect', 'detach', 'results', 'bindWindow', 'stopFlash', 'diagnostics']) {
+      assert.ok(commands.includes(`jobFinish.${command}`), `Missing command: ${command}`);
+    }
+    await vscode.commands.executeCommand('jobFinish.stopFlash');
+    assert.equal(api.test.flashId(), undefined);
+    await vscode.commands.executeCommand('jobFinish.diagnostics');
     const session = await api.test.open('codex', vscode.workspace.workspaceFolders![0]!.uri.fsPath);
     await api.test.run(session, 'EXTENSION_HOST_OK');
     await until(() => api.snapshot().results.length === 1);
