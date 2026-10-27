@@ -106,3 +106,30 @@ test('Existing Claude SDK JSON streams route actual results while leaving the or
   assert.equal(signals[0]!.provider, 'claude'); assert.equal(diagnostics.entries.length, 0);
   assert.equal(Buffer.concat(bytes).toString('utf8'), events.map(e => JSON.stringify(e) + '\n').join(''));
 });
+
+test('Existing streams tolerate one initial partial frame, then detach on malformed JSON without changing bytes', async t => {
+  const signals: Signal[] = [];
+  const diagnostics = new Diagnostics();
+  const child = spawn(process.execPath, [agent, 'app-server'], { stdio: 'pipe', windowsHide: true });
+  cleanup(t, child);
+  const bytes: Buffer[] = [];
+  child.stdout.on('data', chunk => bytes.push(chunk));
+  const observer = new AgentStreamObserver('window', () => [{ provider: 'codex', path: resolve('tests/fixtures') }],
+    signal => signals.push(signal), diagnostics);
+  t.after(() => observer.dispose());
+  observer.start();
+  assert.equal(observer.snapshot().connections.length, 1);
+
+  const partialFrame = '\npartial-json}\n\n';
+  child.stdin.write(JSON.stringify({ raw: partialFrame }) + '\n');
+  child.stdin.write(packet('after-partial'));
+  await until(() => signals.length === 1);
+  assert.equal(signals[0]!.turnId, 'after-partial');
+  assert.equal(diagnostics.entries.length, 0);
+  assert.equal(Buffer.concat(bytes).toString('utf8'), partialFrame + events('after-partial').map(event => JSON.stringify(event) + '\n').join(''));
+
+  child.stdin.write(JSON.stringify({ raw: '{malformed}\n' }) + '\n');
+  await until(() => observer.snapshot().connections.length === 0);
+  assert.equal(child.killed, false);
+  assert.match(diagnostics.entries[0]!.message, /stopped/);
+});

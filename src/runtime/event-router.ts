@@ -3,7 +3,7 @@ import { Diagnostics, Provider, Signal } from '../core/model';
 import { Session } from '../core/session';
 import type { AgentEvents, AgentProviderRegistry } from './agent-provider';
 import { agentProviders } from './providers';
-import { record } from './providers/message';
+import { record } from './message';
 
 const MAX_OBSERVED_SESSIONS = 32;
 
@@ -30,19 +30,20 @@ export class AgentEventRouter {
   }
   private session(id: string): Session | undefined {
     if (this.disposed || this.isOwned(this.provider, id)) return;
-    let session = this.sessions.get(id);
-    if (!session) {
-      if (this.sessions.size >= MAX_OBSERVED_SESSIONS) {
-        const idle = [...this.sessions].find(([, s]) => s.turns.size === 0 && s.requests.size === 0);
-        if (!idle) throw new Error('Observed session limit exceeded');
-        this.sessions.delete(idle[0]);
-      }
-      session = new Session({ windowInstanceId: this.windowInstanceId, provider: this.provider, runtimeId: this.runtimeId,
-        connectionId: this.connectionId, sessionId: id, source: 'verifiedIntegration' },
-      () => !this.disposed && !this.isOwned(this.provider, id), () => {}, this.emit, this.diagnostics);
-      this.sessions.set(id, session);
-    }
+    const existing = this.sessions.get(id);
+    if (existing) return existing;
+    this.makeRoomForSession();
+    const session = new Session({ windowInstanceId: this.windowInstanceId, provider: this.provider, runtimeId: this.runtimeId,
+      connectionId: this.connectionId, sessionId: id, source: 'verifiedIntegration' },
+    () => !this.disposed && !this.isOwned(this.provider, id), () => {}, this.emit, this.diagnostics);
+    this.sessions.set(id, session);
     return session;
+  }
+  private makeRoomForSession(): void {
+    if (this.sessions.size < MAX_OBSERVED_SESSIONS) return;
+    const idle = [...this.sessions].find(([, session]) => session.turns.size === 0 && session.requests.size === 0);
+    if (!idle) throw new Error('Observed session limit exceeded');
+    this.sessions.delete(idle[0]);
   }
   snapshot() { return { provider: this.provider, connectionId: this.connectionId, sessions: this.sessions.size,
     activeTurns: [...this.sessions.values()].reduce((count, s) => count + s.turns.size, 0) }; }

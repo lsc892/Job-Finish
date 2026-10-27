@@ -2,6 +2,10 @@ import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { LIMITS } from '../core/model';
 
+const INITIAL_MESSAGE_CAPACITY_BYTES = 4096;
+const RPC_TIMEOUT_MS = 30_000;
+const PROCESS_SHUTDOWN_GRACE_MS = 1500;
+
 export type RpcId = string | number;
 export interface RpcMessage { id?: RpcId; method?: string; params?: unknown; result?: unknown; error?: { code: number; message: string; data?: unknown } }
 export class RpcError extends Error { constructor(readonly code: number, message: string) { super(message); } }
@@ -40,7 +44,7 @@ export class JsonLines {
     const required = this.length + chunk.length;
     if (required > this.limit) throw new Error('JSON-RPC message exceeds 1 MiB limit');
     if (required > this.partial.length) {
-      const next = Buffer.allocUnsafe(Math.min(this.limit, Math.max(required, 4096, this.partial.length * 2)));
+      const next = Buffer.allocUnsafe(Math.min(this.limit, Math.max(required, INITIAL_MESSAGE_CAPACITY_BYTES, this.partial.length * 2)));
       this.partial.copy(next, 0, 0, this.length); this.partial = next;
     }
     chunk.copy(this.partial, this.length); this.length = required;
@@ -58,7 +62,9 @@ export class EventQueue {
     this.items.push({ message, bytes }); this.bytes += bytes;
   }
   drain(handle: (message: RpcMessage) => void): void {
-    const items = this.items; this.clear(); for (const { message } of items) handle(message);
+    const items = this.items;
+    this.clear();
+    for (const { message } of items) handle(message);
   }
   clear(): void { this.items = []; this.bytes = 0; }
   get size(): number { return this.items.length; }
@@ -89,7 +95,12 @@ export class StdioRpc {
     if (this.pending.size >= LIMITS.requests) return Promise.reject(new Error('RPC pending request limit exceeded'));
     const id = randomUUID();
     return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => { this.pending.delete(id); const error = new Error(`RPC timeout: ${method}; outcome unknown`); reject(error); this.fail(error); }, 30_000);
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        const error = new Error(`RPC timeout: ${method}; outcome unknown`);
+        reject(error);
+        this.fail(error);
+      }, RPC_TIMEOUT_MS);
       this.pending.set(id, { resolve: value => resolve(value as T), reject, timer });
       try { this.write({ id, method, params }); } catch (e) { this.fail(e); }
     });
@@ -109,10 +120,18 @@ export class StdioRpc {
     if (message.id === undefined) throw new Error('RPC response has no request id');
     const pending = this.pending.get(message.id);
     if (!pending) { this.diagnostic('Response to unknown RPC request'); return; }
-    clearTimeout(pending.timer); this.pending.delete(message.id);
-    if (message.error) pending.reject(new RpcError(message.error.code, message.error.message));
-    else if ('result' in message) pending.resolve(message.result);
-    else { pending.reject(new Error('Malformed RPC response')); throw new Error('Malformed RPC response'); }
+    clearTimeout(pending.timer);
+    this.pending.delete(message.id);
+    if (message.error) {
+      pending.reject(new RpcError(message.error.code, message.error.message));
+      return;
+    }
+    if ('result' in message) {
+      pending.resolve(message.result);
+      return;
+    }
+    pending.reject(new Error('Malformed RPC response'));
+    throw new Error('Malformed RPC response');
   }
   private fail(value: unknown): void {
     if (this.closed) return;
@@ -121,15 +140,23 @@ export class StdioRpc {
     try { this.disconnected(error); } catch (failure) { this.diagnostic(`Disconnect cleanup failed: ${String(failure)}`); }
   }
   dispose(): void {
-    if (this.closed) return; this.closed = true; this.decoder.clear();
-    for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new Error('Connection closed; outcome unknown')); } this.pending.clear();
-    const child = this.child;
-    if (child) {
-      child.stdin.end(); // Give the owned App Server time to close its SDK/MCP children on EOF.
-      if (child.exitCode === null && child.signalCode === null) {
-        const force = setTimeout(() => child.kill(), 1500); force.unref();
-        child.once('exit', () => clearTimeout(force));
-      }
+    if (this.closed) return;
+    this.closed = true;
+    this.decoder.clear();
+    for (const pending of this.pending.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error('Connection closed; outcome unknown'));
     }
+    this.pending.clear();
+    this.closeOwnedProcess();
+  }
+  private closeOwnedProcess(): void {
+    const child = this.child;
+    if (!child) return;
+    child.stdin.end(); // Give the owned App Server time to close its SDK/MCP children on EOF.
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    const force = setTimeout(() => child.kill(), PROCESS_SHUTDOWN_GRACE_MS);
+    force.unref();
+    child.once('exit', () => clearTimeout(force));
   }
 }

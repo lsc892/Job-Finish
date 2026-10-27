@@ -1,6 +1,36 @@
 # 에이전트 Provider 확장
 
-에이전트별 처리는 `src/runtime/agent-provider.ts`의 `AgentProvider`를 상속한다. 기본 구현은 `src/runtime/providers/codex.ts`, `claude.ts`이며, 등록 위치는 `src/runtime/providers/index.ts` 한 곳이다.
+에이전트별 처리는 `src/runtime/agent-provider.ts`의 `AgentProvider`를 상속한다. 기본 구현은 `src/runtime/codex/provider.ts`와 `src/runtime/claude/provider.ts`이며, 등록 위치는 `src/runtime/providers.ts` 한 곳이다. 실행·관찰 이벤트·입력 변환을 각 런타임 폴더에서 찾을 수 있도록 배치한다.
+
+```text
+runtime/
+  agent-provider.ts       Provider·관찰·입력 계약과 등록 목록 타입
+  execution.ts            AgentExecution 계약·공통 옵션·AgentRuntime 추상 클래스
+  providers.ts            Codex·Claude 등록
+  event-router.ts         공통 세션 라우팅
+  observe.ts              공통 프로세스 관찰
+  message.ts              관찰 메시지 검증·상한
+  transport.ts            JSON-RPC 전송
+  codex/
+    index.ts              공개 export
+    provider.ts           생성·프로세스 식별·입력 변환
+    events.ts             관찰한 App Server 이벤트
+    execution.ts          직접 실행 조율
+    adapter.ts            프로토콜 → Session 변환
+    connection.ts         stdio 연결·복구·큐·응답 캐시
+    history.ts            페이지 조회
+    reconciliation.ts     이력·충돌 대조
+    executable.ts         Codex 실행 파일 선택
+  claude/
+    index.ts              공개 export
+    provider.ts           생성·프로세스 식별·입력 변환
+    events.ts             관찰한 SDK JSON 이벤트
+    execution.ts          SDK query 실행·결과·취소 수명
+    adapter.ts            결과 → Session 변환
+    permissions.ts        승인·질문 대기·abort 구독·응답 정리
+```
+
+두 실행체는 `execution.ts`의 `AgentRuntime`을 상속해 소유권 검사를 공유하고 `RuntimeOptions<TEvent>`를 사용한다. 프로토콜·이벤트 큐·복구·취소 확인은 각 런타임이 구현한다. `AgentExecution`은 구조적 계약으로 유지하므로 별도 Provider는 상속 없이 계약을 구현해 등록할 수도 있다. 기존 `runtime/codex`·`runtime/claude` import는 각 폴더의 `index.ts`가 제공한다. 구체 모듈끼리는 공개 index를 거치지 않아 순환 의존을 만들지 않는다.
 
 ```text
 등록된 AgentProvider
@@ -13,9 +43,9 @@
 
 ## 새 에이전트 추가
 
-1. `src/runtime/providers/<agent>.ts`에 `AgentProvider` 상속 클래스를 만든다.
+1. `src/runtime/<agent>/provider.ts`에 `AgentProvider` 상속 클래스를 만들고 같은 폴더에 실행·이벤트 해석기를 둔다.
 2. 식별 정보와 아래 메소드를 구현한다.
-3. `providers/index.ts`의 `AgentProviderRegistry` 생성 목록에 인스턴스를 추가한다.
+3. `providers.ts`의 `AgentProviderRegistry` 생성 목록에 인스턴스를 추가한다.
 4. 명령 팔레트에 실행 명령을 공개하거나 설정을 추가할 때는 `package.json`의 `contributes.commands`와 `contributes.configuration`도 선언한다. VS Code의 정적 선언은 Provider 등록과 별도다.
 
 | 구현 대상 | 책임 |

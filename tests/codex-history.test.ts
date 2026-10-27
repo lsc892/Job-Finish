@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CodexHistory } from '../src/runtime/codex-history';
+import { CodexHistory } from '../src/runtime/codex/history';
 import { StdioRpc } from '../src/runtime/transport';
 
 function history(reply: (params: unknown) => unknown, check = () => {}) {

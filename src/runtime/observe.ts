@@ -18,16 +18,22 @@ class Frames {
   constructor(private receive: (value: unknown) => void, private allowPartialStart: boolean) {}
   push(chunk: Buffer): void {
     let start = 0;
-    for (let at = 0; at < chunk.length; at++) if (chunk[at] === 10) {
-      this.append(chunk.subarray(start, at)); start = at + 1;
-      if (!this.length) continue;
-      let value: unknown;
-      try { value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(this.buffer.subarray(0, this.length))); }
-      catch (error) { if (!this.first || !this.allowPartialStart) throw error; }
-      this.first = false; this.length = 0;
-      if (value !== undefined) this.receive(value);
+    for (let at = 0; at < chunk.length; at++) {
+      if (chunk[at] !== 10) continue;
+      this.append(chunk.subarray(start, at));
+      start = at + 1;
+      this.receiveFrame();
     }
     this.append(chunk.subarray(start));
+  }
+  private receiveFrame(): void {
+    if (!this.length) return;
+    let value: unknown;
+    try { value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(this.buffer.subarray(0, this.length))); }
+    catch (error) { if (!this.first || !this.allowPartialStart) throw error; }
+    this.first = false;
+    this.length = 0;
+    if (value !== undefined) this.receive(value);
   }
   private append(chunk: Buffer): void {
     const length = this.length + chunk.length;
@@ -58,9 +64,14 @@ export class AgentStreamObserver {
   start(): void {
     if (this.enabled) return;
     this.enabled = true;
+    if (!this.observeFutureProcesses()) return;
+    this.discoverExistingProcesses();
+  }
+
+  private observeFutureProcesses(): boolean {
     const prototype = ChildProcess.prototype as unknown as Spawnable;
     const original = prototype.spawn;
-    if (typeof original !== 'function') { this.enabled = false; this.diagnostics.add('Automatic observation unavailable: Node spawn method missing'); return; }
+    if (typeof original !== 'function') { this.enabled = false; this.diagnostics.add('Automatic observation unavailable: Node spawn method missing'); return false; }
     const observer = this;
     function spawn(this: ChildProcess, ...args: unknown[]): unknown {
       const result = Reflect.apply(original, this, args);
@@ -71,8 +82,12 @@ export class AgentStreamObserver {
       return result;
     }
     try { prototype.spawn = spawn; }
-    catch (error) { this.enabled = false; this.diagnostics.add(`Automatic observation unavailable: ${error}`); return; }
+    catch (error) { this.enabled = false; this.diagnostics.add(`Automatic observation unavailable: ${error}`); return false; }
     this.restoreSpawn = () => { if (prototype.spawn === spawn) prototype.spawn = original; };
+    return true;
+  }
+
+  private discoverExistingProcesses(): void {
     // Existing stdio handles belong to this Extension Host, so they already identify the window.
     const handles = (process as unknown as { _getActiveHandles?: () => unknown[] })._getActiveHandles;
     if (!handles) this.diagnostics.add('Existing process discovery unavailable in this Node runtime');

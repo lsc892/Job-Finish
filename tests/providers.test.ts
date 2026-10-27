@@ -7,6 +7,7 @@ import { Diagnostics, InputRequest, Signal } from '../src/core/model';
 import { Session } from '../src/core/session';
 import { Notifications } from '../src/core/notifications';
 import { AgentProvider, AgentProviderRegistry } from '../src/runtime/agent-provider';
+import { AgentRuntime } from '../src/runtime/execution';
 import type { AgentEvents, AgentExecution, AgentInteraction, EventContext, ExecutionContext } from '../src/runtime/agent-provider';
 import { agentProviders } from '../src/runtime/providers';
 import { AgentEventRouter } from '../src/runtime/event-router';
@@ -164,12 +165,14 @@ test('Registered execution factories run a third agent and the real Codex stdio 
   const registry = new AgentProviderRegistry([...agentProviders.all(), new SampleProvider()]);
   for (const id of ['sample', 'codex']) {
     const execution = registry.get(id).createExecution(executionContext(id, signals)); t.after(() => execution.dispose());
+    if (id === 'codex') assert.equal(execution instanceof AgentRuntime, true);
     if (execution.open) await execution.open();
     await execution.run(`${id}_FACTORY_OK`);
     await until(() => signals.some(s => s.provider === id));
     assert.equal(signals.find(s => s.provider === id)!.text, `${id}_FACTORY_OK`);
   }
   const claude = registry.get('claude').createExecution(executionContext('claude', signals, 'saved-session')); t.after(() => claude.dispose());
+  assert.equal(claude instanceof AgentRuntime, true);
   assert.equal(claude.session!.binding.provider, 'claude'); assert.equal(claude.session!.binding.sessionId, 'saved-session');
   const resumed = registry.get('codex').createExecution(executionContext('codex', signals, 'history-large')); t.after(() => resumed.dispose());
   await resumed.open!('history-large'); assert.equal(resumed.session!.binding.sessionId, 'history-large');

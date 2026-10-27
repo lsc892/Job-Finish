@@ -3,18 +3,8 @@ import { existsSync, realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Diagnostics, InputRequest, Provider } from '../core/model';
 import type { Session } from '../core/session';
-
-/** Common execution contract; providers may connect lazily or during open. */
-export interface AgentExecution {
-  readonly session?: Session;
-  open?(sessionId?: string): Promise<void>;
-  run(prompt: string): Promise<void>;
-  cancel(): Promise<void>;
-  reconnect(): Promise<void>;
-  respond(requestId: string, result: unknown): void;
-  readResult(turnId: string): Promise<string | undefined>;
-  dispose(): void;
-}
+import type { AgentExecution } from './execution';
+export type { AgentExecution } from './execution';
 
 export interface ExecutionContext {
   cwd: string;
@@ -43,7 +33,7 @@ export interface AgentInteraction {
   question(question: string, options: { label: string; description?: string }[], settings: QuestionOptions): Promise<string[] | undefined>;
 }
 
-/** Add a subclass and register it in providers/index.ts to support another agent. */
+/** Add a runtime folder and register its provider in providers.ts to support another agent. */
 export abstract class AgentProvider {
   abstract readonly id: Provider;
   abstract readonly extensionId: string;

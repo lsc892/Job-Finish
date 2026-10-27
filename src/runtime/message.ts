@@ -1,4 +1,4 @@
-import { LIMITS } from '../../core/model';
+import { LIMITS } from '../core/model';
 
 export const record = (value: unknown): Record<string, unknown> | undefined =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;

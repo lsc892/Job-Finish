@@ -21,8 +21,8 @@
 | 구성 | 파일 / 동작 |
 | --- | --- |
 | 확장 | `src/extension.ts` — 시작 시 새 UUID, 로컬 Windows 실행, 명령·결과·승인 UI, 신뢰된 workspace, 종료 정리 |
-| Codex | `src/runtime/codex.ts`, `src/runtime/codex-history.ts` — stdio 실행·취소, 계획 모드 질문, 명령·파일·추가 권한 승인, 페이지별 상태·결과 조회, 최대 3회 지수 지연 재연결 |
-| Claude | `src/runtime/claude.ts` — SDK query/result, canUseTool 질문·승인 중계, interrupt 확인, 후속 스트림 정리 |
+| Codex | `src/runtime/codex/execution.ts`, `src/runtime/codex/history.ts` — stdio 실행·취소, 계획 모드 질문, 명령·파일·추가 권한 승인, 페이지별 상태·결과 조회, 최대 3회 지수 지연 재연결 |
+| Claude | `src/runtime/claude/execution.ts` — SDK query/result, canUseTool 질문·승인 중계, interrupt 확인, 후속 스트림 정리 |
 | 전송 | `src/runtime/transport.ts` — UTF-8 분할·JSON 경계, 요청 ID 대응, 수신 1 MiB·queue 512개/4 MiB·대기 RPC 128개·30초 timeout |
 | 상태 | `src/core/session.ts` — 명시적으로 관측한 턴만 완료 알림, 본문/종료 분리, 연결 세대 검사, 충돌 진단·조회, 복구 checkpoint |
 | 소유권 | `src/core/ownership.ts`, `src/windows/gate.ts` — SHA-256 키, wx lock, PID 생존 확인, token 검증, 다른 runtime의 같은 저장 세션도 별도 lock으로 배제. Windows gate는 공유를 금지한 native 파일 핸들과 delete-on-close로 중단 시 자동 정리 |

@@ -27,7 +27,9 @@ flowchart TD
 
 검증 코드와 제품 알림은 같은 런타임 adapter·상태 처리기를 사용한다. 완료 감지를 위해 세션 로그 파일을 감시하거나 CLI stdout을 파일로 저장한 뒤 다시 읽지 않는다. 소스 파일 수정, 프로세스 종료, 수신이 한동안 없다는 사실만으로 완료를 판정하지 않는다.
 
-에이전트별 프로세스 식별·이벤트 해석기 생성·직접 실행 생성·승인 및 질문 응답 변환은 `AgentProvider` 추상 클래스를 상속한 Provider가 담당한다. 등록 목록은 `src/runtime/providers/index.ts` 한 곳이며, 공통 observer·router·애플리케이션은 이 목록을 사용한다. 연결별 프로토콜 상태는 Provider가 생성한 해석기에 두고, 세션·소유권·알림 수명은 공통 계층이 관리한다. 새 에이전트는 상속 구현과 등록으로 추가하며, 명령 팔레트·설정 공개에 필요한 VS Code 정적 선언은 별도다. 상세 계약은 [에이전트 Provider 확장](agent-providers.md)을 따른다.
+에이전트별 프로세스 식별·이벤트 해석기 생성·직접 실행 생성·승인 및 질문 응답 변환은 `AgentProvider` 추상 클래스를 상속한 Provider가 담당한다. 등록 목록은 `src/runtime/providers.ts` 한 곳이며, 공통 observer·router·애플리케이션은 이 목록을 사용한다. 연결별 프로토콜 상태는 Provider가 생성한 해석기에 두고, 세션·소유권·알림 수명은 공통 계층이 관리한다. 새 에이전트는 상속 구현과 등록으로 추가하며, 명령 팔레트·설정 공개에 필요한 VS Code 정적 선언은 별도다. 상세 계약은 [에이전트 Provider 확장](agent-providers.md)을 따른다.
+
+런타임 구현은 `runtime/codex/`와 `runtime/claude/` 아래의 `provider.ts`·`events.ts`·`execution.ts`·`adapter.ts`를 공통 진입 구조로 사용한다. 두 실행체는 공통 `runtime/execution.ts`의 `AgentRuntime`과 옵션을 공유한다. Codex의 연결·응답 캐시·복구·페이지 조회·이력 대조는 Codex 폴더가, Claude의 SDK query·승인 대기·abort 구독과 응답 정리는 Claude 폴더가 맡는다. `providers.ts` 한 곳에서 등록하며 기존 `runtime/codex`·`runtime/claude` 공개 import와 프로토콜·상한·알림 판정은 유지한다.
 
 초기 실행 범위는 Windows의 로컬 VS Code Node.js Extension Host다. `onStartupFinished`로 활성화하고 런타임 연결·이벤트 구독·flash 타이머를 확장 생명주기에 연결한다. 원격 런타임과 로컬 Windows 알림을 함께 지원하려면 감지 측과 로컬 알림 측을 나누어야 한다. 브라우저 전용 VS Code는 이 구현 범위에 포함하지 않는다.
 
