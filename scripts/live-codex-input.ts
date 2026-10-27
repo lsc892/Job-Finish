@@ -8,7 +8,7 @@ import { CodexExecution, codexApprovalResponse } from '../src/runtime/codex';
 import { Diagnostics, Signal } from '../src/core/model';
 import { Session } from '../src/core/session';
 import { Ownership } from '../src/core/ownership';
-import { runtimeId } from '../src/runtime/executable';
+import { runtimeId } from '../src/runtime/providers';
 import type { RpcMessage } from '../src/runtime/transport';
 import type { ToolRequestUserInputParams } from '../src/protocol/v2/ToolRequestUserInputParams';
 

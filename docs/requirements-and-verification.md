@@ -1,6 +1,6 @@
 # Job-Finish 기능과 구현 알고리즘
 
-작성일: 2026-10-03 · 갱신일: 2026-10-06
+작성일: 2026-10-03 · 갱신일: 2026-10-27
 
 이 문서는 구현할 기능, 처리 알고리즘, Windows 창 선택·알림 규칙과 구현 완료 조건을 정의한다. 완료 감지는 Codex App Server 이벤트를 수신하고, Claude는 별도 Agent SDK adapter를 사용한다. 선택 근거·비용 비교·과거 구현과 실측 기록은 [일지](일지.md)에 보관한다.
 
@@ -27,6 +27,8 @@ flowchart TD
 
 검증 코드와 제품 알림은 같은 런타임 adapter·상태 처리기를 사용한다. 완료 감지를 위해 세션 로그 파일을 감시하거나 CLI stdout을 파일로 저장한 뒤 다시 읽지 않는다. 소스 파일 수정, 프로세스 종료, 수신이 한동안 없다는 사실만으로 완료를 판정하지 않는다.
 
+에이전트별 프로세스 식별·이벤트 해석기 생성·직접 실행 생성·승인 및 질문 응답 변환은 `AgentProvider` 추상 클래스를 상속한 Provider가 담당한다. 등록 목록은 `src/runtime/providers/index.ts` 한 곳이며, 공통 observer·router·애플리케이션은 이 목록을 사용한다. 연결별 프로토콜 상태는 Provider가 생성한 해석기에 두고, 세션·소유권·알림 수명은 공통 계층이 관리한다. 새 에이전트는 상속 구현과 등록으로 추가하며, 명령 팔레트·설정 공개에 필요한 VS Code 정적 선언은 별도다. 상세 계약은 [에이전트 Provider 확장](agent-providers.md)을 따른다.
+
 초기 실행 범위는 Windows의 로컬 VS Code Node.js Extension Host다. `onStartupFinished`로 활성화하고 런타임 연결·이벤트 구독·flash 타이머를 확장 생명주기에 연결한다. 원격 런타임과 로컬 Windows 알림을 함께 지원하려면 감지 측과 로컬 알림 측을 나누어야 한다. 브라우저 전용 VS Code는 이 구현 범위에 포함하지 않는다.
 
 ## 1. 포커스하지 않은 창의 작업 상태 알림
@@ -40,7 +42,7 @@ flowchart TD
 `runtimeId`는 같은 실행 환경의 같은 런타임 연결 대상을 여러 창이 동일하게 식별하기 위한 값이다. 재연결마다 바뀌는 `connectionId`와 구분한다. Codex의 `sessionId`에는 App Server의 thread ID를 저장한다. Claude SDK 실행은 별도 adapter에서 같은 내부 상태 모델로 변환한다.
 
 ```typescript
-type Provider = "codex" | "claude";
+type Provider = string; // AgentProviderRegistry에서 등록된 ID인지 검증한다.
 type NotificationStatus =
   | "idle" | "running" | "completed" | "error"
   | "cancelled" | "waitingForInput" | "unknown";

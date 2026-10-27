@@ -5,17 +5,14 @@ import { Session } from './core/session';
 import { Diagnostics, InputRequest, Provider, SessionBinding, Signal } from './core/model';
 import { Lease, Ownership } from './core/ownership';
 import { Notifications } from './core/notifications';
-import { CodexExecution, codexApprovalResponse } from './runtime/codex';
-import { ClaudeExecution } from './runtime/claude';
-import { runtimeId } from './runtime/executable';
+import type { AgentExecution } from './runtime/agent-provider';
+import { agentProviders } from './runtime/providers';
 import { AgentStreamObserver, AgentRoot } from './runtime/observe';
 import { Win32, WindowIdentity } from './windows/native';
 import { FlashController } from './windows/flash';
 import { WindowsToast } from './windows/toast';
-import type { RpcMessage } from './runtime/transport';
-import type { ToolRequestUserInputParams } from './protocol/v2/ToolRequestUserInputParams';
 
-interface Entry { provider: Provider; cwd: string; session: Session; lease: Lease; execution: CodexExecution | ClaudeExecution }
+interface Entry { provider: Provider; cwd: string; session: Session; lease: Lease; execution: AgentExecution }
 interface SavedSession { provider: Provider; cwd: string; sessionId: string }
 let active: Application | undefined;
 export async function activate(context: vscode.ExtensionContext): Promise<unknown> {
@@ -97,10 +94,10 @@ class Application {
   }
   private agentRoots(): AgentRoot[] {
     if (this.context.extensionMode === vscode.ExtensionMode.Test && process.env.JOB_FINISH_TEST_AGENT_ROOT) {
-      return ['codex', 'claude'].map(provider => ({ provider: provider as Provider, path: process.env.JOB_FINISH_TEST_AGENT_ROOT! }));
+      return agentProviders.all().map(provider => ({ provider: provider.id, path: process.env.JOB_FINISH_TEST_AGENT_ROOT! }));
     }
-    return [{ provider: 'codex' as const, id: 'openai.chatgpt' }, { provider: 'claude' as const, id: 'anthropic.claude-code' }].flatMap(({ provider, id }) => {
-      const extension = vscode.extensions.getExtension(id); return extension ? [{ provider, path: extension.extensionPath }] : [];
+    return agentProviders.all().flatMap(provider => {
+      const extension = vscode.extensions.getExtension(provider.extensionId); return extension ? [{ provider: provider.id, path: extension.extensionPath }] : [];
     });
   }
   private configureNotifications(): void {
@@ -115,7 +112,6 @@ class Application {
     this.configureNotifications();
     this.status.command = 'jobFinish.results'; this.updateStatus(); this.status.show();
     const commands: Record<string, () => unknown> = {
-      runCodex: () => this.runNew('codex'), runClaude: () => this.runNew('claude'),
       continue: () => this.withEntry(async e => { const prompt = await this.prompt(); if (prompt) await e.execution.run(prompt); }),
       resume: () => this.resume(), cancel: () => this.withEntry(e => e.execution.cancel()),
       reconnect: () => this.withEntry(e => e.execution.reconnect()), respond: () => this.respond(),
@@ -128,6 +124,7 @@ class Application {
         this.output.clear(); this.output.appendLine(JSON.stringify(this.api.snapshot(), (_key, value: unknown) => typeof value === 'bigint' ? value.toString() : value, 2)); this.output.show();
       },
     };
+    for (const provider of agentProviders.all()) commands[provider.runCommand] = () => this.runNew(provider.id);
     for (const [name, handler] of Object.entries(commands)) this.context.subscriptions.push(vscode.commands.registerCommand(`jobFinish.${name}`, async () => {
       try { await handler(); } catch (e) { this.report(e); } finally { this.updateStatus(); }
     }));
@@ -159,25 +156,25 @@ class Application {
     if (!vscode.workspace.isTrusted) throw new Error('Trust the workspace before running an agent');
     if (this.entries.size + this.opening >= this.config('maxSessions', 8) || this.entries.size + this.opening >= this.config('maxConnections', 4)) throw new Error('Session/connection limit reached. Release an existing session first.');
     if (sessionId && this.entries.has(sessionId)) throw new Error('Session is already connected in this window');
+    const implementation = agentProviders.get(provider);
     this.opening++;
-    let lease: Lease | undefined; let execution: CodexExecution | ClaudeExecution | undefined;
+    let lease: Lease | undefined; let execution: AgentExecution | undefined;
     let entry: Entry | undefined;
     const createSession = (id: string, connectionId: string): Session => {
       if (this.disposed) throw new Error('Extension deactivated');
-      const binding: SessionBinding = { windowInstanceId: this.windowInstanceId, provider, runtimeId: runtimeId(provider), connectionId, sessionId: id, source: 'ownedExecution' };
+      const binding: SessionBinding = { windowInstanceId: this.windowInstanceId, provider, runtimeId: implementation.runtimeId(), connectionId, sessionId: id, source: 'ownedExecution' };
       lease = this.ownership.claim(binding);
-      return new Session(binding, () => lease!.valid(), state => lease!.save(state), signal => this.onSignal(signal), this.diagnostics, lease.load(), () => this.updateStatus());
+      const session = new Session(binding, () => lease!.valid(), state => lease!.save(state), signal => this.onSignal(signal), this.diagnostics, lease.load(), () => this.updateStatus());
+      // Register before a connected runtime can reconcile and emit a result.
+      if (execution) { entry = { provider, cwd, session, lease, execution }; this.entries.set(id, entry); }
+      return session;
     };
     try {
-      let session: Session;
-      if (provider === 'codex') {
-        execution = new CodexExecution({ cwd, executable: this.config('codexExecutable', ''), model: this.config('codexModel', '') || undefined, mode: this.config('codexMode', 'default'), diagnostic: this.diagnostics,
-          createSession: (id, connection) => { const session = createSession(id, connection); entry = { provider, cwd, session, lease: lease!, execution: execution! }; this.entries.set(id, entry); return session; } });
-        await execution.open(sessionId); session = execution.session!;
-      } else {
-        session = createSession(sessionId ?? randomUUID(), randomUUID());
-        execution = new ClaudeExecution({ cwd, executable: this.config('claudeExecutable', ''), maxTurns: this.config('claudeMaxTurns', 50), session, resume: !!sessionId });
-      }
+      execution = implementation.createExecution({ cwd, sessionId, diagnostics: this.diagnostics,
+        config: (key, fallback) => this.config(key, fallback), createSession });
+      if (execution.open) await execution.open(sessionId);
+      const session = execution.session;
+      if (!session) throw new Error(`Agent provider ${provider} did not create a session`);
       entry = { provider, cwd, session, lease: lease!, execution }; this.entries.set(session.binding.sessionId, entry);
       const saved = this.context.workspaceState.get<SavedSession[]>('sessions', []);
       const record = { provider, cwd, sessionId: session.binding.sessionId };
@@ -206,37 +203,23 @@ class Application {
     if (result !== undefined) pick.entry.execution.respond(pick.request.id, result);
   }
   private async answer(entry: Entry, request: InputRequest): Promise<unknown> {
-    if (request.kind === 'approval') {
-      // Show the complete bounded request before the explicit decision.
-      const doc = await vscode.workspace.openTextDocument({ content: JSON.stringify(request.payload, null, 2), language: 'json' });
-      await vscode.window.showTextDocument(doc, { preview: true });
-      const answer = await vscode.window.showQuickPick(['Deny', 'Allow once'], { title: request.title.slice(0, 150), ignoreFocusOut: true });
-      if (!answer) return;
-      return entry.provider === 'codex' ? codexApprovalResponse(request.payload as RpcMessage, answer === 'Allow once') :
-        answer === 'Allow once' ? { behavior: 'allow', updatedInput: (request.payload as { input: unknown }).input } : { behavior: 'deny', message: 'Denied by user' };
-    }
-    const answers: Record<string, { answers: string[] }> = {};
-    if (entry.provider === 'codex') {
-      const params = (request.payload as RpcMessage).params as ToolRequestUserInputParams;
-      for (const q of params.questions) {
-        const answer = await this.question(q.question, q.options ?? [], false, q.isSecret);
-        if (!answer) return; answers[q.id] = { answers: answer };
-      }
-      return { answers };
-    }
-    const payload = request.payload as { input: { questions?: { question: string; options?: { label: string; description?: string }[]; multiSelect?: boolean }[] } };
-    const claudeAnswers: Record<string, string> = {};
-    if (!payload.input.questions?.length) throw new Error('Unsupported Claude question schema');
-    for (const q of payload.input.questions) {
-      const answer = await this.question(q.question, q.options ?? [], !!q.multiSelect, false);
-      if (!answer) return; claudeAnswers[q.question] = answer.join(', ');
-    }
-    return { behavior: 'allow', updatedInput: { ...payload.input, answers: claudeAnswers } };
+    return agentProviders.get(entry.provider).answer(request, {
+      showRequest: async payload => {
+        const doc = await vscode.workspace.openTextDocument({ content: JSON.stringify(payload, null, 2), language: 'json' });
+        await vscode.window.showTextDocument(doc, { preview: true });
+      },
+      approve: async title => {
+        const answer = await vscode.window.showQuickPick(['Deny', 'Allow once'], { title, ignoreFocusOut: true });
+        return answer === undefined ? undefined : answer === 'Allow once';
+      },
+      question: (question, options, settings) => this.question(question, options, settings),
+    });
   }
-  private async question(question: string, options: { label: string; description?: string }[], multi: boolean, secret: boolean): Promise<string[] | undefined> {
+  private async question(question: string, options: { label: string; description?: string }[],
+    { multiSelect, secret }: { multiSelect: boolean; secret: boolean }): Promise<string[] | undefined> {
     if (options.length && !secret) {
       const custom = { label: 'Write an answer…', description: '' };
-      const picks = await vscode.window.showQuickPick([...options, custom], { title: question, canPickMany: multi, ignoreFocusOut: true });
+      const picks = await vscode.window.showQuickPick([...options, custom], { title: question, canPickMany: multiSelect, ignoreFocusOut: true });
       if (!picks) return;
       const list = Array.isArray(picks) ? picks : [picks];
       if (!list.some(item => item === custom)) return list.map(item => item.label);

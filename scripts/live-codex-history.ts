@@ -8,7 +8,7 @@ import { CodexExecution } from '../src/runtime/codex';
 import { Session } from '../src/core/session';
 import { Diagnostics, Signal } from '../src/core/model';
 import { Ownership } from '../src/core/ownership';
-import { runtimeId } from '../src/runtime/executable';
+import { runtimeId } from '../src/runtime/providers';
 
 async function main(): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'job-finish-history-')); const owner = new Ownership(root);

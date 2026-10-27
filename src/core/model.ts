@@ -1,4 +1,5 @@
-export type Provider = 'codex' | 'claude';
+/** Stable provider ID, resolved and validated by AgentProviderRegistry. */
+export type Provider = string;
 export type Status = 'idle' | 'running' | 'completed' | 'error' | 'cancelled' | 'waitingForInput' | 'unknown';
 export type TerminalStatus = 'completed' | 'error' | 'cancelled';
 export interface SessionBinding {

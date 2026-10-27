@@ -3,6 +3,8 @@ import { isAbsolute, resolve } from 'node:path';
 import type { Writable } from 'node:stream';
 import { Diagnostics, LIMITS, Provider, Signal } from '../core/model';
 import { AgentEventRouter } from './event-router';
+import type { AgentProviderRegistry } from './agent-provider';
+import { agentProviders } from './providers';
 
 export interface AgentRoot { provider: Provider; path: string }
 interface Spawnable { spawn: (...args: unknown[]) => unknown }
@@ -50,7 +52,8 @@ export class AgentStreamObserver {
   private readonly delivered = new Map<string, string>();
   private enabled = false;
   constructor(private windowInstanceId: string, private roots: () => AgentRoot[], private emit: (signal: Signal) => void,
-    private diagnostics: Diagnostics, private isOwned: (provider: Provider, sessionId: string) => boolean = () => false) {}
+    private diagnostics: Diagnostics, private isOwned: (provider: Provider, sessionId: string) => boolean = () => false,
+    private providers: AgentProviderRegistry = agentProviders) {}
 
   start(): void {
     if (this.enabled) return;
@@ -81,9 +84,9 @@ export class AgentStreamObserver {
   private consider(child: ChildProcess, existing: boolean, stack: () => string = () => ''): void {
     if (!this.enabled || this.connections.has(child) || !child.pid || child.exitCode !== null || child.signalCode !== null || !child.stdout || !child.stdin) return;
     const args = child.spawnargs ?? [];
-    const outputJson = args.some((arg, i) => arg === '--output-format=stream-json' || arg === '--output-format' && args[i + 1] === 'stream-json');
-    const provider: Provider | undefined = args.includes('app-server') ? 'codex' : outputJson ? 'claude' : undefined;
-    if (!provider) return;
+    const implementation = this.providers.match(args);
+    if (!implementation) return;
+    const provider = implementation.id;
     const roots = this.roots().filter(root => root.provider === provider).map(root => canonical(resolve(root.path)) + '/');
     const pathMatches = args.some(arg => isAbsolute(arg) && roots.some(root => canonical(resolve(arg)).startsWith(root)));
     if (!pathMatches && !roots.some(root => canonical(stack()).includes(root))) return;
@@ -99,7 +102,7 @@ export class AgentStreamObserver {
         this.delivered.set(signal.notificationId, signal.connectionId);
         while (this.delivered.size > LIMITS.dedup) this.delivered.delete(this.delivered.keys().next().value!);
         this.emit(signal);
-      }, this.diagnostics, this.isOwned);
+      }, this.diagnostics, this.isOwned, this.providers);
     const incoming = new Frames(value => router.incoming(value), existing);
     const outgoing = new Frames(value => router.outgoing(value), existing);
     const originalWrite = input.write;

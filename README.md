@@ -34,6 +34,8 @@ See the [Korean usage guide](README.ko.md) for configuration defaults and the [v
 
 Read the [development document](docs/requirements-and-verification.md) for features, implementation algorithms, and acceptance criteria. The [journal](docs/일지.md) contains the rationale, historical implementations, and measured results.
 
+To support another agent, subclass `AgentProvider` and register it in `src/runtime/providers/index.ts`. See the [provider extension guide](docs/agent-providers.md) for the protocol, execution and input contracts.
+
 ## Remove the old PowerShell/C# installation
 
 The installer is an independent package in [tools/installer](tools/installer/README.md), with its own dependencies and tests. Its uninstall command can also remove legacy installations separately. From the repository root:

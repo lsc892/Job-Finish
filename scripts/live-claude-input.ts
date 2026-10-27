@@ -8,7 +8,7 @@ import { ClaudeExecution } from '../src/runtime/claude';
 import { Diagnostics, Signal } from '../src/core/model';
 import { Session } from '../src/core/session';
 import { Ownership } from '../src/core/ownership';
-import { runtimeId } from '../src/runtime/executable';
+import { runtimeId } from '../src/runtime/providers';
 
 async function main(): Promise<void> {
   const { query } = await import('@anthropic-ai/claude-agent-sdk');
