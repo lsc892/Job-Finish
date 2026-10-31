@@ -40,6 +40,7 @@ export class ClaudeExecution extends AgentRuntime {
     this.assertOwnership();
     const requestId = randomUUID(); this.aborted = false;
     const connectionId = randomUUID(); this.session.reconnect(connectionId); this.session.start(requestId, connectionId);
+    this.session.setTitle(prompt, connectionId, true);
     const context: ClaudeTurnContext = { requestId, connectionId, acceptingInput: true }; this.context = context;
     async function* input(): AsyncGenerator<SDKUserMessage> {
       yield { type: 'user', uuid: requestId, session_id: '', parent_tool_use_id: null, message: { role: 'user', content: prompt } };

@@ -1,5 +1,8 @@
 // 소유한 실행 신호를 최근 결과에 저장하고 창 상태에 따라 깜박임과 토스트를 전달한다.
-import { LIMITS, Signal, toastText } from './model';
+import { LIMITS, sessionTitleText, Signal, toastText } from './model';
+export function notificationTitle(signal: Signal): string {
+  return [signal.provider, signal.status, sessionTitleText(signal.sessionTitle)].filter(Boolean).join(' · ');
+}
 export interface NotificationPorts {
   enabled?(): boolean;
   focused(): boolean; owns(signal: Signal): boolean;

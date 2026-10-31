@@ -1,7 +1,7 @@
 // 관찰한 Claude 입출력에서 사용자 실행·도구 입력·결과·중단을 세션에 반영한다.
 import { randomUUID } from 'node:crypto';
 import type { SDKResultMessage } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
-import { LIMITS } from '../../core/model';
+import { LIMITS, sessionTitleText } from '../../core/model';
 import type { Session } from '../../core/session';
 import type { AgentEvents, EventContext } from '../agent-provider';
 import { acceptClaudeResult } from './adapter';
@@ -10,19 +10,26 @@ import { bound, identifier, record } from '../message';
 /** 관찰한 Claude 연결의 요청·입력 대기·결과·중단 확인을 세션 상태로 변환한다. */
 export class ClaudeEvents implements AgentEvents {
   private readonly pendingInterrupts = new Map<string, boolean>();
-  private readonly queuedInputs: { id: string; supplied: boolean }[] = [];
+  private readonly queuedInputs: { id: string; supplied: boolean; title?: string }[] = [];
   private readonly receivedResults = new Set<string>();
   private sessionId?: string;
   constructor(private context: EventContext) {}
   outgoing(message: Record<string, unknown>): void {
     switch (message.type) {
       case 'user': {
-        // Only identifiers are retained; prompts and tool contents remain in the original transport.
+        // Retain identifiers and a bounded title preview, not full prompts or tool contents.
         if (this.queuedInputs.length >= LIMITS.turns) throw new Error('Observed Claude input queue exceeds limit');
         const id = identifier(message.uuid);
-        this.queuedInputs.push({ id: id ?? randomUUID(), supplied: !!id });
+        const content = record(message.message)?.content;
+        const prompt = typeof content === 'string' ? content : Array.isArray(content)
+          ? content.map(record).filter(item => item?.type === 'text' && typeof item.text === 'string').map(item => item!.text).join(' ') : undefined;
+        this.queuedInputs.push({ id: id ?? randomUUID(), supplied: !!id, title: sessionTitleText(prompt) });
         const sessionId = identifier(message.session_id) ?? this.sessionId;
-        if (sessionId) this.context.session(sessionId)?.start(this.queuedInputs[0]!.id, this.context.connectionId);
+        if (sessionId) {
+          const session = this.context.session(sessionId);
+          session?.setTitle(this.queuedInputs[0]!.title, this.context.connectionId, true);
+          session?.start(this.queuedInputs[0]!.id, this.context.connectionId);
+        }
         return;
       }
       case 'control_response': {
@@ -49,7 +56,9 @@ export class ClaudeEvents implements AgentEvents {
     switch (message.type) {
       case 'system':
         if (message.subtype === 'init' && sessionId && this.queuedInputs.length) {
-          this.context.session(sessionId)?.start(this.queuedInputs[0]!.id, this.context.connectionId);
+          const session = this.context.session(sessionId);
+          session?.setTitle(this.queuedInputs[0]!.title, this.context.connectionId, true);
+          session?.start(this.queuedInputs[0]!.id, this.context.connectionId);
         }
         return;
       case 'result':
@@ -79,6 +88,7 @@ export class ClaudeEvents implements AgentEvents {
     const userMessageId = identifier(message.user_message_uuid);
     const queuedInput = this.queuedInputs[0];
     if (userMessageId && queuedInput?.supplied && queuedInput.id !== userMessageId) return;
+    session.setTitle(queuedInput?.title, this.context.connectionId, true);
     const turnId = userMessageId ?? queuedInput?.id ?? resultId;
     const previousId = queuedInput?.id ?? (session.turns.size === 1 ? session.turns.keys().next().value : undefined);
     this.transferTurn(session, previousId, turnId);

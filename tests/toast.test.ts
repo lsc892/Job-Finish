@@ -8,6 +8,8 @@ import { connect, Socket } from 'node:net';
 import { PassThrough } from 'node:stream';
 import { WindowsToast, ToastProcessPorts } from '../src/windows/toast';
 import { Diagnostics } from '../src/core/model';
+import { notificationTitle } from '../src/core/notifications';
+import { AgentEventRouter } from '../src/runtime/event-router';
 
 const pause = (ms = 10) => new Promise(resolve => setTimeout(resolve, ms));
 async function until(fn: () => boolean) { const end = Date.now() + 2000; while (!fn()) { if (Date.now() > end) throw new Error('Native toast pipe timeout'); await pause(); } }
@@ -92,6 +94,21 @@ test('Native requests register the actual Code icon source and preserve optional
   await f.toast.show(f.request('without-image'));
   assert.equal('imagePath' in f.launched[1]!.payload, false);
   assert.equal(f.registrations(), 1);
+});
+
+test('An observed session name reaches the native toast payload while window routing keeps its ID', { skip: process.platform !== 'win32' }, async t => {
+  const f = setup(); t.after(() => f.toast.dispose());
+  const router = new AgentEventRouter('codex', 'window-A', 'runtime', signal => {
+    assert.equal(signal.windowInstanceId, 'window-A');
+    title = notificationTitle(signal);
+  }, new Diagnostics());
+  t.after(() => router.dispose());
+  let title = '';
+  router.incoming({ method: 'thread/name/updated', params: { threadId: 'session', threadName: '데이터 집계 <수정> & 검증😀' } });
+  router.incoming({ method: 'turn/completed', params: { threadId: 'session', turn: { id: 'turn', status: 'completed', items: [] } } });
+  await f.toast.show({ ...f.request('session-title'), title });
+  assert.equal(f.launched[0]!.payload.title, 'codex · completed · 데이터 집계 <수정> & 검증😀');
+  assert.equal(f.launched[0]!.payload.windowInstanceId, 'window-A');
 });
 
 test('Native toast suppresses unfocused-policy failures and disposed requests before launching', { skip: process.platform !== 'win32' }, async () => {

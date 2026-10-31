@@ -43,12 +43,15 @@ export class CodexAdapter {
 
   handle(message: RpcMessage, connectionId: string, admitStarted = false): void {
     if (!this.session.valid(connectionId)) return;
-    const methods = ['turn/started', 'turn/completed', 'item/completed', 'serverRequest/resolved', 'error',
+    const methods = ['thread/name/updated', 'turn/started', 'turn/completed', 'item/completed', 'serverRequest/resolved', 'error',
       'item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'item/permissions/requestApproval', 'item/tool/requestUserInput'];
     if (!methods.includes(message.method ?? '')) return;
     const params = codexObject(message.params);
     if (codexId(params.threadId) !== this.session.binding.sessionId) return;
     switch (message.method) {
+      case 'thread/name/updated':
+        this.session.setTitle(params.threadName, connectionId);
+        return;
       case 'turn/started': {
         const turn = codexObject(params.turn);
         if (admitStarted) this.session.start(codexId(turn.id), connectionId);

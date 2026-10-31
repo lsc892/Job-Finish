@@ -14,12 +14,14 @@ export interface InputRequest {
 export interface TurnState { id: string; status: Status; text: string; truncated: boolean; resultId?: string }
 export interface Signal extends SessionBinding {
   notificationId: string; turnId: string; status: Status; text: string; truncated: boolean;
+  sessionTitle?: string;
   requestId?: string; detail?: string; at: string;
   scope?: 'turn' | 'startRequest';
 }
 export interface Checkpoint {
   version: 1; completed: [string, TerminalStatus][]; turns: TurnState[];
   pendingStart?: string;
+  sessionTitle?: string; promptTitle?: string;
 }
 export const LIMITS = { messageBytes: 1024 * 1024, queueCount: 512, queueBytes: 4 * 1024 * 1024,
   results: 20, textBytes: 16 * 1024, diagnostics: 100, dedup: 512, turns: 32, requests: 128 } as const;
@@ -31,6 +33,13 @@ export function boundedText(text: string, limit = LIMITS.textBytes): { text: str
   return { text: bytes.subarray(0, end).toString('utf8'), truncated: true };
 }
 export function toastText(text: string): string { const chars = Array.from(text); return chars.length > 180 ? chars.slice(0, 179).join('') + '…' : text; }
+export function sessionTitleText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return;
+  const text = value.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!text) return;
+  const chars = Array.from(text);
+  return chars.length > 100 ? chars.slice(0, 99).join('') + '…' : text;
+}
 export const sessionKey = (b: Pick<SessionBinding, 'provider' | 'runtimeId' | 'sessionId'>): string => JSON.stringify([b.provider, b.runtimeId, b.sessionId]);
 export const isTerminal = (s: Status): s is TerminalStatus => s === 'completed' || s === 'error' || s === 'cancelled';
 

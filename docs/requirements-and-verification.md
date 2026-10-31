@@ -47,6 +47,8 @@ flowchart TD
 
 `runtimeId`는 같은 실행 환경의 같은 런타임 연결 대상을 여러 창이 동일하게 식별하기 위한 값이다. 재연결마다 바뀌는 `connectionId`와 구분한다. Codex의 `sessionId`에는 App Server의 thread ID를 저장한다. Claude SDK 실행은 별도 adapter에서 같은 내부 상태 모델로 변환한다.
 
+알림 신호의 선택적 `sessionTitle`은 표시용 메타데이터이며 세션·창 식별과 소유권 키에 사용하지 않는다. Codex의 thread 응답·시작 통지·목록에서 `name`과 `preview`를 읽고 `thread/name/updated`의 `threadName`을 반영한다. 저장 이력 응답은 제목만 제공하며 새 실행이나 완료 알림을 만들지 않는다. 이름이 없으면 미리보기 또는 관측한 첫 요청을 사용하고, Claude는 첫 요청의 텍스트를 사용한다. 제목과 첫 요청 미리보기는 각각 제어 문자·공백을 정리해 최대 100자로 보관하며 직접 실행의 선택적 체크포인트 필드로 복구한다. Codex 관찰 연결의 제목 캐시는 최대 512개로 제한하고 해제 시 비운다.
+
 ```typescript
 type Provider = string; // AgentProviderRegistry에서 등록된 ID인지 검증한다.
 type NotificationStatus =
@@ -118,11 +120,11 @@ T/U의 turn/completed 수신 → completed / error / cancelled 분류
   이미 처리한 이벤트인가? 맞으면 무시
   상태·본문·세션·창 ID를 제한된 결과 저장소에 기록
   해당 창이 focused인가? 맞으면 해당 flash 정지 후 종료
-  toast 설정이 켜졌으면 provider·상태·본문·창 ID로 표시
+  toast 설정이 켜졌으면 provider·상태·세션 제목과 본문으로 표시
   flash 설정이 켜졌고 HWND가 확인되면 그 HWND에만 시작
 ```
 
-알림 본문은 에이전트의 최종 응답을 사용하고 요약을 위한 AI 호출은 추가하지 않는다. Windows 토스트 본문은 최대 180자로 제한한다. 전체 본문은 제한된 결과 저장소나 런타임의 지원되는 조회 API로 열고, 잘린 결과나 조회 불가 상태를 표시한다.
+토스트 헤더는 `provider · 상태 · 세션 제목` 형식으로 표시하고, 제목을 얻지 못하면 제공자와 상태만 표시한다. 창 ID와 세션 ID는 클릭 라우팅과 진단에 유지한다. 알림 본문은 에이전트의 최종 응답을 사용하고 요약을 위한 AI 호출은 추가하지 않는다. Windows 토스트 본문은 최대 180자로 제한한다. 전체 본문은 제한된 결과 저장소나 런타임의 지원되는 조회 API로 열고, 잘린 결과나 조회 불가 상태를 표시한다.
 
 ### Windows 토스트 구현
 

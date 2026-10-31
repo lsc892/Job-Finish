@@ -2,7 +2,7 @@
 import * as vscode from 'vscode';
 import type { ApplicationSessions } from '../application/sessions';
 import { Diagnostics, Signal } from '../core/model';
-import { Notifications } from '../core/notifications';
+import { notificationTitle, Notifications } from '../core/notifications';
 import { AgentStreamObserver, AgentRoot } from '../runtime/observe';
 import { agentProviders } from '../runtime/providers';
 import { WindowsToast } from '../windows/toast';
@@ -91,7 +91,7 @@ export class WindowNotifications {
     await this.toast.show({
       notificationId: signal.notificationId,
       windowInstanceId,
-      title: `${signal.provider} · ${signal.status} · ${windowInstanceId.slice(0, 8)}`,
+      title: notificationTitle(signal),
       message,
       appId: WindowsToast.appId,
       imagePath: toastImagePath(this.context.extensionPath, this.ports.config('toastIcon', true), this.ports.config('toastIconPath', ''),

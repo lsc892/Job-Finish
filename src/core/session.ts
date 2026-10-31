@@ -1,6 +1,6 @@
 // 소유권과 연결을 검증하며 실행 상태·입력 요청·완료 알림의 중복을 관리한다.
 import { randomUUID } from 'node:crypto';
-import { boundedText, Checkpoint, Diagnostics, InputRequest, isTerminal, LIMITS, SessionBinding, Signal, TerminalStatus, TurnState } from './model';
+import { boundedText, Checkpoint, Diagnostics, InputRequest, isTerminal, LIMITS, SessionBinding, sessionTitleText, Signal, TerminalStatus, TurnState } from './model';
 
 /** 소유한 세션의 허용된 실행·입력 요청·완료 기록을 관리하고 중복 없는 신호를 생성한다. */
 export class Session {
@@ -8,17 +8,29 @@ export class Session {
   readonly completed = new Map<string, TerminalStatus>();
   readonly requests = new Map<string, InputRequest>();
   private readonly seenRequests = new Set<string>();
+  private title?: string;
+  private promptTitle?: string;
   pendingStart?: string;
   constructor(public binding: SessionBinding, private readonly owns: () => boolean,
     private readonly save: (state: Checkpoint) => void, private readonly emit: (signal: Signal) => void,
     readonly diagnostics: Diagnostics, checkpoint?: Checkpoint, private readonly changed: () => void = () => {}) {
     this.pendingStart = checkpoint?.pendingStart;
+    this.title = sessionTitleText(checkpoint?.sessionTitle);
+    this.promptTitle = sessionTitleText(checkpoint?.promptTitle);
     for (const [id, status] of checkpoint?.completed.slice(-LIMITS.dedup) ?? []) this.completed.set(id, status);
     for (const turn of checkpoint?.turns.slice(-LIMITS.turns) ?? []) {
       if (!isTerminal(turn.status)) this.turns.set(turn.id, { ...turn, ...boundedText(turn.text), status: 'unknown' });
     }
   }
   valid(connectionId: string): boolean { return connectionId === this.binding.connectionId && this.owns(); }
+  get sessionTitle(): string | undefined { return this.title ?? this.promptTitle; }
+  setTitle(value: unknown, connectionId: string, fallback = false): void {
+    if (!this.valid(connectionId)) return;
+    const title = sessionTitleText(value);
+    if (!title || (fallback ? this.promptTitle !== undefined : this.title === title)) return;
+    if (fallback) this.promptTitle = title; else this.title = title;
+    this.persist();
+  }
   start(id: string, connectionId: string): void {
     if (!id || !this.valid(connectionId) || this.completed.has(id) || this.turns.has(id)) return;
     if (this.turns.size >= LIMITS.turns) throw new Error('Active turn limit exceeded');
@@ -85,7 +97,7 @@ export class Session {
   startRejected(requestId: string, message: string, connectionId: string): void {
     if (!this.valid(connectionId)) return;
     if (this.pendingStart === requestId) { this.pendingStart = undefined; this.persist(); }
-    this.emit({ ...this.binding, scope: 'startRequest', requestId, notificationId: randomUUID(), turnId: '',
+    this.emit({ ...this.binding, sessionTitle: this.sessionTitle, scope: 'startRequest', requestId, notificationId: randomUUID(), turnId: '',
       status: 'error', ...boundedText(message), detail: 'Execution start request rejected', at: new Date().toISOString() });
   }
   baseline(ids: readonly { id: string; status: TerminalStatus }[]): void {
@@ -93,12 +105,13 @@ export class Session {
     while (this.completed.size > LIMITS.dedup) this.completed.delete(this.completed.keys().next().value!);
     this.persist();
   }
-  checkpoint(): Checkpoint { return { version: 1, completed: [...this.completed], turns: [...this.turns.values()], ...(this.pendingStart ? { pendingStart: this.pendingStart } : {}) }; }
+  checkpoint(): Checkpoint { return { version: 1, completed: [...this.completed], turns: [...this.turns.values()], ...(this.pendingStart ? { pendingStart: this.pendingStart } : {}),
+    ...(this.title ? { sessionTitle: this.title } : {}), ...(this.promptTitle ? { promptTitle: this.promptTitle } : {}) }; }
   private persist(): void { this.save(this.checkpoint()); this.changed(); }
   private clearRequests(turnId: string): void { for (const [id, r] of this.requests) if (r.turnId === turnId) this.requests.delete(id); }
   private signal(turn: TurnState, detail?: string, requestId?: string): void {
     if (!this.owns()) return;
-    this.emit({ ...this.binding, notificationId: randomUUID(), turnId: turn.id, status: turn.status,
+    this.emit({ ...this.binding, sessionTitle: this.sessionTitle, notificationId: randomUUID(), turnId: turn.id, status: turn.status,
       text: turn.text, truncated: turn.truncated, detail: detail && boundedText(detail, 2048).text, requestId, at: new Date().toISOString() });
   }
 }

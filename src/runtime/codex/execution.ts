@@ -51,6 +51,8 @@ export class CodexExecution extends AgentRuntime {
         const result = await rpc.request<{ thread: Thread; model?: string }>('thread/start', params);
         this.effectiveModel = result.model;
         this.bindSession(codexId(result.thread?.id), this.connection.rpc!);
+        this.session!.setTitle(result.thread.name, rpc.connectionId);
+        this.session!.setTitle(result.thread.preview, rpc.connectionId, true);
       }
       this.connection.activate();
     } catch (error) {
@@ -81,6 +83,7 @@ export class CodexExecution extends AgentRuntime {
     const rpc = this.connection.rpc!;
     const startRequestId = randomUUID();
     try {
+      this.session.setTitle(prompt, rpc.connectionId, true);
       this.session.beginStart(startRequestId, rpc.connectionId);
       const params: TurnStartParams = { threadId: this.session.binding.sessionId, clientUserMessageId: startRequestId, input: [{ type: 'text', text: prompt, text_elements: [] }],
         ...(this.options.mode ? { collaborationMode: { mode: this.options.mode, settings: { model: model!, reasoning_effort: null, developer_instructions: null } } } : {}) };

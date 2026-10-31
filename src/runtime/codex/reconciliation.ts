@@ -38,6 +38,8 @@ export class CodexReconciliation {
       }
     }
     history.assertCurrent();
+    this.session.setTitle(thread.name, rpc.connectionId);
+    this.session.setTitle(thread.preview, rpc.connectionId, true);
     this.assertObservedActiveTurns(thread, turns);
     for (const turn of turns) {
       if (turn.status === 'inProgress' && thread.status?.type !== 'active') {

@@ -22,6 +22,7 @@
   - 익명 경로 검증 제공자 — 런타임 홈 변경으로 경로 정규화와 식별자 분리를 검증한다.
   - 익명 식별자 검증 제공자 — 제공자 ID 변경으로 런타임 식별자 분리를 검증한다.
 - [state.test.ts](state.test.ts) — 세션의 종료·중복·체크포인트·입력·소유권·보관 상한과 제공자 상태 변환을 검증한다.
+- [session-title.test.ts](session-title.test.ts) — 세션 제목·이름 변경·첫 요청 대체·이력 메타데이터·복구·세션 격리와 토스트 제목의 Unicode 상한을 검증한다.
 - [toast-activation.test.ts](toast-activation.test.ts) — 알림 활성화 채널의 연결 상한·유휴 종료·만료와 현재 소유권 확인을 검증한다.
 - [toast-host.ts](toast-host.ts) — 격리 VS Code 창에서 실제 스트림·네이티브 알림·전경 창 관찰을 제어한다.
 - [toast-process.test.ts](toast-process.test.ts) — 네이티브 도우미의 진단 프레임·종료·시간 제한·취소·정리 계약을 검증한다.
