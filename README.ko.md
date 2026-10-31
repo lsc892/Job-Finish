@@ -89,18 +89,20 @@ npm run uninstall:legacy -- --project "C:\Projects\MyProject"
 
 ## 설정
 
-| 설정 | 기본값 / 의미 |
-| --- | --- |
-| `jobFinish.enabled` | `true`; 자동 감지와 알림을 즉시 켜거나 끔 |
-| `jobFinish.toast`, `jobFinish.flash` | `true` |
-| `jobFinish.flashMode` | `manual` — 500ms 간격; `system`도 선택 가능 |
-| `jobFinish.flashTimeoutSeconds` | `300`; `0`은 명시적 정지·포커스 복귀까지 유지 |
-| `jobFinish.codexExecutable` | 빈 값은 PATH 탐색. `codex.exe` 또는 npm `bin/codex.js` 경로 |
-| `jobFinish.codexModel` | 빈 값은 Codex 설정 사용 |
-| `jobFinish.codexMode` | `default`; `plan`은 구조화된 질문을 사용하는 계획 모드. 새로 연결할 세션에 적용 |
-| `jobFinish.claudeExecutable` | 빈 값은 포함된 SDK CLI 사용 |
-| `jobFinish.maxSessions`, `jobFinish.maxConnections` | `8`, `4` |
-| `jobFinish.claudeMaxTurns` | `50`; 계정 사용량 한도와 별개의 실행 제한 |
+VS Code 설정의 Job-Finish 항목은 **General → Notifications → Codex → Claude** 순서의 소제목과 목차 하위 구역으로 나뉩니다.
+
+| 소제목 | 설정 | 기본값 / 의미 |
+| --- | --- | --- |
+| General | `jobFinish.enabled` | `true`; 자동 감지와 알림을 즉시 켜거나 끔 |
+| General | `jobFinish.maxSessions`, `jobFinish.maxConnections` | `8`, `4` |
+| Notifications | `jobFinish.toast`, `jobFinish.flash` | `true` |
+| Notifications | `jobFinish.flashMode` | `manual` — 500ms 간격; `system`도 선택 가능 |
+| Notifications | `jobFinish.flashTimeoutSeconds` | `300`; `0`은 명시적 정지·포커스 복귀까지 유지 |
+| Codex | `jobFinish.codexExecutable` | 빈 값은 PATH 탐색. `codex.exe` 또는 npm `bin/codex.js` 경로 |
+| Codex | `jobFinish.codexModel` | 빈 값은 Codex 설정 사용 |
+| Codex | `jobFinish.codexMode` | `default`; `plan`은 구조화된 질문을 사용하는 계획 모드. 새로 연결할 세션에 적용 |
+| Claude | `jobFinish.claudeExecutable` | 빈 값은 포함된 SDK CLI 사용 |
+| Claude | `jobFinish.claudeMaxTurns` | `50`; 계정 사용량 한도와 별개의 실행 제한 |
 
 ## 검증과 지원 범위
 
