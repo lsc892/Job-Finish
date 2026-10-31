@@ -11,15 +11,16 @@ import { Diagnostics } from '../src/core/model';
 
 const pause = (ms = 10) => new Promise(resolve => setTimeout(resolve, ms));
 async function until(fn: () => boolean) { const end = Date.now() + 2000; while (!fn()) { if (Date.now() > end) throw new Error('Native toast pipe timeout'); await pause(); } }
-function setup(exitCode = 0, options: { registrationFailures?: number; holdRegistration?: boolean; holdDelivery?: boolean; delivery?: 'silent' | 'failed' | 'history-error' } = {}) {
+function setup(exitCode = 0, options: { codeExecutable?: string; registrationFailures?: number; holdRegistration?: boolean; holdDelivery?: boolean; delivery?: 'silent' | 'failed' | 'history-error' } = {}) {
   const launched: { args: string[]; payload: Record<string, unknown>; child: EventEmitter; killed: boolean }[] = [];
+  const registrationArgs: string[][] = [];
   const diagnostics = new Diagnostics(); let clicks = 0; let allowed = true;
   let registrations = 0; let releaseRegistration: (() => void) | undefined; let releaseDelivery: (() => void) | undefined;
   const ports: ToastProcessPorts = { launch: (_binary, args) => {
     const child = new EventEmitter(); const stdin = new PassThrough(); const stderr = new PassThrough(); const stdout = new PassThrough();
     const item = { args, payload: {} as Record<string, unknown>, child, killed: false };
     const register = args[0] === '--register';
-    if (register) registrations++; else launched.push(item);
+    if (register) { registrations++; registrationArgs.push(args); } else launched.push(item);
     let input = ''; stdin.on('data', (chunk: Buffer) => { input += chunk.toString('utf8'); });
     const finish = () => {
       if (item.killed) return;
@@ -52,10 +53,10 @@ function setup(exitCode = 0, options: { registrationFailures?: number; holdRegis
     Object.assign(child, { stdin, stderr, stdout, kill: () => { item.killed = true; setImmediate(() => child.emit('close', null, 'SIGTERM')); } });
     return child as ChildProcess;
   } };
-  const toast = new WindowsToast('JobFinish.Native.exe', diagnostics, ports);
+  const toast = new WindowsToast('JobFinish.Native.exe', diagnostics, ports, options.codeExecutable);
   const request = (id: string) => ({ notificationId: id, windowInstanceId: 'window-A', title: 'test', message: '한글😀'.repeat(100), appId: WindowsToast.appId,
     target: { hwnd: '123456', pid: 42, executable: 'C:\\Code.exe' }, canActivate: () => allowed, onClick: () => { clicks++; } });
-  return { toast, launched, diagnostics, request, clicks: () => clicks, deny: () => { allowed = false; }, registrations: () => registrations, releaseRegistration: () => releaseRegistration?.(), releaseDelivery: () => releaseDelivery?.() };
+  return { toast, launched, registrationArgs, diagnostics, request, clicks: () => clicks, deny: () => { allowed = false; }, registrations: () => registrations, releaseRegistration: () => releaseRegistration?.(), releaseDelivery: () => releaseDelivery?.() };
 }
 async function client(pipe: unknown): Promise<Socket> {
   const socket = connect(`\\\\.\\pipe\\${String(pipe)}`); socket.on('error', () => {});
@@ -79,6 +80,18 @@ test('Native toast preserves UTF-8 and exact HWND, bounds displayed text, and se
   socket.write(event('native', 'window.activation.result', { activated: true, hwnd: '123456', foreground: '123456' }));
   await until(() => f.clicks() === 1);
   assert.equal(f.diagnostics.events.find(entry => entry.event === 'window.activation.result')?.activated, true);
+});
+
+test('Native requests register the actual Code icon source and preserve optional image paths separately from text', { skip: process.platform !== 'win32' }, async t => {
+  const executable = 'C:\\Program Files\\Microsoft VS Code\\Code.exe';
+  const f = setup(0, { codeExecutable: executable }); t.after(() => f.toast.dispose());
+  const imagePath = 'C:\\이미지 폴더\\잠자는 캐릭터.png';
+  await f.toast.show({ ...f.request('with-image'), imagePath });
+  assert.deepEqual(f.registrationArgs, [['--register', executable]]);
+  assert.equal(f.launched[0]!.payload.imagePath, imagePath);
+  await f.toast.show(f.request('without-image'));
+  assert.equal('imagePath' in f.launched[1]!.payload, false);
+  assert.equal(f.registrations(), 1);
 });
 
 test('Native toast suppresses unfocused-policy failures and disposed requests before launching', { skip: process.platform !== 'win32' }, async () => {

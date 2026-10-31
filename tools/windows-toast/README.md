@@ -9,6 +9,8 @@ Windows 토스트를 등록·전달하고 클릭 승인 후 대상 VS Code 창�
   - `ToastFactory`: Windows가 요청한 토스트 활성화 콜백의 COM 인스턴스를 생성한다.
   - `ToastCallback`: COM 활성화를 클릭 처리에 전달하고 서버 종료를 요청한다.
 - [Focus.cs](Focus.cs) — `Focus`: 창과 프로세스의 결합을 확인하고 승인된 대상 창을 전면으로 활성화한다.
+- [Branding.cs](Branding.cs) — `Branding`: 설치된 VS Code 실행 파일과 토스트 헤더용 앱 이미지를 찾는다.
+- [ToastContent.cs](ToastContent.cs) — `ToastContent`: 텍스트와 선택적 로컬 이미지의 경로를 이스케이프해 토스트 XML을 구성한다.
 - [Registration.cs](Registration.cs) — `Registration`: 토스트 바로가기의 앱 식별자·실행 경로·활성화 CLSID와 백업을 관리한다.
   - `Result`: 바로가기 변경 여부와 레거시 백업 경로를 전달한다.
   - `ShortcutInfo`: 바로가기에서 읽은 앱 식별자·실행 경로·활성화 CLSID를 전달한다.

@@ -68,9 +68,11 @@
         "order": 2,
         "properties": {
           "jobFinish.toast": { "type": "boolean", "default": true, "order": 1, "description": "Show native Windows toasts while this window is unfocused." },
-          "jobFinish.flash": { "type": "boolean", "default": true, "order": 2, "description": "Flash a verified native window." },
-          "jobFinish.flashMode": { "type": "string", "enum": ["manual", "system"], "default": "manual", "order": 3 },
-          "jobFinish.flashTimeoutSeconds": { "type": "number", "minimum": 0, "maximum": 86400, "default": 300, "order": 4, "description": "Flash expiry; 0 keeps flashing until focus, click or explicit stop." }
+          "jobFinish.toastIcon": { "type": "boolean", "default": true, "order": 2, "description": "Show an image beside the toast title and AI response. Defaults to the sleeping character; turn off for text-only toasts. Changes apply to the next toast." },
+          "jobFinish.toastIconPath": { "type": "string", "default": "", "scope": "machine-overridable", "order": 3, "description": "Optional local PNG, JPEG, GIF or BMP image for toasts. Empty uses the default sleeping character. Relative paths are resolved from the first workspace folder. Requires Toast Icon to be enabled." },
+          "jobFinish.flash": { "type": "boolean", "default": true, "order": 4, "description": "Flash a verified native window." },
+          "jobFinish.flashMode": { "type": "string", "enum": ["manual", "system"], "default": "manual", "order": 5 },
+          "jobFinish.flashTimeoutSeconds": { "type": "number", "minimum": 0, "maximum": 86400, "default": 300, "order": 6, "description": "Flash expiry; 0 keeps flashing until focus, click or explicit stop." }
         }
       },
       {

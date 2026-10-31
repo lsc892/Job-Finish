@@ -26,6 +26,7 @@
 - [toast-host.ts](toast-host.ts) — 격리 VS Code 창에서 실제 스트림·네이티브 알림·전경 창 관찰을 제어한다.
 - [toast-process.test.ts](toast-process.test.ts) — 네이티브 도우미의 진단 프레임·종료·시간 제한·취소·정리 계약을 검증한다.
 - [toast.test.ts](toast.test.ts) — 실제 Windows 파이프와 제어된 도우미로 알림 전송·등록·클릭 승인·취소를 검증한다.
+- [toast-image.test.ts](toast-image.test.ts) — 기본 이미지·사용자 지정 경로·이미지 끄기와 잘못된 경로의 대체 동작을 검증한다.
 - [transport.test.ts](transport.test.ts) — UTF-8 JSONL 프레임·RPC 봉투·초기 이벤트 큐와 stdio 요청 수명을 검증한다.
 - [windows.test.ts](windows.test.ts) — 창 식별·포커스·점멸·알림 정책을 검증하고 `FakeNative`로 창 상태와 점멸 호출을 모사한다.
 - [fixtures](fixtures/README.md) — 합성 보조 프로세스와 실제 런타임에서 보존한 이벤트 입력을 제공한다.

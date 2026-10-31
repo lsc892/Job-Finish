@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { WindowsToast } from '../src/windows/toast';
+import { toastImagePath } from '../src/windows/toast-image';
 import { Diagnostics } from '../src/core/model';
 import { Win32, WindowIdentity } from '../src/windows/native';
 async function main(): Promise<void> {
@@ -22,7 +23,7 @@ async function main(): Promise<void> {
     identity.binding = { ...target, windowInstanceId, verifiedAt: new Date().toISOString(), method: 'focused-observation' };
     if (!identity.valid()) throw new Error('Requested test window is not owned by the configured VS Code executable');
   }
-  const toast = new WindowsToast(WindowsToast.binary(resolve('.')), diagnostics); let clicks = 0;
+  const toast = new WindowsToast(WindowsToast.binary(resolve('.')), diagnostics, undefined, executable); let clicks = 0;
   let activated: boolean | undefined;
   const events: { at: string; event: string; foreground?: string; activated?: boolean }[] = [];
   const record = (event: string) => { const entry = { at: new Date().toISOString(), event, foreground: native?.foreground().toString(), activated }; events.push(entry); console.log(JSON.stringify(entry)); };
@@ -30,6 +31,7 @@ async function main(): Promise<void> {
     record('start');
     const target = identity?.valid();
     await toast.show({ notificationId: randomUUID(), windowInstanceId, appId: WindowsToast.appId,
+      imagePath: toastImagePath(resolve('.'), true),
       target: target ? { hwnd: target.hwnd.toString(), pid: target.pid, executable: target.executable } : undefined,
       title: 'Job-Finish · Verification', message: identity ? 'Click to activate the selected VS Code window.' : 'Click to verify native Windows toast delivery.', onClick: () => {
         clicks++; record('click');

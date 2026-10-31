@@ -15,7 +15,7 @@ export class WindowsToast {
   private disposed = false;
   private registration?: Promise<void>;
   private readonly processes: ToastProcessRunner;
-  constructor(binary: string, private diagnostics: Diagnostics, processPorts?: ToastProcessPorts) {
+  constructor(binary: string, private diagnostics: Diagnostics, processPorts?: ToastProcessPorts, private codeExecutable?: string) {
     this.processes = new ToastProcessRunner(binary, diagnostics, processPorts);
   }
   static binary(extensionPath: string): string { return join(extensionPath, 'dist', 'native', 'JobFinish.Native.exe'); }
@@ -23,10 +23,10 @@ export class WindowsToast {
     if (this.disposed) return Promise.resolve();
     if (this.registration) return this.registration;
     let ready = false;
-    this.registration = this.processes.run(['--register'], undefined, event => {
+    this.registration = this.processes.run(this.codeExecutable ? ['--register', this.codeExecutable] : ['--register'], undefined, event => {
       if (event.event !== 'toast.registration.ready' || event.appId !== WindowsToast.appId) throw new Error('Invalid native registration response');
       ready = true;
-      this.diagnostics.trace('toast.registration.ready', { appId: event.appId, changed: event.changed, legacyBackup: event.legacyBackup, setting: event.setting });
+      this.diagnostics.trace('toast.registration.ready', { appId: event.appId, changed: event.changed, legacyBackup: event.legacyBackup, setting: event.setting, iconRegistered: event.iconRegistered });
     }).completion.then(() => { if (!ready) throw new Error('Native registration exited without confirming readiness'); }).catch(error => {
       this.registration = undefined;
       this.diagnostics.trace('toast.registration.failed');
@@ -62,7 +62,7 @@ export class WindowsToast {
       let observed = false;
       let deliveryFailed = false;
       void this.processes.run(['--show'], { notificationId: request.notificationId, windowInstanceId: request.windowInstanceId,
-        title: request.title, message: toastText(request.message), appId: request.appId, target: request.target, pipe }, event => {
+        title: request.title, message: toastText(request.message), imagePath: request.imagePath, appId: request.appId, target: request.target, pipe }, event => {
         if (event.notificationId !== request.notificationId || event.windowInstanceId !== request.windowInstanceId) throw new Error('Native toast diagnostic IDs do not match');
         if (!DELIVERY_EVENTS.includes(String(event.event))) throw new Error('Unknown native toast diagnostic');
         submitted ||= event.event === 'toast.submitted';

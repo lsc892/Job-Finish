@@ -6,6 +6,7 @@ import { Diagnostics } from '../core/model';
 export interface ToastTarget { hwnd: string; pid: number; executable: string }
 export interface ToastRequest {
   notificationId: string; windowInstanceId: string; title: string; message: string; appId: string;
+  imagePath?: string;
   target?: ToastTarget; canActivate?: () => boolean; onClick?: () => void;
 }
 const CLICK_CHANNEL_LIFETIME_MS = 300_000;

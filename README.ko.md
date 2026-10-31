@@ -96,6 +96,8 @@ VS Code 설정의 Job-Finish 항목은 **General → Notifications → Codex →
 | General | `jobFinish.enabled` | `true`; 자동 감지와 알림을 즉시 켜거나 끔 |
 | General | `jobFinish.maxSessions`, `jobFinish.maxConnections` | `8`, `4` |
 | Notifications | `jobFinish.toast`, `jobFinish.flash` | `true` |
+| Notifications | `jobFinish.toastIcon` | `true`; 토스트 본문 왼쪽에 기본 잠자는 캐릭터 이미지 표시. 끄면 이미지 없이 표시 |
+| Notifications | `jobFinish.toastIconPath` | 빈 값은 기본 이미지. 로컬 PNG·JPEG·GIF·BMP 경로로 교체 가능하며 상대 경로는 첫 workspace 폴더 기준 |
 | Notifications | `jobFinish.flashMode` | `manual` — 500ms 간격; `system`도 선택 가능 |
 | Notifications | `jobFinish.flashTimeoutSeconds` | `300`; `0`은 명시적 정지·포커스 복귀까지 유지 |
 | Codex | `jobFinish.codexExecutable` | 빈 값은 PATH 탐색. `codex.exe` 또는 npm `bin/codex.js` 경로 |
@@ -103,6 +105,8 @@ VS Code 설정의 Job-Finish 항목은 **General → Notifications → Codex →
 | Codex | `jobFinish.codexMode` | `default`; `plan`은 구조화된 질문을 사용하는 계획 모드. 새로 연결할 세션에 적용 |
 | Claude | `jobFinish.claudeExecutable` | 빈 값은 포함된 SDK CLI 사용 |
 | Claude | `jobFinish.claudeMaxTurns` | `50`; 계정 사용량 한도와 별개의 실행 제한 |
+
+토스트 왼쪽 위 앱 아이콘은 설치된 VS Code 아이콘을 사용합니다. 본문 이미지는 위 두 옵션으로 별도로 설정합니다.
 
 ## 검증과 지원 범위
 

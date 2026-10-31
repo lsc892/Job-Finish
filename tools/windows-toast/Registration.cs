@@ -14,20 +14,21 @@ internal static class Registration
     /** 바로가기 변경 여부와 레거시 바로가기 백업 경로를 전달한다. */
     internal record Result(bool Changed, string? LegacyBackup);
     /** 바로가기에서 읽은 앱 식별자·실행 경로·활성화 CLSID를 전달한다. */
-    internal record ShortcutInfo(string AppId, string Executable, Guid? Activator);
+    internal record ShortcutInfo(string AppId, string Executable, Guid? Activator, string IconPath, int IconIndex);
 
-    internal static Result Shortcut(string appId, string executable, string programs, string backupRoot)
+    internal static Result Shortcut(string appId, string executable, string programs, string backupRoot, string? iconPath = null)
     {
         var path = Path.Combine(programs, ShortcutName);
         Directory.CreateDirectory(programs);
         var current = File.Exists(path) ? Read(path) : null;
         if (current != null && current.AppId != appId) throw new InvalidOperationException("Native notification shortcut belongs to another application");
-        var changed = current == null || !string.Equals(current.Executable, executable, StringComparison.OrdinalIgnoreCase) || current.Activator != Activator;
+        var changed = current == null || !string.Equals(current.Executable, executable, StringComparison.OrdinalIgnoreCase) || current.Activator != Activator
+            || iconPath != null && (!string.Equals(current.IconPath, iconPath, StringComparison.OrdinalIgnoreCase) || current.IconIndex != 0);
         if (changed)
         {
             if (current != null) Backup(path, backupRoot);
             var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-            try { Write(temporary, appId, executable, Activator); File.Move(temporary, path, true); }
+            try { Write(temporary, appId, executable, Activator, iconPath); File.Move(temporary, path, true); }
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
             SHChangeNotify(current == null ? 2u : 0x2000u, 0x1005, path, IntPtr.Zero);
         }
@@ -58,6 +59,7 @@ internal static class Registration
         {
             ((IPersistFile)instance).Load(path, 0);
             var target = new StringBuilder(32768); ((IShellLinkW)instance).GetPath(target, target.Capacity, IntPtr.Zero, 4);
+            var icon = new StringBuilder(32768); ((IShellLinkW)instance).GetIconLocation(icon, icon.Capacity, out var iconIndex);
             var store = (IPropertyStore)instance;
             var key = new PropertyKey { Format = AppProperties, Id = 5 };
             store.GetValue(ref key, out var app);
@@ -65,13 +67,13 @@ internal static class Registration
             try { appId = app.Type == 31 ? Marshal.PtrToStringUni(app.Pointer) ?? "" : ""; }
             finally { PropVariantClear(ref app); }
             key.Id = 26; store.GetValue(ref key, out var activator);
-            try { return new(appId, target.ToString(), activator.Type == 72 ? Marshal.PtrToStructure<Guid>(activator.Pointer) : null); }
+            try { return new(appId, target.ToString(), activator.Type == 72 ? Marshal.PtrToStructure<Guid>(activator.Pointer) : null, icon.ToString(), iconIndex); }
             finally { PropVariantClear(ref activator); }
         }
         finally { Marshal.FinalReleaseComObject(instance); }
     }
 
-    internal static void Write(string path, string appId, string executable, Guid? activator)
+    internal static void Write(string path, string appId, string executable, Guid? activator, string? iconPath = null)
     {
         var instance = new ShellLink();
         try
@@ -80,6 +82,7 @@ internal static class Registration
             link.SetPath(executable);
             link.SetDescription("Job-Finish native Windows notifications");
             link.SetWorkingDirectory(Path.GetDirectoryName(executable)!);
+            if (iconPath != null) link.SetIconLocation(iconPath, 0);
             var store = (IPropertyStore)instance;
             var key = new PropertyKey { Format = AppProperties, Id = 5 };
             var value = new PropVariant { Type = 31, Pointer = Marshal.StringToCoTaskMemUni(appId) };

@@ -8,3 +8,4 @@
 - [toast-activation.ts](toast-activation.ts) — `ToastActivation`: 알림별 클릭 채널과 활성화 권한·결과를 검증한다.
 - [toast-process.ts](toast-process.ts) — `ToastProcessRunner`: 도우미 입출력·시간 제한을 처리하고 스트림 종료까지 프로세스를 관리한다.
 - [toast.ts](toast.ts) — `WindowsToast`: 도우미 등록·전달 확인과 현재 알림의 클릭 채널 수명을 조율한다.
+- [toast-image.ts](toast-image.ts) — 기본·사용자 지정 이미지와 비활성화·잘못된 경로의 대체 동작을 결정한다.

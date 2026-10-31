@@ -6,6 +6,7 @@ import { Notifications } from '../core/notifications';
 import { AgentStreamObserver, AgentRoot } from '../runtime/observe';
 import { agentProviders } from '../runtime/providers';
 import { WindowsToast } from '../windows/toast';
+import { toastImagePath } from '../windows/toast-image';
 import { CodeWindow } from './window';
 
 interface NotificationPorts {
@@ -24,7 +25,7 @@ export class WindowNotifications {
   constructor(private readonly context: vscode.ExtensionContext, windowInstanceId: string,
     private readonly sessions: Pick<ApplicationSessions, 'has' | 'owns'>, private readonly diagnostics: Diagnostics,
     private readonly ports: NotificationPorts) {
-    this.toast = new WindowsToast(WindowsToast.binary(context.extensionPath), diagnostics);
+    this.toast = new WindowsToast(WindowsToast.binary(context.extensionPath), diagnostics, undefined, process.execPath);
     this.observer = new AgentStreamObserver(windowInstanceId, () => this.agentRoots(), signal => this.receive(signal),
       diagnostics, (provider, id) => sessions.has(provider, id));
     this.window = new CodeWindow(windowInstanceId, diagnostics);
@@ -93,6 +94,8 @@ export class WindowNotifications {
       title: `${signal.provider} · ${signal.status} · ${windowInstanceId.slice(0, 8)}`,
       message,
       appId: WindowsToast.appId,
+      imagePath: toastImagePath(this.context.extensionPath, this.ports.config('toastIcon', true), this.ports.config('toastIconPath', ''),
+        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, message => this.diagnostics.add(message)),
       onClick: click,
       target: binding ? { hwnd: binding.hwnd.toString(), pid: binding.pid, executable: binding.executable } : undefined,
       canActivate: () => !this.disposed && this.ports.config('enabled', true) && this.owns(signal),

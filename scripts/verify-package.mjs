@@ -18,7 +18,8 @@ const installed = JSON.parse(readFileSync(join(root, 'extensions/extensions.json
 if (!installed) throw new Error('Extension installation not registered');
 const extension = join(root, 'extensions', installed.relativeLocation);
 if (!existsSync(join(extension, 'dist/extension.cjs'))) throw new Error('Packaged extension entry point missing');
-for (const file of ['dist/extension.cjs', 'dist/native/JobFinish.Native.exe']) {
+for (const file of ['dist/extension.cjs', 'dist/native/JobFinish.Native.exe', 'resources/icon/toast-default.png',
+  'resources/icon/SnoreToast-NOTICE.md', 'resources/icon/SnoreToast-COPYING.LGPL-3', 'resources/icon/SnoreToast-COPYING.GPL-3']) {
   if (!readFileSync(join(extension, file)).equals(readFileSync(resolve(file)))) throw new Error(`VSIX contains a stale build: ${file}`);
 }
 const requireFromExtension = createRequire(join(extension, 'package.json'));

@@ -134,6 +134,10 @@ VS Code의 포커스 통지는 Windows의 실제 전경 HWND 전환보다 먼저
 
 완료 시에는 등록 완료를 기다리고 포커스·활성화 설정·요청 세대를 다시 검사한 뒤 `--show`로 전송한다. 전송 경로는 바로가기나 protocol을 등록하지 않는다. C#은 WinRT `Failed`를 구독하고 STA 메시지를 처리하며 최대 약 2초 동안 오류 코드·해당 Tag/Group의 Windows 이력·사용자 알림 상태를 관측한 뒤 종료한다. `toast.registration.ready`, `toast.submitted`, `toast.history.confirmed`, `toast.failed`, `toast.observation.complete`를 구분하고 TypeScript는 stdout/stderr가 소진된 `close`에서 결과를 확정한다. 이력 확인이나 정상 종료를 실제 배너 표시 성공으로 표현하지 않으며, 종료 이후 발생한 표시 실패는 이 짧은 관측 범위에 포함되지 않는다.
 
+등록 시 실제 VS Code 실행 파일을 전달하고, 바로가기의 아이콘 위치와 AUMID의 `IconUri`를 VS Code 리소스로 설정한다. 업데이트로 리소스가 버전 폴더에 배치된 경우에는 설치된 `Code.VisualElementsManifest.xml`을 기준으로 찾는다. 아이콘 변경도 기존 바로가기를 백업한 뒤 적용하며 COM 활성화 대상은 helper로 유지한다.
+
+본문 왼쪽 이미지는 Notifications 구역의 `jobFinish.toastIcon`(기본 ON)으로 제어한다. 기본 이미지는 패키지에 포함한 잠자는 캐릭터 PNG이며 `jobFinish.toastIconPath`가 비어 있으면 이를 사용한다. 로컬 PNG·JPEG·GIF·BMP로 교체할 수 있고 상대 경로는 첫 workspace 폴더 기준이다. 유효하지 않은 경로는 진단하고 기본 이미지로 대체하며, OFF이면 이미지 없이 텍스트만 보낸다. 이미지 경로는 클릭 활성화 payload에서 제외한다.
+
 토스트 adapter는 다음 입력을 받도록 구성한다.
 
 ```typescript
@@ -143,6 +147,7 @@ interface ToastRequest {
   title: string;
   message: string;
   appId: string;
+  imagePath?: string;
   target?: { hwnd: string; pid: number; executable: string };
   canActivate?: () => boolean;
   onClick?: () => void;
