@@ -1,6 +1,8 @@
+// 프로세스와 창의 결합을 검증하고 해당 Windows 창을 전면으로 활성화한다.
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
+/** 창과 프로세스의 결합을 확인하고 승인된 대상 창의 전면 활성화를 수행한다. */
 internal static class Focus
 {
     internal static bool Valid(Target target)

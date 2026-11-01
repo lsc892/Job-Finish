@@ -1,3 +1,4 @@
+// 관찰한 Codex·Claude 이벤트의 알림 변환·격리·중복 제거·입력 수명을 검증한다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -76,46 +77,44 @@ test('A Claude input request already pending when observation starts is cleared 
   f.router.incoming(result('done')); assert.equal(f.signals.at(-1)!.status, 'completed'); assert.equal(f.router.snapshot().activeTurns, 0);
 });
 
-test('Codex thread titles and renames enrich live notifications without admitting history', () => {
-  const f = setup('codex');
-  f.router.incoming({ id: 1, result: { thread: { id: 'session', name: 'Toast appearance', preview: 'First user prompt', turns: [{ id: 'old', status: 'completed' }] } } });
-  f.router.incoming({ method: 'thread/name/updated', params: { threadId: 'session', threadName: 'Custom notification icons' } });
-  assert.equal(f.signals.length, 0); assert.equal(f.router.snapshot().activeTurns, 0);
-  f.router.incoming({ method: 'turn/started', params: { threadId: 'session', turn: { id: 'live', status: 'inProgress' } } });
-  f.router.incoming({ method: 'item/completed', params: { threadId: 'session', turnId: 'live', item: { type: 'userMessage', content: [{ type: 'text', text: 'Add icon settings' }] } } });
-  f.router.incoming({ method: 'turn/completed', params: { threadId: 'session', turn: { id: 'live', status: 'completed', items: [{ type: 'agentMessage', phase: 'final_answer', text: 'Icon settings are ready.' }] } } });
-  assert.equal(f.signals[0]!.title, 'Custom notification icons'); assert.equal(f.signals[0]!.text, 'Icon settings are ready.');
-  f.router.incoming({ method: 'thread/name/updated', params: { threadId: 'session' } });
-  f.router.incoming({ method: 'turn/completed', params: { threadId: 'session', turn: { id: 'next', status: 'completed', items: [{ type: 'userMessage', content: [{ type: 'text', text: 'Repair toast wrapping' }] }, { type: 'agentMessage', text: 'Wrapping repaired.' }] } } });
-  assert.equal(f.signals[1]!.title, 'Repair toast wrapping');
-});
-
-test('Codex prompt titles follow their thread and turn across either start response order', () => {
-  const f = setup('codex');
-  f.router.outgoing({ id: 1, method: 'turn/start', params: { threadId: 'A', input: [{ type: 'text', text: 'Repair title layout' }] } });
-  f.router.outgoing({ id: 2, method: 'turn/start', params: { threadId: 'B', input: [{ type: 'text', text: 'Add icon choice' }] } });
-  f.router.incoming({ method: 'turn/started', params: { threadId: 'A', turn: { id: 'turn-A', status: 'inProgress' } } });
-  f.router.incoming({ id: 1, result: { turn: { id: 'turn-A', status: 'inProgress' } } });
-  f.router.incoming({ id: 2, result: { turn: { id: 'turn-B', status: 'inProgress' } } });
-  f.router.incoming({ method: 'turn/started', params: { threadId: 'B', turn: { id: 'turn-B', status: 'inProgress' } } });
-  for (const [threadId, id] of [['B', 'turn-B'], ['A', 'turn-A']]) f.router.incoming({ method: 'turn/completed', params: { threadId, turn: { id, status: 'completed', items: [{ type: 'agentMessage', text: `Response for ${threadId}` }] } } });
-  assert.deepEqual(f.signals.map(s => [s.title, s.text]), [['Add icon choice', 'Response for B'], ['Repair title layout', 'Response for A']]);
-  f.router.outgoing({ id: 3, method: 'turn/start', params: { threadId: 'A', input: [{ type: 'text', text: 'Rejected prompt' }] } });
-  f.router.incoming({ id: 3, error: { code: -32000, message: 'Rejected' } });
-  f.router.incoming({ method: 'turn/completed', params: { threadId: 'A', turn: { id: 'no-title', status: 'completed', items: [{ type: 'agentMessage', text: 'Response alone' }] } } });
-  assert.equal(f.signals[2]!.title, undefined);
-});
-
-test('Claude prompt titles preserve input ordering and survive a runtime-added UUID', () => {
+test('Claude adopts a late user UUID without retaining the provisional active turn', () => {
   const f = setup('claude');
-  f.router.outgoing({ type: 'user', message: { content: [{ type: 'image', source: {} }, { type: 'text', text: '  Fix toast\nwrapping  ' }] } });
+  f.router.outgoing({ type: 'user', session_id: 'session' });
   f.router.incoming({ type: 'system', subtype: 'init', session_id: 'session' });
-  f.router.incoming(result('one', 'added-uuid'));
-  assert.equal(f.signals[0]!.title, 'Fix toast wrapping');
-  f.router.outgoing({ type: 'user', uuid: 'next', message: { content: 'Add icon settings' } });
-  f.router.incoming(result('one', 'added-uuid')); f.router.incoming(result('unrelated', 'wrong-uuid'));
-  assert.equal(f.signals.length, 1); f.router.incoming(result('two', 'next'));
-  assert.equal(f.signals[1]!.title, 'Add icon settings');
-  f.router.outgoing({ type: 'user', uuid: 'tool-result', message: { content: [{ type: 'tool_result', content: 'Tool output is not a task title' }] } });
-  f.router.incoming(result('three', 'tool-result')); assert.equal(f.signals[2]!.title, undefined);
+  f.router.incoming({ type: 'control_request', request_id: 'approval', request: { subtype: 'can_use_tool', tool_name: 'Write' } });
+  const provisionalTurn = f.signals[0]!.turnId;
+  assert.notEqual(provisionalTurn, 'assigned-user');
+  f.router.incoming(result('first-result', 'assigned-user'));
+  assert.equal(f.signals.at(-1)!.turnId, 'assigned-user');
+  assert.equal(f.signals.at(-1)!.status, 'completed');
+  assert.equal(f.router.snapshot().activeTurns, 0);
+
+  f.router.outgoing({ type: 'user', uuid: 'next-user', session_id: 'session' });
+  f.router.incoming({ type: 'control_request', request_id: 'next-approval', request: { subtype: 'can_use_tool', tool_name: 'Write' } });
+  assert.equal(f.signals.at(-1)!.turnId, 'next-user');
+  assert.equal(f.signals.at(-1)!.status, 'waitingForInput');
+  f.router.incoming(result('second-result', 'next-user'));
+  assert.equal(f.signals.at(-1)!.turnId, 'next-user');
+  assert.equal(f.router.snapshot().activeTurns, 0);
+});
+
+test('A failed Claude interrupt response leaves the input queued for its actual result', () => {
+  const f = setup('claude');
+  f.router.outgoing({ type: 'user', uuid: 'request', session_id: 'session' });
+  f.router.outgoing({ type: 'control_request', request_id: 'interrupt', request: { subtype: 'interrupt' } });
+  f.router.incoming({ type: 'control_response', response: { subtype: 'error', request_id: 'interrupt' } });
+  f.router.incoming({ type: 'control_response', response: { subtype: 'success', request_id: 'interrupt' } });
+  assert.equal(f.signals.length, 0);
+  assert.equal(f.router.snapshot().activeTurns, 1);
+  f.router.incoming(result('done'));
+  assert.deepEqual(f.signals.map(signal => signal.status), ['completed']);
+  assert.equal(f.router.snapshot().activeTurns, 0);
+});
+
+test('Observed Claude validates duplicate result bodies before ignoring replay', () => {
+  const f = setup('claude');
+  f.router.incoming(result('done'));
+  assert.throws(() => f.router.incoming({ ...result('done'), result: null }), /Malformed observed Claude result body/);
+  assert.throws(() => f.router.incoming({ ...result('error'), subtype: 'error_during_execution', errors: ['failure', null] }), /Malformed observed Claude result body/);
+  assert.equal(f.signals.length, 1);
 });

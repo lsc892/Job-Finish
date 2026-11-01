@@ -1,3 +1,4 @@
+// UTF-8 JSONL 프레임·RPC 봉투·초기 이벤트 큐와 stdio 요청 수명을 검증한다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventQueue, JsonLines, RpcMessage, StdioRpc } from '../src/runtime/transport';

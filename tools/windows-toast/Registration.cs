@@ -1,7 +1,9 @@
+// 토스트 바로가기의 앱 식별자·실행 경로·COM 활성화 등록 정보를 관리한다.
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Text;
 
+/** 토스트 바로가기의 앱 식별자·실행 경로·활성화 CLSID와 백업을 관리한다. */
 internal static class Registration
 {
     // The shortcut and AUMID registration use this toast callback's CLSID.
@@ -9,7 +11,9 @@ internal static class Registration
     const string ShortcutName = "Job-Finish Native Notifications.lnk";
     static readonly Guid AppProperties = new("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3");
     internal static void ProtocolChanged() => SHChangeNotify(0x08000000, 0x1000, null, IntPtr.Zero);
+    /** 바로가기 변경 여부와 레거시 바로가기 백업 경로를 전달한다. */
     internal record Result(bool Changed, string? LegacyBackup);
+    /** 바로가기에서 읽은 앱 식별자·실행 경로·활성화 CLSID를 전달한다. */
     internal record ShortcutInfo(string AppId, string Executable, Guid? Activator, string IconPath, int IconIndex);
 
     internal static Result Shortcut(string appId, string executable, string programs, string backupRoot, string? iconPath = null)
@@ -99,6 +103,7 @@ internal static class Registration
     [DllImport("ole32.dll")] static extern int PropVariantClear(ref PropVariant value);
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)] static extern void SHChangeNotify(uint events, uint flags, string? path, IntPtr other);
 
+    /** Windows Shell Link COM 객체를 생성해 바로가기 저장소에 접근한다. */
     [ComImport, Guid("00021401-0000-0000-C000-000000000046")] class ShellLink { }
     [StructLayout(LayoutKind.Sequential)] struct PropertyKey { public Guid Format; public uint Id; }
     [StructLayout(LayoutKind.Explicit, Size = 24)] struct PropVariant { [FieldOffset(0)] public ushort Type; [FieldOffset(8)] public IntPtr Pointer; }

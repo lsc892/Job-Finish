@@ -1,3 +1,4 @@
+// 실제 런타임 검증 기록에서 종료 이벤트와 Claude 입력 계약을 추려 fixture로 저장한다.
 // Copy only event payloads from the marker-only live probes; never persist stderr/config/auth.
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 const reports = readdirSync('test-artifacts').filter(f => /^live.*\.json$/.test(f)).flatMap(f => JSON.parse(readFileSync(`test-artifacts/${f}`, 'utf8')).report);

@@ -1,3 +1,4 @@
+<!-- Windows 토스트와 창 활성화 도우미의 .NET 빌드·게시 설정을 정의한다. -->
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>

@@ -1,3 +1,4 @@
+// 토스트의 기본·사용자 지정 이미지와 비활성화·잘못된 경로의 대체 동작을 결정한다.
 import { statSync } from 'node:fs';
 import { extname, isAbsolute, join, resolve } from 'node:path';
 

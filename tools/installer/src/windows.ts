@@ -1,3 +1,4 @@
+// 레거시 도구 소유의 Windows 포커스 프로토콜과 시작 메뉴 바로가기를 검사·제거한다.
 import { execFileSync } from 'node:child_process';
 import { rmSync } from 'node:fs';
 

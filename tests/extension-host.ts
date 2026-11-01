@@ -1,3 +1,4 @@
+// 실제 VS Code 확장 호스트에서 명령·외부 스트림·창별 결과·독점 소유권을 검증한다.
 import * as vscode from 'vscode';
 import assert from 'node:assert/strict';
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
@@ -18,7 +19,7 @@ async function until(fn: () => boolean): Promise<void> {
 export async function run(): Promise<void> {
   const root = process.env.JOB_FINISH_HOST_ARTIFACTS!;
   const role = vscode.workspace.workspaceFile ? basename(vscode.workspace.workspaceFile.fsPath, '.code-workspace') : 'single';
-  const extension = vscode.extensions.getExtension<Api>('JobFinish.JobFinish'); assert.ok(extension);
+  const extension = vscode.extensions.getExtension<Api>('lsc892.job-finish'); assert.ok(extension);
   return runWithApi(await extension.activate(), root, role);
 }
 export async function runWithApi(api: Api, root: string, role: string): Promise<void> {
@@ -75,7 +76,13 @@ export async function runWithApi(api: Api, root: string, role: string): Promise<
         checks: ['windowRouting', 'exclusiveOwnership'], nativeChecks: canFocusNative ? 'See both window focus flags' : 'SKIPPED: Windows foreground activation refused; manual desktop verification required' }, null, 2));
       return;
     }
-    const commands = await vscode.commands.getCommands(true); assert.ok(commands.includes('jobFinish.runCodex')); assert.ok(commands.includes('jobFinish.respond'));
+    const commands = await vscode.commands.getCommands(true);
+    for (const command of ['runCodex', 'runClaude', 'continue', 'resume', 'cancel', 'respond', 'reconnect', 'detach', 'results', 'bindWindow', 'stopFlash', 'diagnostics']) {
+      assert.ok(commands.includes(`jobFinish.${command}`), `Missing command: ${command}`);
+    }
+    await vscode.commands.executeCommand('jobFinish.stopFlash');
+    assert.equal(api.test.flashId(), undefined);
+    await vscode.commands.executeCommand('jobFinish.diagnostics');
     const session = await api.test.open('codex', vscode.workspace.workspaceFolders![0]!.uri.fsPath);
     await api.test.run(session, 'EXTENSION_HOST_OK');
     await until(() => api.snapshot().results.length === 1);

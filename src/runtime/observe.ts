@@ -1,14 +1,17 @@
+// 현재 Extension Host의 제공자 자식 프로세스 입출력을 관찰해 실행 신호를 전달한다.
 import { ChildProcess } from 'node:child_process';
 import { isAbsolute, resolve } from 'node:path';
 import type { Writable } from 'node:stream';
 import { Diagnostics, LIMITS, Provider, Signal } from '../core/model';
 import { AgentEventRouter } from './event-router';
+import type { AgentProviderRegistry } from './agent-provider';
+import { agentProviders } from './providers';
 
 export interface AgentRoot { provider: Provider; path: string }
 interface Spawnable { spawn: (...args: unknown[]) => unknown }
 const canonical = (path: string) => path.replace(/\\/g, '/').toLowerCase();
 
-/** Independent, bounded decoder: errors stop observation, never the original stream. */
+/** 관찰 스트림을 크기가 제한된 JSON 프레임으로 분리해 전달한다. */
 class Frames {
   private buffer = Buffer.alloc(0);
   private length = 0;
@@ -16,16 +19,22 @@ class Frames {
   constructor(private receive: (value: unknown) => void, private allowPartialStart: boolean) {}
   push(chunk: Buffer): void {
     let start = 0;
-    for (let at = 0; at < chunk.length; at++) if (chunk[at] === 10) {
-      this.append(chunk.subarray(start, at)); start = at + 1;
-      if (!this.length) continue;
-      let value: unknown;
-      try { value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(this.buffer.subarray(0, this.length))); }
-      catch (error) { if (!this.first || !this.allowPartialStart) throw error; }
-      this.first = false; this.length = 0;
-      if (value !== undefined) this.receive(value);
+    for (let at = 0; at < chunk.length; at++) {
+      if (chunk[at] !== 10) continue;
+      this.append(chunk.subarray(start, at));
+      start = at + 1;
+      this.receiveFrame();
     }
     this.append(chunk.subarray(start));
+  }
+  private receiveFrame(): void {
+    if (!this.length) return;
+    let value: unknown;
+    try { value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(this.buffer.subarray(0, this.length))); }
+    catch (error) { if (!this.first || !this.allowPartialStart) throw error; }
+    this.first = false;
+    this.length = 0;
+    if (value !== undefined) this.receive(value);
   }
   private append(chunk: Buffer): void {
     const length = this.length + chunk.length;
@@ -40,24 +49,28 @@ class Frames {
   get capacity(): number { return this.buffer.length; }
 }
 
-/** Observes agent children in this window's Extension Host, including children already alive.
- * Node's spawn method and active-handle discovery are internal compatibility points, not vendor APIs.
- * No polling, child creation, stream redirection, hooks, or provider configuration changes.
- */
+// Node's spawn method and active-handle discovery are internal compatibility points, not vendor APIs.
+/** 현재 Extension Host의 기존·신규 제공자 프로세스를 관찰하고 확인된 실행 신호를 전달한다. */
 export class AgentStreamObserver {
   private readonly connections = new Map<ChildProcess, { router: AgentEventRouter; dispose(): void; bytes(): number }>();
   private restoreSpawn?: () => void;
   private readonly delivered = new Map<string, string>();
   private enabled = false;
   constructor(private windowInstanceId: string, private roots: () => AgentRoot[], private emit: (signal: Signal) => void,
-    private diagnostics: Diagnostics, private isOwned: (provider: Provider, sessionId: string) => boolean = () => false) {}
+    private diagnostics: Diagnostics, private isOwned: (provider: Provider, sessionId: string) => boolean = () => false,
+    private providers: AgentProviderRegistry = agentProviders) {}
 
   start(): void {
     if (this.enabled) return;
     this.enabled = true;
+    if (!this.observeFutureProcesses()) return;
+    this.discoverExistingProcesses();
+  }
+
+  private observeFutureProcesses(): boolean {
     const prototype = ChildProcess.prototype as unknown as Spawnable;
     const original = prototype.spawn;
-    if (typeof original !== 'function') { this.enabled = false; this.diagnostics.add('Automatic observation unavailable: Node spawn method missing'); return; }
+    if (typeof original !== 'function') { this.enabled = false; this.diagnostics.add('Automatic observation unavailable: Node spawn method missing'); return false; }
     const observer = this;
     function spawn(this: ChildProcess, ...args: unknown[]): unknown {
       const result = Reflect.apply(original, this, args);
@@ -68,8 +81,12 @@ export class AgentStreamObserver {
       return result;
     }
     try { prototype.spawn = spawn; }
-    catch (error) { this.enabled = false; this.diagnostics.add(`Automatic observation unavailable: ${error}`); return; }
+    catch (error) { this.enabled = false; this.diagnostics.add(`Automatic observation unavailable: ${error}`); return false; }
     this.restoreSpawn = () => { if (prototype.spawn === spawn) prototype.spawn = original; };
+    return true;
+  }
+
+  private discoverExistingProcesses(): void {
     // Existing stdio handles belong to this Extension Host, so they already identify the window.
     const handles = (process as unknown as { _getActiveHandles?: () => unknown[] })._getActiveHandles;
     if (!handles) this.diagnostics.add('Existing process discovery unavailable in this Node runtime');
@@ -81,9 +98,9 @@ export class AgentStreamObserver {
   private consider(child: ChildProcess, existing: boolean, stack: () => string = () => ''): void {
     if (!this.enabled || this.connections.has(child) || !child.pid || child.exitCode !== null || child.signalCode !== null || !child.stdout || !child.stdin) return;
     const args = child.spawnargs ?? [];
-    const outputJson = args.some((arg, i) => arg === '--output-format=stream-json' || arg === '--output-format' && args[i + 1] === 'stream-json');
-    const provider: Provider | undefined = args.includes('app-server') ? 'codex' : outputJson ? 'claude' : undefined;
-    if (!provider) return;
+    const implementation = this.providers.match(args);
+    if (!implementation) return;
+    const provider = implementation.id;
     const roots = this.roots().filter(root => root.provider === provider).map(root => canonical(resolve(root.path)) + '/');
     const pathMatches = args.some(arg => isAbsolute(arg) && roots.some(root => canonical(resolve(arg)).startsWith(root)));
     if (!pathMatches && !roots.some(root => canonical(stack()).includes(root))) return;
@@ -99,7 +116,7 @@ export class AgentStreamObserver {
         this.delivered.set(signal.notificationId, signal.connectionId);
         while (this.delivered.size > LIMITS.dedup) this.delivered.delete(this.delivered.keys().next().value!);
         this.emit(signal);
-      }, this.diagnostics, this.isOwned);
+      }, this.diagnostics, this.isOwned, this.providers);
     const incoming = new Frames(value => router.incoming(value), existing);
     const outgoing = new Frames(value => router.outgoing(value), existing);
     const originalWrite = input.write;

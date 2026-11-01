@@ -1,3 +1,4 @@
+// 실제 Codex App Server의 질문·승인·권한·취소와 재연결 경로를 검증한다.
 // Opt-in App Server probes using the product transport, adapter, ownership and response path.
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -8,7 +9,7 @@ import { CodexExecution, codexApprovalResponse } from '../src/runtime/codex';
 import { Diagnostics, Signal } from '../src/core/model';
 import { Session } from '../src/core/session';
 import { Ownership } from '../src/core/ownership';
-import { runtimeId } from '../src/runtime/executable';
+import { runtimeId } from '../src/runtime/providers';
 import type { RpcMessage } from '../src/runtime/transport';
 import type { ToolRequestUserInputParams } from '../src/protocol/v2/ToolRequestUserInputParams';
 

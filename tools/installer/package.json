@@ -1,52 +1,17 @@
 {
-  "name": "job-finish",
-  "version": "2.1.2",
-  "description": "Windows notifications for Claude Code and Codex. Install, update or uninstall the Job-Finish VS Code extension.",
+  "name": "job-finish-installer",
+  "version": "0.1.0",
+  "description": "Install or update Job-Finish in VS Code and migrate legacy PowerShell/C# installations.",
   "license": "MIT",
-  "engines": {
-    "node": ">=22"
-  },
-  "os": [
-    "win32"
-  ],
-  "cpu": [
-    "x64"
-  ],
-  "bin": {
-    "job-finish": "dist/cli.cjs"
-  },
-  "files": [
-    "dist/cli.cjs",
-    "assets/*.vsix",
-    "LICENSE",
-    "README.md"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/lsc892/Job-Finish.git"
-  },
-  "homepage": "https://github.com/lsc892/Job-Finish#readme",
-  "bugs": {
-    "url": "https://github.com/lsc892/Job-Finish/issues"
-  },
-  "keywords": [
-    "claude-code",
-    "codex",
-    "vscode",
-    "windows",
-    "notification",
-    "toast",
-    "installer"
-  ],
-  "publishConfig": {
-    "registry": "https://registry.npmjs.org/",
-    "access": "public"
-  },
+  "engines": { "node": ">=22" },
+  "os": ["win32"],
+  "bin": { "job-finish-installer": "dist/cli.cjs" },
+  "files": ["dist/cli.cjs", "assets/*.vsix", "LICENSE", "README.md"],
+  "repository": { "type": "git", "url": "https://github.com/lsc892/Job-Finish.git" },
   "scripts": {
     "install:extension": "tsx src/cli.ts install",
     "update:extension": "tsx src/cli.ts update",
-    "uninstall:extension": "tsx src/cli.ts uninstall",
-    "uninstall:legacy": "tsx src/cli.ts uninstall-legacy",
+    "uninstall:legacy": "tsx src/cli.ts uninstall",
     "build": "node scripts/build.mjs",
     "prepack": "node scripts/build.mjs --require-vsix",
     "typecheck": "tsc --noEmit",

@@ -1,3 +1,4 @@
+// 제어된 SDK Query로 Claude 실행의 입력·취소·종료·소유권 경계를 검증한다.
 // Synthetic SDK boundary tests: the product adapter runs against a controlled Query.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -84,7 +85,7 @@ for (const loss of ['ownership', 'connection'] as const) test(`Claude denies del
 test('Claude drains the result tail and rejects callbacks from a previous execution', async t => {
   const f = fixture(); t.after(() => f.execution.dispose()); await f.execution.run('fixture');
   const q = f.queries[0]!; q.emit(f.result()); await until(() => f.signals.length === 1);
-  assert.equal(f.signals[0]!.status, 'completed'); assert.equal(f.signals[0]!.title, 'fixture'); assert.equal(q.closed, false);
+  assert.equal(f.signals[0]!.status, 'completed'); assert.equal(q.closed, false);
   assert.equal((await ask(q.permission))?.behavior, 'deny');
   await assert.rejects(() => f.execution.run('too early'), /active/);
   q.end(); await until(() => q.closed); await new Promise(r => setTimeout(r, 0));

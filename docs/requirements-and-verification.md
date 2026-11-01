@@ -1,6 +1,6 @@
 # Job-Finish 기능과 구현 알고리즘
 
-작성일: 2026-10-03 · 갱신일: 2026-10-06
+작성일: 2026-10-03 · 갱신일: 2026-10-27
 
 이 문서는 구현할 기능, 처리 알고리즘, Windows 창 선택·알림 규칙과 구현 완료 조건을 정의한다. 완료 감지는 Codex App Server 이벤트를 수신하고, Claude는 별도 Agent SDK adapter를 사용한다. 선택 근거·비용 비교·과거 구현과 실측 기록은 [일지](일지.md)에 보관한다.
 
@@ -27,6 +27,14 @@ flowchart TD
 
 검증 코드와 제품 알림은 같은 런타임 adapter·상태 처리기를 사용한다. 완료 감지를 위해 세션 로그 파일을 감시하거나 CLI stdout을 파일로 저장한 뒤 다시 읽지 않는다. 소스 파일 수정, 프로세스 종료, 수신이 한동안 없다는 사실만으로 완료를 판정하지 않는다.
 
+에이전트별 프로세스 식별·이벤트 해석기 생성·직접 실행 생성·승인 및 질문 응답 변환은 `AgentProvider` 추상 클래스를 상속한 Provider가 담당한다. 등록 목록은 `src/runtime/providers.ts` 한 곳이며, 공통 observer·router·애플리케이션은 이 목록을 사용한다. 연결별 프로토콜 상태는 Provider가 생성한 해석기에 두고, 세션·소유권·알림 수명은 공통 계층이 관리한다. 새 에이전트는 상속 구현과 등록으로 추가하며, 명령 팔레트·설정 공개에 필요한 VS Code 정적 선언은 별도다. 상세 계약은 [에이전트 Provider 확장](agent-providers.md)을 따른다.
+
+확장 조립부는 설정·명령·창 이벤트·입력 UI를 연결하고, 직접 실행의 세션 수명은 [ApplicationSessions](../src/application/sessions.ts)에 맡긴다. 이 객체는 VS Code에 의존하지 않으며 실행·Session·lease와 연결 중 자원을 함께 소유한다. Windows 알림은 [WindowsToast](../src/windows/toast.ts)가 등록·세대·교체를 조율하고, [ToastProcessRunner](../src/windows/toast-process.ts)가 helper별 입출력·완료·취소를, [ToastActivation](../src/windows/toast-activation.ts)이 클릭 pipe·socket·만료·승인을 소유한다. 전송 helper가 종료돼도 클릭 채널은 유지되며, 하위 객체는 확장이나 facade의 내부 상태에 의존하지 않는다.
+
+확장 진입점 `src/extension.ts`는 지원 환경과 활성화·해제를 담당한다. `src/vscode/application.ts`가 구체 객체와 공개 API·상태 표시를 조립하며, 같은 폴더의 `commands.ts`·`interaction.ts`·`results.ts`가 명령·입력·결과 UI를, `notifications.ts`·`window.ts`가 관찰·신호 전달·설정과 native 창 식별·flash를 맡는다. 하위 모듈은 조립부의 비공개 상태를 참조하지 않는다.
+
+런타임 구현은 `runtime/codex/`와 `runtime/claude/` 아래의 `provider.ts`·`events.ts`·`execution.ts`·`adapter.ts`를 공통 진입 구조로 사용한다. 두 실행체는 공통 `runtime/execution.ts`의 `AgentRuntime`과 옵션을 공유한다. Codex의 연결·응답 캐시·복구·페이지 조회·이력 대조는 Codex 폴더가, Claude의 SDK query·승인 대기·abort 구독과 응답 정리는 Claude 폴더가 맡는다. `providers.ts` 한 곳에서 등록하며 기존 `runtime/codex`·`runtime/claude` 공개 import와 프로토콜·상한·알림 판정은 유지한다.
+
 초기 실행 범위는 Windows의 로컬 VS Code Node.js Extension Host다. `onStartupFinished`로 활성화하고 런타임 연결·이벤트 구독·flash 타이머를 확장 생명주기에 연결한다. 원격 런타임과 로컬 Windows 알림을 함께 지원하려면 감지 측과 로컬 알림 측을 나누어야 한다. 브라우저 전용 VS Code는 이 구현 범위에 포함하지 않는다.
 
 ## 1. 포커스하지 않은 창의 작업 상태 알림
@@ -39,8 +47,10 @@ flowchart TD
 
 `runtimeId`는 같은 실행 환경의 같은 런타임 연결 대상을 여러 창이 동일하게 식별하기 위한 값이다. 재연결마다 바뀌는 `connectionId`와 구분한다. Codex의 `sessionId`에는 App Server의 thread ID를 저장한다. Claude SDK 실행은 별도 adapter에서 같은 내부 상태 모델로 변환한다.
 
+알림 신호의 선택적 `sessionTitle`은 표시용 메타데이터이며 세션·창 식별과 소유권 키에 사용하지 않는다. Codex의 thread 응답·시작 통지·목록에서 `name`과 `preview`를 읽고 `thread/name/updated`의 `threadName`을 반영한다. 저장 이력 응답은 제목만 제공하며 새 실행이나 완료 알림을 만들지 않는다. 이름이 없으면 미리보기 또는 관측한 첫 요청을 사용하고, Claude는 첫 요청의 텍스트를 사용한다. 제목과 첫 요청 미리보기는 각각 제어 문자·공백을 정리해 최대 100자로 보관하며 직접 실행의 선택적 체크포인트 필드로 복구한다. Codex 관찰 연결의 제목 캐시는 최대 512개로 제한하고 해제 시 비운다.
+
 ```typescript
-type Provider = "codex" | "claude";
+type Provider = string; // AgentProviderRegistry에서 등록된 ID인지 검증한다.
 type NotificationStatus =
   | "idle" | "running" | "completed" | "error"
   | "cancelled" | "waitingForInput" | "unknown";
@@ -74,16 +84,11 @@ interface SessionBinding {
 | Codex App Server | `turn/completed`, `turn.status: interrupted` → `cancelled` | thread ID·`turn.id` |
 | Claude Agent SDK | `type: result`, `subtype: success`, `is_error: false` → `completed` | `session_id`, `result`, 결과 ID와 실행 바인딩 |
 | Claude Agent SDK | 실패·한도 도달 `result` → `error` | 결과 유형과 오류 본문 |
-| Claude Agent SDK | foreground `assistant`, `error: server_error`와 OAuth 갱신 충돌 본문 → 즉시 오류 알림 | `session_id`, 실행 요청과 오류 본문; 종료 확정은 후속 `result` 사용 |
 | 연결 단절·해석 불가 | 종료 상태를 확인할 수 없으면 `unknown` | 마지막 확인 세션·턴과 진단 |
 
 Codex의 최종 응답은 같은 thread·turn에 속한 `item/completed`의 `agentMessage` 등 지원 버전에서 확인한 결과 이벤트로 보관한다. 본문만 수신한 상태에서 완료를 만들지 않는다. 상태 확정 전에 본문이 누락되어도 이전 턴의 응답을 대신 표시하지 않는다. 일반 오류 통지만으로 턴 종료를 확정하지 않으며, 확인된 실행 시작 실패는 해당 요청의 오류로 구분한다.
 
-Codex의 완료 알림은 메인 에이전트의 턴 종료에만 보낸다. 기존 확장 관찰에서는 thread의 부모·source·ephemeral 정보 외에도 `collabAgentToolCall`의 `spawnAgent.receiverThreadIds`와 `subAgentActivity.agentThreadId`로 하위 에이전트를 식별한다. 하위 에이전트의 생성 metadata가 전달되지 않아도 해당 스레드의 종료를 전체 작업 완료로 알리지 않으며, 이미 관찰한 하위 스레드의 상태도 식별 즉시 제거한다. 중첩 에이전트와 이력·스레드 목록에서 확인한 관계도 같은 필터에 반영하지만 이력 자체로 알림을 만들지는 않는다. 다른 협업 도구의 수신자는 부모·동료 에이전트일 수 있으므로 수신자라는 이유만으로 제외하지 않는다.
-
 Claude는 SDK의 `result`를 판정하고 스트림의 뒤따르는 이벤트도 정리한다. 일반 assistant 응답을 전체 실행 완료로 바꾸지 않는다. 취소는 해당 실행의 명시적 취소 근거가 있을 때만 `cancelled`로 처리한다.
-
-설치된 Claude Code 2.1.296에서 확인한 `Failed to refresh OAuth token: another Claude Code process is refreshing it or exited mid-refresh`와 대체 표현 `Could not refresh your login because another Claude Code process is refreshing it (or exited mid-refresh)`는 foreground assistant의 `server_error` 표식과 함께 수신하면 즉시 오류 알림을 보낸다. 같은 실행의 재전달과 동일 오류의 후속 결과는 중복 알림을 억제하지만, 실제 결과의 저장·입력 대기 정리는 수행한다. 이 알림만으로 턴을 종료하지 않으며 이후 성공·다른 오류·취소 결과는 별도로 알린다. 일반 답변에서 인용한 문구, 도구 출력과 하위 에이전트 메시지는 탐지 대상에서 제외한다.
 
 Codex는 런타임이 제공한 turn ID를 사용한다. Claude에 동등한 턴 ID가 없으면 실행 시작 때 만든 요청 ID와 SDK 결과 ID를 해당 실행에 바인딩한다. 단일 응답·턴 종료와 관련 백그라운드 작업 전체의 종료를 구분한다.
 
@@ -103,10 +108,6 @@ T/U의 turn/completed 수신 → completed / error / cancelled 분류
 
 질문·승인 감지는 provider가 제공하는 요청/응답 계약을 사용한다. 요청 ID·대상 실행·질문 본문과 미해결 상태를 확인해 `waitingForInput`으로 만들고, 답변·요청 해제·턴 종료에 따라 정리한다. 일반 도구 호출을 모두 입력 대기로 처리하지 않는다. 같은 요청의 재전달은 중복 알림으로 만들지 않으며, 사용자 답변은 원래 요청에 대응시킨다. 요청 중계 UI는 연결된 실행에 답변을 전달하고, provider별 이벤트 fixture로 상태 전이를 검증한다.
 
-기존 Codex 확장 관찰에서는 정식 질문·승인 RPC 외에 확인된 `codex_app` 선택 도구, 구조화된 `agentMessage.questions`, 알려진 단일 활성 턴의 입력·승인 대기 flags를 받는다. 선택 도구는 원래 UI의 실제 요청 ID와 응답을 관찰하며, 비동기 질문과 상태 flags는 응답 RPC를 만들어내지 않는 알림으로 처리한다. 기존 Claude 확장 관찰에서는 `AskUserQuestion`과 `request_user_dialog`를 받으며, 실제로 관찰한 initialize 요청과 일치하는 성공 응답의 pending 질문·dialog만 복원한다. 답변은 원래 확장 UI가 처리한다.
-
-질문 알림은 질문 문장과 1부터 번호를 붙인 선택지 label을 보여주며 질문·승인을 제목에서 구분한다. 현재 창이 비활성이고 알림이 켜진 경우에 toast·flash를 전달한다. 같은 대기 상태의 일반 flags와 실제 질문은 중복 알림을 만들지 않는다. 새 입력 경로의 회귀 검증은 설치된 제공자 코드의 구조를 따른 합성 프레임과 실제 stdio 자식의 제품 알림 경로를 사용하며, 실제 모델 호출·Windows 배너의 육안 확인과 구분한다.
-
 완료·입력 요청·사용량 제한·API 오류·취소 각각의 실제 런타임 이벤트를 확보하고 상태 분류를 검증해야 세 기능 전체의 완료 기준을 충족한다.
 
 ### 알림 판단
@@ -119,11 +120,11 @@ T/U의 turn/completed 수신 → completed / error / cancelled 분류
   이미 처리한 이벤트인가? 맞으면 무시
   상태·본문·세션·창 ID를 제한된 결과 저장소에 기록
   해당 창이 focused인가? 맞으면 해당 flash 정지 후 종료
-  toast 설정이 켜졌으면 작업 제목과 AI 응답 미리보기로 표시
+  toast 설정이 켜졌으면 provider·상태·세션 제목과 본문으로 표시
   flash 설정이 켜졌고 HWND가 확인되면 그 HWND에만 시작
 ```
 
-알림 본문은 에이전트의 최종 응답을 사용하고 요약을 위한 AI 호출은 추가하지 않는다. Windows 토스트 제목에는 Codex의 대화 이름·첫 사용자 메시지 또는 해당 턴의 사용자 요청을 사용하고, 제목을 확보하지 못하면 workspace 이름을 사용한다. Claude는 해당 사용자 요청을 제목으로 사용한다. 상태·창 ID는 결과와 진단에 보관한다. 토스트 미리보기만 Markdown 기호·빈 줄을 정리하고 최대 360자로 제한한다. 전체 본문은 제한된 결과 저장소나 런타임의 지원되는 조회 API로 열고, 잘린 결과나 조회 불가 상태를 표시한다.
+토스트 헤더는 `provider · 상태 · 세션 제목` 형식으로 표시하고, 제목을 얻지 못하면 제공자와 상태만 표시한다. 창 ID와 세션 ID는 클릭 라우팅과 진단에 유지한다. 알림 본문은 에이전트의 최종 응답을 사용하고 요약을 위한 AI 호출은 추가하지 않는다. Windows 토스트 본문은 최대 180자로 제한한다. 전체 본문은 제한된 결과 저장소나 런타임의 지원되는 조회 API로 열고, 잘린 결과나 조회 불가 상태를 표시한다.
 
 ### Windows 토스트 구현
 
@@ -135,7 +136,9 @@ VS Code의 포커스 통지는 Windows의 실제 전경 HWND 전환보다 먼저
 
 완료 시에는 등록 완료를 기다리고 포커스·활성화 설정·요청 세대를 다시 검사한 뒤 `--show`로 전송한다. 전송 경로는 바로가기나 protocol을 등록하지 않는다. C#은 WinRT `Failed`를 구독하고 STA 메시지를 처리하며 최대 약 2초 동안 오류 코드·해당 Tag/Group의 Windows 이력·사용자 알림 상태를 관측한 뒤 종료한다. `toast.registration.ready`, `toast.submitted`, `toast.history.confirmed`, `toast.failed`, `toast.observation.complete`를 구분하고 TypeScript는 stdout/stderr가 소진된 `close`에서 결과를 확정한다. 이력 확인이나 정상 종료를 실제 배너 표시 성공으로 표현하지 않으며, 종료 이후 발생한 표시 실패는 이 짧은 관측 범위에 포함되지 않는다.
 
-등록 시 실제 실행 중인 VS Code 경로를 전달해 바로가기의 `IconLocation`과 AUMID의 `IconUri`를 VS Code 아이콘으로 설정한다. 본문은 `ToastGeneric`의 제목 1줄·응답 최대 4줄을 사용한다. `jobFinish.toastIcon`은 기본 `true`이며 스크린샷의 잠자는 캐릭터를 `appLogoOverride`로 표시한다. `jobFinish.toastIconPath`에 로컬 PNG·JPEG·GIF·BMP 경로를 지정하면 교체할 수 있고, 잘못된 경로는 진단 후 기본 이미지로 대체한다. 이미지를 끄면 image 요소를 생략한다. 이 설정은 다음 알림부터 적용된다.
+등록 시 실제 VS Code 실행 파일을 전달하고, 바로가기의 아이콘 위치와 AUMID의 `IconUri`를 VS Code 리소스로 설정한다. 업데이트로 리소스가 버전 폴더에 배치된 경우에는 설치된 `Code.VisualElementsManifest.xml`을 기준으로 찾는다. 아이콘 변경도 기존 바로가기를 백업한 뒤 적용하며 COM 활성화 대상은 helper로 유지한다.
+
+본문 왼쪽 이미지는 Notifications 구역의 `jobFinish.toastIcon`(기본 ON)으로 제어한다. 기본 이미지는 패키지에 포함한 잠자는 캐릭터 PNG이며 `jobFinish.toastIconPath`가 비어 있으면 이를 사용한다. 로컬 PNG·JPEG·GIF·BMP로 교체할 수 있고 상대 경로는 첫 workspace 폴더 기준이다. 유효하지 않은 경로는 진단하고 기본 이미지로 대체하며, OFF이면 이미지 없이 텍스트만 보낸다. 이미지 경로는 클릭 활성화 payload에서 제외한다.
 
 토스트 adapter는 다음 입력을 받도록 구성한다.
 
@@ -189,7 +192,7 @@ UUID는 확장 실행 식별자이고 HWND는 Windows의 실제 창 핸들이다
 
 연결 정보는 `windowInstanceId`, `hwnd`, native 창 PID, 확인 방식·시각을 포함한다. 실행 직전 `IsWindow(hwnd)`와 대상 프로세스를 다시 확인하고 창이 사라지거나 재활성화되면 연결을 버린다. 여러 창이 같은 Code PID를 공유할 수 있으므로 PID 단독으로 창을 결정하지 않는다.
 
-같은 프로젝트·같은 제목의 창도 UUID와 HWND를 각각 연결한다. 제목 점수 동률의 ZOrder를 소유권으로 사용하지 않는다. HWND가 모호하면 미연결 상태로 남겨 토스트만 표시하고 flash는 시작하지 않는다. 창 UUID는 진단에서 확인한다.
+같은 프로젝트·같은 제목의 창도 UUID와 HWND를 각각 연결한다. 제목 점수 동률의 ZOrder를 소유권으로 사용하지 않는다. HWND가 모호하면 미연결 상태로 남겨 토스트에 창 UUID를 표시하고 flash는 시작하지 않는다.
 
 해당 창이 포커스될 때 `onDidChangeWindowState`와 native 전경 HWND를 함께 관측해 UUID 연결 후보를 확보하거나 명시적인 연결 명령을 제공한다. 관측 중 포커스가 바뀌거나 후보를 확정할 수 없으면 연결을 보류한다. 같은 폴더의 두 창과 빠른 포커스 전환에서도 다른 창의 HWND를 확정하지 않도록 처리한다.
 

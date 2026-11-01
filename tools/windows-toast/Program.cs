@@ -1,3 +1,4 @@
+// Windows 토스트 등록·표시·클릭 요청을 처리하고 확장에 활성화 결과를 전달한다.
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Text;
@@ -7,8 +8,11 @@ using System.Runtime.InteropServices;
 using Windows.Data.Xml.Dom;
 using Windows.UI.Notifications;
 
+/** 활성화할 창의 핸들·프로세스·실행 파일·시작 시각을 전달한다. */
 internal record Target(string Hwnd, int Pid, string Executable, long Started = 0);
+/** 토스트 표시와 클릭 승인에 필요한 알림·창·파이프 정보를 전달한다. */
 internal record Request(string NotificationId, string WindowInstanceId, string Title, string Message, string AppId, string Pipe, Target? Target, long Expires = 0, string? ImagePath = null);
+/** 토스트 등록·표시·활성화 명령과 확장 파이프의 클릭 승인을 조율한다. */
 internal static class Program
 {
     internal static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true };
@@ -73,7 +77,7 @@ internal static class Program
             }
             using (var app = Registry.CurrentUser.CreateSubKey($@"Software\Classes\AppUserModelId\{AppId}"))
             {
-                app.SetValue("DisplayName", "Job Finish"); app.SetValue("ShowInSettings", 1, RegistryValueKind.DWord); app.SetValue("CustomActivator", $"{{{Registration.Activator}}}");
+                app.SetValue("DisplayName", "Job-Finish"); app.SetValue("ShowInSettings", 1, RegistryValueKind.DWord); app.SetValue("CustomActivator", $"{{{Registration.Activator}}}");
                 if (!Equals(app.GetValue("IconUri"), icon?.Image))
                 {
                     if (icon?.Image != null) app.SetValue("IconUri", icon.Image, RegistryValueKind.ExpandString);

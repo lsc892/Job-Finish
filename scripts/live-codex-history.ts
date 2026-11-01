@@ -1,3 +1,4 @@
+// 완료된 실제 Codex 검증 세션의 이력 복원과 결과 조회·재알림 방지를 검증한다.
 // Read-only verification using completed probe sessions. Never starts another model turn.
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -8,7 +9,7 @@ import { CodexExecution } from '../src/runtime/codex';
 import { Session } from '../src/core/session';
 import { Diagnostics, Signal } from '../src/core/model';
 import { Ownership } from '../src/core/ownership';
-import { runtimeId } from '../src/runtime/executable';
+import { runtimeId } from '../src/runtime/providers';
 
 async function main(): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'job-finish-history-')); const owner = new Ownership(root);

@@ -1,4 +1,6 @@
-export type Provider = 'codex' | 'claude';
+// 세션·알림의 공통 타입과 용량 상한·텍스트 제한·진단 기록을 정의한다.
+/** Stable provider ID, resolved and validated by AgentProviderRegistry. */
+export type Provider = string;
 export type Status = 'idle' | 'running' | 'completed' | 'error' | 'cancelled' | 'waitingForInput' | 'unknown';
 export type TerminalStatus = 'completed' | 'error' | 'cancelled';
 export interface SessionBinding {
@@ -9,15 +11,17 @@ export interface InputRequest {
   id: string; turnId: string; connectionId: string; title: string;
   kind: 'approval' | 'question'; payload: unknown;
 }
-export interface TurnState { id: string; status: Status; text: string; truncated: boolean; resultId?: string; title?: string }
+export interface TurnState { id: string; status: Status; text: string; truncated: boolean; resultId?: string }
 export interface Signal extends SessionBinding {
   notificationId: string; turnId: string; status: Status; text: string; truncated: boolean;
-  requestId?: string; inputKind?: InputRequest['kind']; detail?: string; title?: string; at: string;
+  sessionTitle?: string;
+  requestId?: string; detail?: string; at: string;
   scope?: 'turn' | 'startRequest';
 }
 export interface Checkpoint {
   version: 1; completed: [string, TerminalStatus][]; turns: TurnState[];
-  pendingStart?: string; pendingStartTitle?: string; title?: string;
+  pendingStart?: string;
+  sessionTitle?: string; promptTitle?: string;
 }
 export const LIMITS = { messageBytes: 1024 * 1024, queueCount: 512, queueBytes: 4 * 1024 * 1024,
   results: 20, textBytes: 16 * 1024, diagnostics: 100, dedup: 512, turns: 32, requests: 128 } as const;
@@ -28,16 +32,18 @@ export function boundedText(text: string, limit = LIMITS.textBytes): { text: str
   while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end--;
   return { text: bytes.subarray(0, end).toString('utf8'), truncated: true };
 }
-/** Store a small display title independently of the assistant's response body. */
-export function taskTitle(text: unknown): string | undefined {
-  if (typeof text !== 'string') return undefined;
-  const title = boundedText(text.replace(/\s+/gu, ' ').trim(), 512).text;
-  return title || undefined;
+export function toastText(text: string): string { const chars = Array.from(text); return chars.length > 180 ? chars.slice(0, 179).join('') + '…' : text; }
+export function sessionTitleText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return;
+  const text = value.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!text) return;
+  const chars = Array.from(text);
+  return chars.length > 100 ? chars.slice(0, 99).join('') + '…' : text;
 }
-export function toastText(text: string): string { const chars = Array.from(text); return chars.length > 360 ? chars.slice(0, 359).join('') + '…' : text; }
 export const sessionKey = (b: Pick<SessionBinding, 'provider' | 'runtimeId' | 'sessionId'>): string => JSON.stringify([b.provider, b.runtimeId, b.sessionId]);
 export const isTerminal = (s: Status): s is TerminalStatus => s === 'completed' || s === 'error' || s === 'cancelled';
 
+/** 용량을 제한한 진단 메시지·구조화 이벤트를 보관하고 기록 콜백에 전달한다. */
 export class Diagnostics {
   readonly entries: { at: string; message: string }[] = [];
   readonly events: { at: string; event: string; [key: string]: unknown }[] = [];

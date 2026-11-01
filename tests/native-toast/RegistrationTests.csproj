@@ -1,3 +1,4 @@
+<!-- 제품 등록 구현을 연결한 Windows 바로가기 회귀 검증 실행 파일을 구성한다. -->
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>

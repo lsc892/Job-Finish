@@ -1,3 +1,4 @@
+// Windows 알림 도우미를 게시하고 VS Code 확장 진입점을 번들링한다.
 import { build } from 'esbuild';
 import { spawnSync } from 'node:child_process';
 const native = spawnSync('dotnet', ['publish', 'tools/windows-toast/JobFinish.Native.csproj', '-c', 'Release', '-o', 'dist/native', '--nologo'], { stdio: 'inherit', windowsHide: true });

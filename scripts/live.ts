@@ -1,3 +1,4 @@
+// 실제 Codex·Claude 실행의 완료 결과와 Codex 재연결 시 중복 알림 방지를 검증한다.
 // Explicitly run by `npm run test:live`; never called by the offline test suite.
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -8,7 +9,7 @@ import { ClaudeExecution } from '../src/runtime/claude';
 import { Diagnostics, SessionBinding, Signal } from '../src/core/model';
 import { Session } from '../src/core/session';
 import { Ownership } from '../src/core/ownership';
-import { runtimeId } from '../src/runtime/executable';
+import { runtimeId } from '../src/runtime/providers';
 
 async function main(): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'job-finish-live-')); const owner = new Ownership(root);

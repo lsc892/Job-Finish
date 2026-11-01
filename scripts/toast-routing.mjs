@@ -1,3 +1,4 @@
+// 격리된 두 VS Code 창에서 알림 클릭의 원래 창 복귀와 창 상태 보존을 검증한다.
 import { build } from 'esbuild';
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -18,7 +19,7 @@ if (!existsSync(join(harness, 'node_modules'))) symlinkSync(resolve('node_module
 if (!existsSync(join(harness, 'dist'))) symlinkSync(resolve('dist'), join(harness, 'dist'), 'junction');
 const profile = join(root, 'profile'); const extensions = join(root, 'extensions');
 mkdirSync(join(profile, 'User'), { recursive: true }); mkdirSync(extensions); mkdirSync(join(root, 'workspace'));
-symlinkSync(harness, join(extensions, 'JobFinish.JobFinish-0.1.0'), 'junction');
+symlinkSync(harness, join(extensions, 'lsc892.job-finish-0.1.0'), 'junction');
 writeFileSync(join(profile, 'User', 'settings.json'), JSON.stringify({ 'jobFinish.toast': true, 'jobFinish.flash': false,
   'security.workspace.trust.enabled': false, 'workbench.startupEditor': 'none', 'window.restoreWindows': 'none', 'extensions.autoUpdate': false }));
 for (const role of ['A', 'B']) writeFileSync(join(root, `${role}.code-workspace`), JSON.stringify({ folders: [{ path: join(root, 'workspace') }] }));

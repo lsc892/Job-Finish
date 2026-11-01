@@ -1,3 +1,4 @@
+// 지정한 Codex 생성 타입과 전이 의존 타입을 프로토콜 원본 폴더로 복사한다.
 // Run Codex 0.160.0 `app-server generate-ts --experimental --out .generated/codex160` first.
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, normalize } from 'node:path';

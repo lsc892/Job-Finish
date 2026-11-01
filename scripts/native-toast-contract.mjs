@@ -1,3 +1,4 @@
+// 컴파일된 네이티브 알림 도우미의 등록·입력 검증·프로토콜·COM 승인 계약을 검증한다.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';

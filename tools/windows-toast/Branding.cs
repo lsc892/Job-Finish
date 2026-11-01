@@ -1,7 +1,9 @@
+// 설치된 VS Code의 실행 파일과 토스트 헤더용 앱 이미지를 찾는다.
 using Microsoft.Win32;
 using System.Xml;
 using System.Xml.Linq;
 
+/** VS Code 설치 정보와 시각 리소스 manifest에서 알림 앱 아이콘을 해석한다. */
 internal static class Branding
 {
     internal record Icon(string Executable, string? Image);

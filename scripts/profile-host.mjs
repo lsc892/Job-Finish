@@ -1,3 +1,4 @@
+// 동일 프로필의 격리 VS Code 창에서 소유권·재시작·강제 종료 복구 검증을 조율한다.
 import { build } from 'esbuild';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, symlinkSync } from 'node:fs';

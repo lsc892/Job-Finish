@@ -1,6 +1,7 @@
+// Codex 이력의 페이지 상한·커서 검증·최종 응답 선택과 연결 유효성 확인을 검증한다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CodexHistory } from '../src/runtime/codex-history';
+import { CodexHistory } from '../src/runtime/codex/history';
 import { StdioRpc } from '../src/runtime/transport';
 
 function history(reply: (params: unknown) => unknown, check = () => {}) {

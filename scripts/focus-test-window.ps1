@@ -1,3 +1,4 @@
+# 제목으로 확인한 격리 알림 테스트 창에 포커스를 옮기고 전경 창 상태를 보고한다.
 param([Parameter(Mandatory=$true)][long]$Hwnd, [string]$ReadyFile)
 $ErrorActionPreference = 'Stop'
 Add-Type @'

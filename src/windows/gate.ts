@@ -1,3 +1,4 @@
+// 프로세스 종료 시 회수되는 Windows 파일 핸들로 소유권 변경 작업을 직렬화한다.
 import { toNamespacedPath } from 'node:path';
 
 let api: { open: (...args: unknown[]) => unknown; close: (...args: unknown[]) => unknown; error: () => number } | undefined;

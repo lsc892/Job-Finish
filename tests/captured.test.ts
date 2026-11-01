@@ -1,3 +1,4 @@
+// 실제 런타임에서 보존한 Codex·Claude 이벤트가 기대한 세션 상태로 해석되는지 검증한다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

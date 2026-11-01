@@ -1,3 +1,4 @@
+// 기존·신규 에이전트 스트림의 비파괴 관찰과 프레임 경계·종료·설정 전환을 검증한다.
 import test from 'node:test';
 import type { TestContext } from 'node:test';
 import assert from 'node:assert/strict';
@@ -5,7 +6,6 @@ import { ChildProcess, spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { AgentStreamObserver } from '../src/runtime/observe';
 import { Diagnostics, Signal } from '../src/core/model';
-import { Notifications } from '../src/core/notifications';
 
 const agent = resolve('tests/fixtures/observed-agent.cjs');
 const pause = (ms = 10) => new Promise(resolve => setTimeout(resolve, ms));
@@ -108,53 +108,29 @@ test('Existing Claude SDK JSON streams route actual results while leaving the or
   assert.equal(Buffer.concat(bytes).toString('utf8'), events.map(e => JSON.stringify(e) + '\n').join(''));
 });
 
-test('Synthetic Claude stdio questions and dialogs reach mock toast ports and preserve original replies', async t => {
-  // This exercises real child stdio and notification delivery, not a native banner or an authenticated agent.
-  const child = spawn(process.execPath, [agent, '--output-format', 'stream-json', '--input-format', 'stream-json'],
-    { stdio: 'pipe', windowsHide: true }); cleanup(t, child);
-  const received: Buffer[] = []; child.stdout.on('data', chunk => received.push(chunk));
-  const originalWrite = child.stdin.write; const forwarded: unknown[][] = [];
-  child.stdin.write = function (this: typeof child.stdin, ...args: unknown[]): boolean {
-    forwarded.push(args); return Reflect.apply(originalWrite, this, args) as boolean;
-  } as typeof child.stdin.write;
-  const toasts: { signal: Signal; message: string; click: () => void }[] = [];
-  const flashes: Signal[] = []; const activated: Signal[] = []; const stopped: (string | undefined)[] = [];
-  const deliveries: Promise<void>[] = []; const diagnostics = new Diagnostics();
-  const notifications = new Notifications({ focused: () => false, owns: signal => observer.owns(signal),
-    flash: signal => flashes.push(signal), stopFlash: id => stopped.push(id), activate: signal => activated.push(signal),
-    toast: async (signal, message, click, allowed) => { if (allowed()) toasts.push({ signal, message, click }); } });
-  const observer = new AgentStreamObserver('window', () => [
-    { provider: 'codex', path: resolve('tests/fixtures') }, { provider: 'claude', path: resolve('tests/fixtures') },
-  ], signal => deliveries.push(notifications.deliver(signal)), diagnostics);
-  t.after(() => observer.dispose()); observer.start();
+test('Existing streams tolerate one initial partial frame, then detach on malformed JSON without changing bytes', async t => {
+  const signals: Signal[] = [];
+  const diagnostics = new Diagnostics();
+  const child = spawn(process.execPath, [agent, 'app-server'], { stdio: 'pipe', windowsHide: true });
+  cleanup(t, child);
+  const bytes: Buffer[] = [];
+  child.stdout.on('data', chunk => bytes.push(chunk));
+  const observer = new AgentStreamObserver('window', () => [{ provider: 'codex', path: resolve('tests/fixtures') }],
+    signal => signals.push(signal), diagnostics);
+  t.after(() => observer.dispose());
+  observer.start();
   assert.equal(observer.snapshot().connections.length, 1);
-  const requests = [
-    { id: 'question', request: { subtype: 'can_use_tool', tool_name: 'AskUserQuestion', input: {
-      questions: [{ question: '어느 색으로 할까요?', options: [{ label: '파랑' }, { label: '초록' }] }],
-    } }, preview: '어느 색으로 할까요?\n1. 파랑\n2. 초록', answer: { behavior: 'allow', updatedInput: { answers: { color: '파랑' } } } },
-    { id: 'dialog', request: { subtype: 'request_user_dialog', dialog_kind: 'auto_mode_server_fallback',
-      payload: { title: 'Continue in auto mode?', paragraphs: ['Choose Continue or Stop in the original chat.'] },
-    }, preview: 'Continue in auto mode?', answer: { behavior: 'completed', result: { choice: 'continue' } } },
-  ];
-  let expected = '';
-  for (const [index, item] of requests.entries()) {
-    const frames = [...(index === 0 ? [{ type: 'system', subtype: 'init', session_id: 'session' }] : []),
-      { type: 'control_request', request_id: item.id, request: item.request }].map(frame => JSON.stringify(frame) + '\n').join('');
-    expected += frames;
-    child.stdin.write(JSON.stringify({ ...(index === 0 ? { type: 'user', uuid: 'turn', session_id: 'session' } : {}), raw: frames }) + '\n');
-    await until(() => toasts.length === index + 1); await Promise.all(deliveries);
-    const toast = toasts[index]!;
-    assert.equal(toast.message, item.preview.replace(/\n/g, ' ')); assert.equal(toast.signal.text, item.preview);
-    assert.equal(toast.signal.provider, 'claude');
-    assert.equal(toast.signal.status, 'waitingForInput'); assert.equal(toast.signal.requestId, item.id);
-    assert.equal(observer.snapshot().connections[0]!.activeTurns, 1);
-    toast.click(); assert.equal(activated.at(-1), toast.signal); assert.equal(stopped.at(-1), toast.signal.notificationId);
-    const response = Buffer.from(JSON.stringify({ type: 'control_response', response: {
-      subtype: 'success', request_id: item.id, response: item.answer,
-    } }) + '\r\n');
-    await new Promise<void>((done, reject) => child.stdin.write(response, error => error ? reject(error) : done()));
-    assert.equal(forwarded.at(-1)![0], response, 'The original writable receives the same response buffer');
-  }
-  assert.equal(flashes.length, 2); assert.equal(activated.length, 2);
-  assert.equal(Buffer.concat(received).toString('utf8'), expected); assert.equal(diagnostics.entries.length, 0);
+
+  const partialFrame = '\npartial-json}\n\n';
+  child.stdin.write(JSON.stringify({ raw: partialFrame }) + '\n');
+  child.stdin.write(packet('after-partial'));
+  await until(() => signals.length === 1);
+  assert.equal(signals[0]!.turnId, 'after-partial');
+  assert.equal(diagnostics.entries.length, 0);
+  assert.equal(Buffer.concat(bytes).toString('utf8'), partialFrame + events('after-partial').map(event => JSON.stringify(event) + '\n').join(''));
+
+  child.stdin.write(JSON.stringify({ raw: '{malformed}\n' }) + '\n');
+  await until(() => observer.snapshot().connections.length === 0);
+  assert.equal(child.killed, false);
+  assert.match(diagnostics.entries[0]!.message, /stopped/);
 });

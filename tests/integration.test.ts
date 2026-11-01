@@ -1,7 +1,8 @@
+// 실제 stdio 전송과 합성 App Server로 Codex 실행·입력·취소·이력 복원을 통합 검증한다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
-import { CodexAdapter, CodexExecution, codexApprovalResponse } from '../src/runtime/codex';
+import { CodexExecution, codexApprovalResponse } from '../src/runtime/codex';
 import { Session } from '../src/core/session';
 import { Checkpoint, Diagnostics, Signal } from '../src/core/model';
 import { RpcMessage } from '../src/runtime/transport';
@@ -21,13 +22,17 @@ test('Owned execution: initialize/start, event-before-response, Unicode body, du
   const f = execution(); t.after(() => f.runtime.dispose()); await f.runtime.open();
   await f.runtime.run('완료😀'); await until(() => f.signals.length === 1);
   assert.equal(f.signals[0]!.text, '완료😀'); assert.equal(f.signals[0]!.status, 'completed');
+  assert.equal(f.signals[0]!.sessionTitle, '완료😀');
   const previous = f.runtime.session!.binding.connectionId;
   await f.runtime.reconnect(); assert.notEqual(f.runtime.session!.binding.connectionId, previous); assert.equal(f.signals.length, 1);
+  await f.runtime.run('후속 요청'); await until(() => f.signals.length === 2);
+  assert.equal(f.signals[1]!.sessionTitle, '완료😀');
 });
 for (const prompt of ['approval', 'question']) test(`Owned ${prompt} relays the original request and clears waiting state`, async t => {
   const f = execution(); t.after(() => f.runtime.dispose()); await f.runtime.open(); await f.runtime.run(prompt);
   await until(() => f.runtime.session!.requests.size === 1);
   assert.equal(f.signals[0]!.status, 'waitingForInput');
+  assert.equal(f.signals[0]!.sessionTitle, prompt);
   const request = [...f.runtime.session!.requests.values()][0]!;
   f.runtime.respond(request.id, prompt === 'approval' ? { decision: 'decline' } : { answers: { q: { answers: ['Blue'] } } });
   await until(() => f.signals.length === 2); assert.equal(f.runtime.session!.requests.size, 0); assert.equal(f.signals[1]!.status, 'completed');
@@ -47,18 +52,7 @@ test('Rejected start is an error of the request, without inventing a provider tu
   await assert.rejects(() => f.runtime.run('reject-start'), /Start rejected/);
   assert.equal(f.signals.length, 1); assert.equal(f.signals[0]!.scope, 'startRequest'); assert.equal(f.signals[0]!.turnId, '');
   assert.equal(f.signals[0]!.status, 'error'); assert.equal(f.runtime.session!.turns.size, 0);
-  assert.equal(f.signals[0]!.title, 'reject-start');
-});
-
-test('Owned Codex start events retain the task prompt and prefer an explicit thread name', async t => {
-  const f = execution(); t.after(() => f.runtime.dispose()); await f.runtime.open();
-  await f.runtime.run('Add toast icon settings'); await until(() => f.signals.length === 1);
-  assert.equal(f.signals[0]!.title, 'Add toast icon settings');
-  new CodexAdapter(f.runtime.session!).handle({ method: 'thread/name/updated', params: {
-    threadId: f.runtime.session!.binding.sessionId, threadName: 'Native notification appearance',
-  } }, f.runtime.session!.binding.connectionId);
-  await f.runtime.run('Repair the title'); await until(() => f.signals.length === 2);
-  assert.equal(f.signals[1]!.title, 'Native notification appearance'); assert.equal(f.signals[1]!.text, 'Repair the title');
+  assert.equal(f.signals[0]!.sessionTitle, 'reject-start');
 });
 
 test('Large stored thread resumes with bounded metadata pages and retrieves a specific result', async t => {

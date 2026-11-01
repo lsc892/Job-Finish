@@ -1,3 +1,4 @@
+// 합성 에이전트 스트림의 대량 이벤트로 관찰·라우팅 성능과 보관 상태를 측정한다.
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { resolve } from 'node:path';

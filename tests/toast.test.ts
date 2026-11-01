@@ -1,3 +1,4 @@
+// 실제 Windows 파이프와 제어된 도우미로 알림 전송·등록·클릭 승인·취소를 검증한다.
 // Real Windows pipe IO with a controlled native sender boundary.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -7,14 +8,16 @@ import { connect, Socket } from 'node:net';
 import { PassThrough } from 'node:stream';
 import { WindowsToast, ToastProcessPorts } from '../src/windows/toast';
 import { Diagnostics } from '../src/core/model';
+import { notificationTitle } from '../src/core/notifications';
+import { AgentEventRouter } from '../src/runtime/event-router';
 
 const pause = (ms = 10) => new Promise(resolve => setTimeout(resolve, ms));
 async function until(fn: () => boolean) { const end = Date.now() + 2000; while (!fn()) { if (Date.now() > end) throw new Error('Native toast pipe timeout'); await pause(); } }
-function setup(exitCode = 0, options: { registrationFailures?: number; holdRegistration?: boolean; delivery?: 'silent' | 'failed' | 'history-error'; codeExecutable?: string } = {}) {
+function setup(exitCode = 0, options: { codeExecutable?: string; registrationFailures?: number; holdRegistration?: boolean; holdDelivery?: boolean; delivery?: 'silent' | 'failed' | 'history-error' } = {}) {
   const launched: { args: string[]; payload: Record<string, unknown>; child: EventEmitter; killed: boolean }[] = [];
-  const diagnostics = new Diagnostics(); let clicks = 0; let allowed = true;
   const registrationArgs: string[][] = [];
-  let registrations = 0; let releaseRegistration: (() => void) | undefined;
+  const diagnostics = new Diagnostics(); let clicks = 0; let allowed = true;
+  let registrations = 0; let releaseRegistration: (() => void) | undefined; let releaseDelivery: (() => void) | undefined;
   const ports: ToastProcessPorts = { launch: (_binary, args) => {
     const child = new EventEmitter(); const stdin = new PassThrough(); const stderr = new PassThrough(); const stdout = new PassThrough();
     const item = { args, payload: {} as Record<string, unknown>, child, killed: false };
@@ -46,15 +49,16 @@ function setup(exitCode = 0, options: { registrationFailures?: number; holdRegis
     stdin.on('finish', () => {
       if (!register) item.payload = JSON.parse(input);
       if (register && options.holdRegistration) releaseRegistration = finish;
+      else if (!register && options.holdDelivery) releaseDelivery = finish;
       else setImmediate(finish);
     });
     Object.assign(child, { stdin, stderr, stdout, kill: () => { item.killed = true; setImmediate(() => child.emit('close', null, 'SIGTERM')); } });
     return child as ChildProcess;
   } };
   const toast = new WindowsToast('JobFinish.Native.exe', diagnostics, ports, options.codeExecutable);
-  const request = (id: string) => ({ notificationId: id, windowInstanceId: 'window-A', title: 'test', message: '한글😀'.repeat(200), appId: WindowsToast.appId,
+  const request = (id: string) => ({ notificationId: id, windowInstanceId: 'window-A', title: 'test', message: '한글😀'.repeat(100), appId: WindowsToast.appId,
     target: { hwnd: '123456', pid: 42, executable: 'C:\\Code.exe' }, canActivate: () => allowed, onClick: () => { clicks++; } });
-  return { toast, launched, diagnostics, request, registrationArgs, clicks: () => clicks, deny: () => { allowed = false; }, registrations: () => registrations, releaseRegistration: () => releaseRegistration?.() };
+  return { toast, launched, registrationArgs, diagnostics, request, clicks: () => clicks, deny: () => { allowed = false; }, registrations: () => registrations, releaseRegistration: () => releaseRegistration?.(), releaseDelivery: () => releaseDelivery?.() };
 }
 async function client(pipe: unknown): Promise<Socket> {
   const socket = connect(`\\\\.\\pipe\\${String(pipe)}`); socket.on('error', () => {});
@@ -71,7 +75,7 @@ test('Native toast preserves UTF-8 and exact HWND, bounds displayed text, and se
   const f = setup(); t.after(() => f.toast.dispose()); await f.toast.show(f.request('native'));
   const sent = f.launched[0]!;
   assert.deepEqual(sent.args, ['--show']); assert.deepEqual(sent.payload.target, f.request('native').target);
-  assert.ok(String(sent.payload.message).startsWith('한글😀')); assert.equal(Array.from(String(sent.payload.message)).length, 360);
+  assert.ok(String(sent.payload.message).startsWith('한글😀')); assert.equal(Array.from(String(sent.payload.message)).length, 180);
   assert.equal(f.clicks(), 0); assert.equal(f.diagnostics.entries.length, 0);
   const socket = await client(sent.payload.pipe); t.after(() => socket.destroy());
   assert.equal(await authorize(socket, 'native'), true, 'protocol pipe remains available after sender exit');
@@ -84,13 +88,27 @@ test('Native requests register the actual Code icon source and preserve optional
   const executable = 'C:\\Program Files\\Microsoft VS Code\\Code.exe';
   const f = setup(0, { codeExecutable: executable }); t.after(() => f.toast.dispose());
   const imagePath = 'C:\\이미지 폴더\\잠자는 캐릭터.png';
-  await f.toast.show({ ...f.request('with-image'), title: '실제 작업 제목', imagePath });
+  await f.toast.show({ ...f.request('with-image'), imagePath });
   assert.deepEqual(f.registrationArgs, [['--register', executable]]);
   assert.equal(f.launched[0]!.payload.imagePath, imagePath);
-  assert.equal(f.launched[0]!.payload.title, '실제 작업 제목');
   await f.toast.show(f.request('without-image'));
   assert.equal('imagePath' in f.launched[1]!.payload, false);
   assert.equal(f.registrations(), 1);
+});
+
+test('An observed session name reaches the native toast payload while window routing keeps its ID', { skip: process.platform !== 'win32' }, async t => {
+  const f = setup(); t.after(() => f.toast.dispose());
+  const router = new AgentEventRouter('codex', 'window-A', 'runtime', signal => {
+    assert.equal(signal.windowInstanceId, 'window-A');
+    title = notificationTitle(signal);
+  }, new Diagnostics());
+  t.after(() => router.dispose());
+  let title = '';
+  router.incoming({ method: 'thread/name/updated', params: { threadId: 'session', threadName: '데이터 집계 <수정> & 검증😀' } });
+  router.incoming({ method: 'turn/completed', params: { threadId: 'session', turn: { id: 'turn', status: 'completed', items: [] } } });
+  await f.toast.show({ ...f.request('session-title'), title });
+  assert.equal(f.launched[0]!.payload.title, 'codex · completed · 데이터 집계 <수정> & 검증😀');
+  assert.equal(f.launched[0]!.payload.windowInstanceId, 'window-A');
 });
 
 test('Native toast suppresses unfocused-policy failures and disposed requests before launching', { skip: process.platform !== 'win32' }, async () => {
@@ -194,4 +212,25 @@ test('History observation and successful submission do not claim a visible banne
   const observed = f.diagnostics.events.find(event => event.event === 'toast.observation.complete');
   assert.equal(observed?.historyConfirmed, false); assert.equal(observed?.bannerVerified, false);
   assert.equal(observed?.notificationState, 1);
+});
+
+test('Replacing, stopping or disposing an in-flight sender resolves its show and cancels that helper', { skip: process.platform !== 'win32' }, async t => {
+  const f = setup(0, { holdDelivery: true }); t.after(() => f.toast.dispose());
+  const old = f.toast.show(f.request('old-sender'));
+  await until(() => f.launched.length === 1);
+  const next = f.toast.show(f.request('next-sender'));
+  await old;
+  assert.equal(f.launched[0]!.killed, true);
+  await until(() => f.launched.length === 2);
+  f.releaseDelivery();
+  await next;
+  assert.equal(f.launched[1]!.killed, false, 'delivery close does not cancel the completed helper');
+  for (const action of ['stop', 'dispose'] as const) {
+    const count = f.launched.length;
+    const pending = f.toast.show(f.request(action));
+    await until(() => f.launched.length > count);
+    f.toast[action]();
+    await pending;
+    assert.equal(f.launched[count]!.killed, true);
+  }
 });

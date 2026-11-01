@@ -1,3 +1,4 @@
+// 동일 VS Code 프로필의 창별 결과 격리와 재시작·소유권 이전·복구를 검증한다.
 // Runs in normal development windows so both windows share VS Code's actual profile/storage.
 // Only the test harness supplies ExtensionMode.Test; production APIs stay read-only.
 import * as vscode from 'vscode';

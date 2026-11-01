@@ -1,6 +1,8 @@
+// 격리 경로에서 네이티브 알림 바로가기의 이전·백업·반복 등록·타 앱 보호를 검증한다.
 using System.Security.Cryptography;
 using System.Xml.Linq;
 
+/** 네이티브 알림 바로가기 이전·백업·중복 등록과 타 앱 보호를 검증한다. */
 internal static class RegistrationTests
 {
     static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
@@ -66,14 +68,13 @@ internal static class RegistrationTests
             var content = XDocument.Parse(ToastContent.Build(title, message, launch, customImage));
             var binding = content.Descendants("binding").Single(); var text = binding.Elements("text").ToArray();
             Check(text.Length == 2 && text[0].Value == title && text[1].Value == message, "Toast text must preserve Unicode, markup characters and response line breaks");
-            Check((string?)text[0].Attribute("hint-maxLines") == "1" && (string?)text[1].Attribute("hint-maxLines") == "4", "Use one title line and Windows' four description lines");
             Check((string?)content.Root?.Attribute("launch") == launch, "XML escaping must preserve the activation payload");
             var logo = binding.Elements("image").Single();
             Check((string?)logo.Attribute("placement") == "appLogoOverride" && (string?)logo.Attribute("hint-crop") == "none", "Optional icon belongs left of the visual text without circle cropping");
             Check(new Uri((string)logo.Attribute("src")!).LocalPath == customImage, "Custom image paths must be emitted as correctly escaped local file URIs");
             foreach (var disabled in new string?[] { null, "", "relative.png", Path.Combine(root, "missing.png") })
                 Check(!XDocument.Parse(ToastContent.Build(title, message, launch, disabled)).Descendants("image").Any(), "Disabled or unavailable icons must preserve text-only delivery");
-            Console.WriteLine("Native toast content passed: optional icons, escaped paths/text, title and response line limits");
+            Console.WriteLine("Native toast content passed: optional icons, escaped paths/text and preserved response line breaks");
 
             // Identical filenames are insufficient evidence of ownership.
             Registration.Write(legacy, "Another.App", executable, null);

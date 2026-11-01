@@ -1,3 +1,4 @@
+// 네이티브 창 식별·포커스·점멸 수명과 알림 소유권 정책을 검증한다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FlashClock, FlashController } from '../src/windows/flash';
@@ -15,6 +16,7 @@ test('The master switch suppresses delivery immediately, including a toast still
   await notifications.deliver(signal); assert.equal(flashes, 1); assert.equal(notifications.results.length, 2);
 });
 
+/** 전경 창·창 정보·점멸 호출을 모사해 네이티브 창 정책 검증을 지원한다. */
 class FakeNative implements NativeApi {
   front = 2n; windows = new Map<bigint, NativeWindow>([1n, 2n].map(hwnd => [hwnd, { hwnd, pid: 123, title: 'same folder - Code', executable: 'C:\\Code.exe' }]));
   calls: unknown[][] = [];
@@ -113,7 +115,7 @@ test('Click stops its flash and activates the originating window only while deli
 
 test('Notification policy stores focused results, rechecks ownership and bounds result count', async () => {
   let focused = true; let owns = true; const calls: string[] = [];
-  const notifications = new Notifications({ focused: () => focused, owns: () => owns, stopFlash: () => { calls.push('stop'); }, flash: () => { calls.push('flash'); }, activate: () => {}, toast: async (_s, message, _click, allowed) => { assert.ok(Array.from(message).length <= 360); if (allowed()) calls.push('toast'); } });
+  const notifications = new Notifications({ focused: () => focused, owns: () => owns, stopFlash: () => { calls.push('stop'); }, flash: () => { calls.push('flash'); }, activate: () => {}, toast: async (_s, message, _click, allowed) => { assert.ok(Array.from(message).length <= 180); if (allowed()) calls.push('toast'); } });
   const signal: Signal = { ...binding(), notificationId: 'n', turnId: 't', status: 'completed', text: 'x'.repeat(300), truncated: false, at: '' };
   await notifications.deliver(signal); assert.deepEqual(calls, ['stop']);
   focused = false; await notifications.deliver(signal); assert.deepEqual(calls, ['stop', 'flash', 'toast']);

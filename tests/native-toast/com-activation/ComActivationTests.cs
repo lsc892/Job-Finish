@@ -1,9 +1,11 @@
+// 실제 COM 알림 콜백의 반환값·도우미 종료와 임시 등록 복원을 검증한다.
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Microsoft.Win32;
 
+/** 실제 COM 콜백을 호출해 도우미의 반환값·종료와 등록 복원을 검증한다. */
 internal static class ComActivationTests
 {
     static readonly Guid Activator = new("903FBE91-746B-4BB5-84A8-DBAA32C34F42");

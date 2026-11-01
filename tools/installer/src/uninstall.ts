@@ -1,3 +1,4 @@
+// 레거시 훅과 설치 폴더의 제거 계획을 만들고 검증·백업 후 적용한다.
 import TOML from '@iarna/toml';
 import { copyFileSync, lstatSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -104,20 +105,8 @@ export function planLegacyUninstall(options: LegacyUninstallOptions): LegacyUnin
     for (const file of files) {
       if (seen.has(file.path) || !stat(file.path)) continue;
       seen.add(file.path);
-      const before = readFileSync(file.path, 'utf8');
-      if (!before.trim()) continue;
-      const content = before.replace(/^\uFEFF/, '');
-      let parsed: unknown;
-      try { parsed = format === 'json' ? JSON.parse(content) : TOML.parse(content); }
-      catch (error) { throw new Error(`Cannot parse ${file.path}: ${String(error)}`); }
-      if (!record(parsed)) throw new Error(`Expected a settings object: ${file.path}`);
-      let changed = removeHooks(parsed);
-      if (format === 'toml' && Array.isArray(parsed.notify)) {
-        const index = parsed.notify.findIndex(arg => typeof arg === 'string' && arg.toLowerCase() === '-file');
-        if (index >= 0 && notifierPath(parsed.notify[index + 1])) { delete parsed.notify; changed = true; }
-      }
-      if (changed) plan.configs.push({ target: file, before,
-        after: format === 'json' ? `${JSON.stringify(parsed, null, 2)}\n` : TOML.stringify(parsed as TOML.JsonMap) });
+      const edit = planConfigEdit(file, format);
+      if (edit) plan.configs.push(edit);
     }
   }
   if (!options.keepFiles) {
@@ -128,6 +117,24 @@ export function planLegacyUninstall(options: LegacyUninstallOptions): LegacyUnin
     }
   }
   return plan;
+}
+
+function planConfigEdit(file: Target, format: 'json' | 'toml'): ConfigEdit | undefined {
+  const before = readFileSync(file.path, 'utf8');
+  if (!before.trim()) return;
+  const content = before.replace(/^\uFEFF/, '');
+  let parsed: unknown;
+  try { parsed = format === 'json' ? JSON.parse(content) : TOML.parse(content); }
+  catch (error) { throw new Error(`Cannot parse ${file.path}: ${String(error)}`); }
+  if (!record(parsed)) throw new Error(`Expected a settings object: ${file.path}`);
+  let changed = removeHooks(parsed);
+  if (format === 'toml' && Array.isArray(parsed.notify)) {
+    const index = parsed.notify.findIndex(arg => typeof arg === 'string' && arg.toLowerCase() === '-file');
+    if (index >= 0 && notifierPath(parsed.notify[index + 1])) { delete parsed.notify; changed = true; }
+  }
+  if (!changed) return;
+  return { target: file, before,
+    after: format === 'json' ? `${JSON.stringify(parsed, null, 2)}\n` : TOML.stringify(parsed as TOML.JsonMap) };
 }
 
 /** Back up changed settings, remove hooks, then remove verified legacy install directories. */

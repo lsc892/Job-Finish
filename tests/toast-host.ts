@@ -1,3 +1,4 @@
+// 격리 VS Code 창에서 실제 스트림·네이티브 알림·전경 창 관찰을 제어한다.
 // Isolated desktop harness: real observation, C# toast and native window focus.
 import * as vscode from 'vscode';
 import { activate as activateProduct } from '../src/extension';

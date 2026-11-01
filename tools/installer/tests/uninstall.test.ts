@@ -1,3 +1,4 @@
+// 레거시 제거의 설정 보존·백업·경로 경계와 CLI 미리보기를 검증한다.
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -139,7 +140,7 @@ test('CLI dry-run leaves settings, backups and files untouched', { skip: process
   const text = JSON.stringify({ hooks: { Stop: [{ hooks: [handler] }] } }); f.write(claude, text);
   const exe = join(f.home, '.job-finish', 'jf-focus-vscode.exe'); f.write(exe, 'keep');
   const result = spawnSync(process.execPath, ['--import', 'tsx', resolve(__dirname, '../src/cli.ts'),
-    'uninstall-legacy', '--dry-run', '--keep-files', '--project', f.project], { encoding: 'utf8', windowsHide: true,
+    'uninstall', '--dry-run', '--keep-files', '--project', f.project], { encoding: 'utf8', windowsHide: true,
     env: { ...process.env, USERPROFILE: f.home, CLAUDE_CONFIG_DIR: join(f.home, '.claude'), CODEX_HOME: join(f.home, '.codex') } });
   assert.equal(result.status, 0, result.stderr); assert.match(result.stdout, /훅 제거/);
   assert.equal(readFileSync(claude, 'utf8'), text); assert.equal(readFileSync(exe, 'utf8'), 'keep');
@@ -151,7 +152,7 @@ test('Standalone CLI resolves the default project and relative paths from the ca
   const text = JSON.stringify({ hooks: { Stop: [{ hooks: [handler] }] } }); f.write(settings, text);
   for (const args of [[], ['--project', 'project with spaces']]) {
     const result = spawnSync(process.execPath, ['--import', 'tsx', resolve(__dirname, '../src/cli.ts'),
-      'uninstall-legacy', '--dry-run', '--keep-files', ...args], { cwd: resolve(__dirname, '..'), encoding: 'utf8', windowsHide: true,
+      'uninstall', '--dry-run', '--keep-files', ...args], { cwd: resolve(__dirname, '..'), encoding: 'utf8', windowsHide: true,
       env: { ...process.env, USERPROFILE: f.home, CLAUDE_CONFIG_DIR: join(f.home, '.claude'), CODEX_HOME: join(f.home, '.codex'),
         INIT_CWD: args.length ? f.root : f.project } });
     assert.equal(result.status, 0, result.stderr); assert.ok(result.stdout.includes(settings), result.stdout);
