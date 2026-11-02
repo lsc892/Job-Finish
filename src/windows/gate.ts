@@ -1,21 +1,45 @@
 // 프로세스 종료 시 회수되는 Windows 파일 핸들로 소유권 변경 작업을 직렬화한다.
 import { toNamespacedPath } from 'node:path';
 
-let api: { open: (...args: unknown[]) => unknown; close: (...args: unknown[]) => unknown; error: () => number } | undefined;
-/** Exclusive OS handle: Windows closes it and deletes the gate even if the host crashes. */
+interface WindowsGateApi {
+  open(...args: unknown[]): unknown;
+  close(...args: unknown[]): unknown;
+  error(): number;
+}
+let api: WindowsGateApi | undefined;
+const GENERIC_READ_WRITE = 0xc0000000;
+const OPEN_ALWAYS = 4;
+const FILE_ATTRIBUTE_NORMAL = 0x80;
+const FILE_FLAG_DELETE_ON_CLOSE = 0x04000000;
+
+/** 프로세스가 종료돼도 Windows가 핸들과 gate 파일을 회수하는 배타 잠금 안에서 작업한다. */
 export function withWindowsFileGate<T>(path: string, action: () => T): T {
-  if (!api) {
-    const koffi: typeof import('koffi', { with: { 'resolution-mode': 'import' } }) = require('koffi');
-    const kernel = koffi.load('kernel32.dll');
-    api = {
-      open: kernel.func('__stdcall', 'CreateFileW', 'intptr_t', ['str16', 'uint32', 'uint32', 'void *', 'uint32', 'uint32', 'intptr_t']),
-      close: kernel.func('__stdcall', 'CloseHandle', 'int32', ['intptr_t']),
-      error: kernel.func('__stdcall', 'GetLastError', 'uint32', []),
-    };
+  const native = getWindowsGateApi();
+  const handle = openGateHandle(native, path);
+  try {
+    return action();
+  } finally {
+    native.close(handle);
   }
+}
+
+function getWindowsGateApi(): WindowsGateApi {
+  if (api) return api;
+  const koffi: typeof import('koffi', { with: { 'resolution-mode': 'import' } }) = require('koffi');
+  const kernel = koffi.load('kernel32.dll');
+  api = {
+    open: kernel.func('__stdcall', 'CreateFileW', 'intptr_t', ['str16', 'uint32', 'uint32', 'void *', 'uint32', 'uint32', 'intptr_t']),
+    close: kernel.func('__stdcall', 'CloseHandle', 'int32', ['intptr_t']),
+    error: kernel.func('__stdcall', 'GetLastError', 'uint32', []),
+  };
+  return api;
+}
+
+function openGateHandle(native: WindowsGateApi, path: string): number | bigint {
   // OPEN_ALWAYS + no sharing also handles abandoned gates left by older versions.
   // Null security attributes keep the handle out of child processes.
-  const handle = api.open(toNamespacedPath(path), 0xc0000000, 0, null, 4, 0x04000080, 0) as number | bigint;
-  if (BigInt(handle) === -1n) throw new Error(`Ownership operation busy or unavailable (Win32 ${api.error()}): ${path}`);
-  try { return action(); } finally { api.close(handle); }
+  const flags = FILE_FLAG_DELETE_ON_CLOSE | FILE_ATTRIBUTE_NORMAL;
+  const handle = native.open(toNamespacedPath(path), GENERIC_READ_WRITE, 0, null, OPEN_ALWAYS, flags, 0) as number | bigint;
+  if (BigInt(handle) === -1n) throw new Error(`Ownership operation busy or unavailable (Win32 ${native.error()}): ${path}`);
+  return handle;
 }
