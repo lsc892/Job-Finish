@@ -59,7 +59,7 @@ npm run build:installer
 npm pack ./tools/installer
 ```
 
-`job-finish-installer`를 npm에 게시한 뒤에는 `npx job-finish-installer@latest install` 또는 `npx job-finish-installer@latest update`로 실행할 수 있습니다. 기본 VSIX는 패키지에 포함된 파일입니다. CLI와 확장 버전은 각각 관리하며, 배포할 VSIX를 `build:installer`로 함께 갱신해야 합니다. `install`, `update`를 생략하면 `install`을 실행합니다. 현재 작업은 배포 준비까지이며 npm 게시나 실제 사용자 설치 변경은 수행하지 않습니다.
+기존 npm 패키지 `job-finish`를 사용하며 `npx job-finish@latest install` 또는 `npx job-finish@latest update`로 실행합니다. 기본 VSIX는 패키지에 포함된 파일이고, 기존 Marketplace 확장 `JobFinish.JobFinish`를 설치·업데이트합니다. v2.2.0 릴리스는 CLI와 확장 버전을 2.2.0으로 맞추며, 설치 판단에는 VSIX의 실제 확장 버전을 사용합니다. 배포할 VSIX는 `build:installer`로 함께 갱신해야 합니다. `install`, `update`를 생략하면 `install`을 실행합니다.
 
 ## 코드 책임
 

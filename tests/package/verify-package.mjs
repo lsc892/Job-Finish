@@ -7,6 +7,8 @@ import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 const root = mkdtempSync(join(tmpdir(), 'job-finish-package-'));
+const manifest = JSON.parse(readFileSync('package.json', 'utf8'));
+const extensionId = `${manifest.publisher}.${manifest.name}`.toLowerCase();
 const cli = process.env.JOB_FINISH_CODE_EXECUTABLE ?? join(process.env.LOCALAPPDATA, 'Programs/Microsoft VS Code/Code.exe');
 // Invoke VS Code's Node CLI directly, no cmd.exe interpolation of file paths.
 const launcher = readFileSync(join(dirname(cli), 'bin/code.cmd'), 'utf8');
@@ -14,11 +16,13 @@ const relativeCli = launcher.match(/%~dp0\.\.\\([^"\r\n]+cli\.js)/)?.[1];
 const cliScript = join(dirname(cli), relativeCli ?? 'resources/app/out/cli.js');
 const { stdout } = await promisify(execFile)(cli, [cliScript, '--user-data-dir', join(root, 'profile'), '--extensions-dir', join(root, 'extensions'), '--install-extension', resolve('job-finish-win32-x64.vsix'), '--force'], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', VSCODE_CLI: '1' }, windowsHide: true, timeout: 60_000 });
 console.log(stdout.trim());
-const installed = JSON.parse(readFileSync(join(root, 'extensions/extensions.json'), 'utf8')).find(entry => entry.identifier.id === 'lsc892.job-finish');
+const installed = JSON.parse(readFileSync(join(root, 'extensions/extensions.json'), 'utf8')).find(entry => entry.identifier.id.toLowerCase() === extensionId);
 if (!installed) throw new Error('Extension installation not registered');
 const extension = join(root, 'extensions', installed.relativeLocation);
+const packagedManifest = JSON.parse(readFileSync(join(extension, 'package.json'), 'utf8'));
+if (packagedManifest.version !== manifest.version || packagedManifest.icon !== manifest.icon) throw new Error('VSIX manifest does not match the release');
 if (!existsSync(join(extension, 'dist/extension.cjs'))) throw new Error('Packaged extension entry point missing');
-for (const file of ['dist/extension.cjs', 'dist/native/JobFinish.Native.exe', 'resources/icon/toast-default.png',
+for (const file of ['dist/extension.cjs', 'dist/native/JobFinish.Native.exe', manifest.icon, 'resources/icon/toast-default.png',
   'resources/icon/SnoreToast-NOTICE.md', 'resources/icon/SnoreToast-COPYING.LGPL-3', 'resources/icon/SnoreToast-COPYING.GPL-3']) {
   if (!readFileSync(join(extension, file)).equals(readFileSync(resolve(file)))) throw new Error(`VSIX contains a stale build: ${file}`);
 }

@@ -101,7 +101,7 @@ test('Failed VS Code installation or unexpected resulting version is reported as
 });
 
 test('Extension listing ignores other IDs and logs; malformed installed versions fail closed', () => {
-  assert.equal(parseInstalledVersion('warning\r\nother.job-finish@2.0.0\r\nlsc892.job-finish@0.9.0\r\nlsc892.job-finish@0.10.0\r\n', EXTENSION_ID), '0.10.0');
+  assert.equal(parseInstalledVersion('warning\r\nother.job-finish@2.0.0\r\nJobFinish.JobFinish@0.9.0\r\njobfinish.jobfinish@0.10.0\r\n', EXTENSION_ID), '0.10.0');
   assert.equal(parseInstalledVersion('other.job-finish@1.0.0', EXTENSION_ID), null);
-  assert.throws(() => parseInstalledVersion('lsc892.job-finish@broken', EXTENSION_ID), /버전/);
+  assert.throws(() => parseInstalledVersion('JobFinish.JobFinish@broken', EXTENSION_ID), /버전/);
 });

@@ -1,7 +1,7 @@
 // 설치 상태와 버전을 비교해 레거시 정리·확장 설치·결과 확인을 조율한다.
 import { gt, valid } from 'semver';
 
-export const EXTENSION_ID = 'lsc892.job-finish';
+export const EXTENSION_ID = 'jobfinish.jobfinish';
 export interface ExtensionPackage { id: string; version: string; vscodeEngine: string }
 export interface LegacyInstallation {
   found: boolean;

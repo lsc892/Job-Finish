@@ -8,7 +8,7 @@ import { inspectLegacy } from './legacy';
 import { readVSIX, VSCode } from './vscode';
 
 const usage = `Job-Finish 설치·업데이트·레거시 제거
-  job-finish-installer [install|update|uninstall] [옵션]
+  job-finish [install|update|uninstall] [옵션]
   npm run install:extension -- [옵션]  (저장소 루트)
 
   install / update  레거시 검사·정리 후 새 확장 설치 또는 이전 버전 업데이트
