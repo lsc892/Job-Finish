@@ -24,15 +24,10 @@ export class AgentStreamObserver {
   start(): void {
     if (this.enabled) return;
     this.enabled = true;
-    if (!this.observeFutureProcesses()) return;
-    this.discoverExistingProcesses();
-  }
-
-  // spawn을 감싸 새 자식 프로세스가 생성될 때 관찰 대상을 확인한다.
-  private observeFutureProcesses(): boolean {
+    // 신규 spawn을 먼저 관찰한 뒤 기존 핸들을 탐색해 그 사이 생성된 프로세스도 놓치지 않는다.
     const prototype = ChildProcess.prototype as unknown as Spawnable;
     const original = prototype.spawn;
-    if (typeof original !== 'function') { this.enabled = false; this.diagnostics.add('Automatic observation unavailable: Node spawn method missing'); return false; }
+    if (typeof original !== 'function') { this.enabled = false; this.diagnostics.add('Automatic observation unavailable: Node spawn method missing'); return; }
     const observer = this;
     function spawn(this: ChildProcess, ...args: unknown[]): unknown {
       const result = Reflect.apply(original, this, args);
@@ -43,13 +38,8 @@ export class AgentStreamObserver {
       return result;
     }
     try { prototype.spawn = spawn; }
-    catch (error) { this.enabled = false; this.diagnostics.add(`Automatic observation unavailable: ${error}`); return false; }
+    catch (error) { this.enabled = false; this.diagnostics.add(`Automatic observation unavailable: ${error}`); return; }
     this.restoreSpawn = () => { if (prototype.spawn === spawn) prototype.spawn = original; };
-    return true;
-  }
-
-  // 현재 Extension Host가 이미 보유한 자식 프로세스 핸들에서 관찰 대상을 찾는다.
-  private discoverExistingProcesses(): void {
     const handles = (process as unknown as { _getActiveHandles?: () => unknown[] })._getActiveHandles;
     if (!handles) this.diagnostics.add('Existing process discovery unavailable in this Node runtime');
     try {
@@ -68,10 +58,6 @@ export class AgentStreamObserver {
     const pathMatches = args.some(arg => isAbsolute(arg) && roots.some(root => canonical(resolve(arg)).startsWith(root)));
     if (!pathMatches && !roots.some(root => canonical(stack()).includes(root))) return;
     if (this.connections.size >= 16) { this.diagnostics.add('Automatic observation connection limit reached'); return; }
-    this.attach(child, provider, existing);
-  }
-
-  private attach(child: ChildProcess, provider: Provider, existing: boolean): void {
     const connection = new ObservedConnection(child, {
       provider,
       windowInstanceId: this.windowInstanceId,
@@ -80,7 +66,7 @@ export class AgentStreamObserver {
       providers: this.providers,
       emit: this.deliverSignal.bind(this),
       isOwned: this.isOwned,
-      closed: this.removeConnection.bind(this, child),
+      closed: () => { this.connections.delete(child); },
     });
     this.connections.set(child, connection);
     connection.start();
@@ -91,10 +77,6 @@ export class AgentStreamObserver {
     this.delivered.set(signal.notificationId, signal.connectionId);
     while (this.delivered.size > LIMITS.dedup) this.delivered.delete(this.delivered.keys().next().value!);
     this.emit(signal);
-  }
-
-  private removeConnection(child: ChildProcess): void {
-    this.connections.delete(child);
   }
 
   owns(signal: Signal): boolean {

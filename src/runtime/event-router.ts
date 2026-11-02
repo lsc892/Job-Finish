@@ -33,18 +33,17 @@ export class AgentEventRouter {
     if (this.disposed || this.isOwned(this.provider, id)) return;
     const existing = this.sessions.get(id);
     if (existing) return existing;
-    this.makeRoomForSession();
+    // 상한에 도달하면 입력 대기와 실행이 모두 없는 첫 세션만 제거한다.
+    if (this.sessions.size >= MAX_OBSERVED_SESSIONS) {
+      const idle = [...this.sessions].find(([, session]) => session.turns.size === 0 && session.requests.size === 0);
+      if (!idle) throw new Error('Observed session limit exceeded');
+      this.sessions.delete(idle[0]);
+    }
     const session = new Session({ windowInstanceId: this.windowInstanceId, provider: this.provider, runtimeId: this.runtimeId,
       connectionId: this.connectionId, sessionId: id, source: 'verifiedIntegration' },
     () => !this.disposed && !this.isOwned(this.provider, id), () => {}, this.emit, this.diagnostics);
     this.sessions.set(id, session);
     return session;
-  }
-  private makeRoomForSession(): void {
-    if (this.sessions.size < MAX_OBSERVED_SESSIONS) return;
-    const idle = [...this.sessions].find(([, session]) => session.turns.size === 0 && session.requests.size === 0);
-    if (!idle) throw new Error('Observed session limit exceeded');
-    this.sessions.delete(idle[0]);
   }
   snapshot() { return { provider: this.provider, connectionId: this.connectionId, sessions: this.sessions.size,
     activeTurns: [...this.sessions.values()].reduce((count, s) => count + s.turns.size, 0) }; }

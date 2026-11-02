@@ -30,23 +30,19 @@ class Frames {
       if (chunk[at] !== 10) continue;
       this.append(chunk.subarray(start, at));
       start = at + 1;
-      this.receiveFrame();
+      if (!this.length) continue;
+      let value: unknown;
+      try {
+        const text = new TextDecoder('utf-8', { fatal: true }).decode(this.buffer.subarray(0, this.length));
+        value = JSON.parse(text);
+      } catch (error) {
+        if (!this.first || !this.allowPartialStart) throw error;
+      }
+      this.first = false;
+      this.length = 0;
+      if (value !== undefined) this.receive(value);
     }
     this.append(chunk.subarray(start));
-  }
-
-  private receiveFrame(): void {
-    if (!this.length) return;
-    let value: unknown;
-    try {
-      const text = new TextDecoder('utf-8', { fatal: true }).decode(this.buffer.subarray(0, this.length));
-      value = JSON.parse(text);
-    } catch (error) {
-      if (!this.first || !this.allowPartialStart) throw error;
-    }
-    this.first = false;
-    this.length = 0;
-    if (value !== undefined) this.receive(value);
   }
 
   // 버퍼는 두 배 확장을 기준으로 늘리되 프레임 하나는 1 MiB로 제한한다.
@@ -89,7 +85,21 @@ export class ObservedConnection {
     this.incoming = new Frames(this.router.incoming.bind(this.router), options.existing);
     this.outgoing = new Frames(this.router.outgoing.bind(this.router), options.existing);
     this.originalWrite = this.input.write;
-    this.observedWrite = this.createObservedWrite();
+    const connection = this;
+    this.observedWrite = function observeStdinWrite(this: Writable, ...args: unknown[]): boolean {
+      // 원래 receiver·인자·반환값을 유지하고 write 호출이 반환된 뒤에 관찰한다.
+      const result = Reflect.apply(connection.originalWrite, this, args) as boolean;
+      if (connection.disposed) return result;
+      try {
+        const chunk = args[0];
+        const encoding = typeof args[1] === 'string' ? args[1] as BufferEncoding : 'utf8';
+        if (typeof chunk === 'string') connection.outgoing.push(Buffer.from(chunk, encoding));
+        else if (chunk instanceof Uint8Array) connection.outgoing.push(Buffer.from(chunk));
+      } catch (error) {
+        connection.handleObservationFailure(error);
+      }
+      return result;
+    } as Writable['write'];
 
     // 등록과 해제에 같은 함수 객체를 사용한다.
     this.handleStdoutData = this.handleStdoutData.bind(this);
@@ -110,28 +120,6 @@ export class ObservedConnection {
     try {
       const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       this.incoming.push(bytes);
-    } catch (error) {
-      this.handleObservationFailure(error);
-    }
-  }
-
-  private createObservedWrite(): Writable['write'] {
-    const connection = this;
-    return function observeStdinWrite(this: Writable, ...args: unknown[]): boolean {
-      // 원래 receiver·인자·반환값을 유지하고 write 호출이 반환된 뒤에 관찰한다.
-      const result = Reflect.apply(connection.originalWrite, this, args) as boolean;
-      connection.handleStdinWrite(args);
-      return result;
-    } as Writable['write'];
-  }
-
-  private handleStdinWrite(args: unknown[]): void {
-    if (this.disposed) return;
-    try {
-      const chunk = args[0];
-      const encoding = typeof args[1] === 'string' ? args[1] as BufferEncoding : 'utf8';
-      if (typeof chunk === 'string') this.outgoing.push(Buffer.from(chunk, encoding));
-      else if (chunk instanceof Uint8Array) this.outgoing.push(Buffer.from(chunk));
     } catch (error) {
       this.handleObservationFailure(error);
     }

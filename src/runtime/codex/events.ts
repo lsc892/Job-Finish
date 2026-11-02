@@ -29,47 +29,34 @@ export class CodexEvents implements AgentEvents {
         bound(this.pendingThreadStarts);
         return;
       }
-      case 'turn/start':
-        this.recordPromptTitle(message.params);
+      case 'turn/start': {
+        const params = record(message.params);
+        const id = identifier(params?.threadId);
+        if (!id || this.excludedThreads.has(id) || !Array.isArray(params?.input)) return;
+        const prompt = params.input
+          .map(record)
+          .filter(item => item?.type === 'text' && typeof item.text === 'string')
+          .map(item => item!.text)
+          .join(' ');
+        this.rememberTitle(id, undefined, prompt);
+      }
     }
-  }
-
-  private recordPromptTitle(value: unknown): void {
-    const params = record(value);
-    const id = identifier(params?.threadId);
-    if (!id || this.excludedThreads.has(id) || !Array.isArray(params?.input)) return;
-    const prompt = params.input
-      .map(record)
-      .filter(item => item?.type === 'text' && typeof item.text === 'string')
-      .map(item => item!.text)
-      .join(' ');
-    this.rememberTitle(id, undefined, prompt);
   }
 
   incoming(message: Record<string, unknown>): void {
     const params = record(message.params);
-    this.recordThreadExclusion(message, params);
-    this.recordIncomingTitles(message, params);
-    this.routeLiveSessionEvent(message, params);
-  }
-
-  private recordThreadExclusion(message: Record<string, unknown>, params: Record<string, unknown> | undefined): void {
     const result = record(message.result);
     const thread = record(params?.thread ?? result?.thread);
-    if (!thread || !identifier(thread.id)) return;
-    const pendingKey = JSON.stringify(message.id);
-    if (thread.ephemeral === true || thread.parentThreadId || record(thread.source)?.subAgent
-      || this.pendingThreadStarts.get(pendingKey)) {
-      this.excludedThreads.add(thread.id as string);
-      bound(this.excludedThreads);
+    // 임시·하위 스레드를 제외하고 이력은 제목에만, 실시간 이벤트는 턴 상태에 반영한다.
+    if (thread && identifier(thread.id)) {
+      const pendingKey = JSON.stringify(message.id);
+      if (thread.ephemeral === true || thread.parentThreadId || record(thread.source)?.subAgent
+        || this.pendingThreadStarts.get(pendingKey)) {
+        this.excludedThreads.add(thread.id as string);
+        bound(this.excludedThreads);
+      }
+      this.pendingThreadStarts.delete(pendingKey);
     }
-    this.pendingThreadStarts.delete(pendingKey);
-  }
-
-  // 저장된 이력은 제목에만 사용하고 실시간 턴 상태에는 반영하지 않는다.
-  private recordIncomingTitles(message: Record<string, unknown>, params: Record<string, unknown> | undefined): void {
-    const result = record(message.result);
-    const thread = record(params?.thread ?? result?.thread);
     if (thread) this.recordTitle(thread);
     if (Array.isArray(result?.data)) {
       for (const item of result.data) {
@@ -80,10 +67,7 @@ export class CodexEvents implements AgentEvents {
     if (message.method === 'thread/name/updated' && params) {
       this.recordTitle({ id: params.threadId, name: params.threadName });
     }
-  }
 
-  private routeLiveSessionEvent(message: Record<string, unknown>, params: Record<string, unknown> | undefined): void {
-    // History metadata may supply a title, but never starts a turn or emits a result.
     if (typeof message.method !== 'string' || !params) return;
     const id = identifier(params.threadId);
     if (!id || this.excludedThreads.has(id)) return;
