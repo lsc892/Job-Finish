@@ -12,8 +12,9 @@ test('History rejects repeated cursors and mismatched turn items', async () => {
   await assert.rejects(() => history(() => ({ data: [], nextCursor: 'same' })).turns(), /repeated/);
   await assert.rejects(() => history(() => ({ data: [{ turnId: 'other', item: { type: 'agentMessage', phase: 'final_answer', text: 'wrong' } }], nextCursor: null })).finalText('turn'), /another turn/);
 });
-test('History ignores commentary, finds the latest final response, and verifies connection after awaiting RPC', async () => {
+test('History ignores commentary and async questions, finds the final response, and verifies the connection', async () => {
   const h = history(() => ({ data: [{ turnId: 'turn', item: { type: 'agentMessage', phase: 'commentary', text: 'progress' } },
+    { turnId: 'turn', item: { type: 'agentMessage', phase: 'final_answer', delivery: 'async', text: 'question widget payload', questions: [{ title: 'Pick a color?', options: null }] } },
     { turnId: 'turn', item: { type: 'agentMessage', phase: 'final_answer', text: 'final' } }], nextCursor: null }));
   assert.equal(await h.finalText('turn'), 'final');
   let connected = true;

@@ -99,7 +99,7 @@ export class CodexHistory {
 
   async finalText(turnId: string): Promise<string | undefined> {
     for await (const item of this.items(turnId, 'desc')) {
-      if (item.type === 'agentMessage' && item.phase !== 'commentary') {
+      if (item.type === 'agentMessage' && item.phase !== 'commentary' && !item.questions?.length) {
         if (typeof item.text !== 'string') throw new Error('Invalid final response text');
         return item.text;
       }

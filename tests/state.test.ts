@@ -65,6 +65,44 @@ test('Requests deduplicate, preserve request scope and clear on response/termina
 test('Losing ownership suppresses both mutation and notification', () => {
   const f = fixture(); f.session.start('t', 'connection-1'); f.revoke(); f.session.finish('t', 'completed', 'connection-1'); assert.equal(f.signals.length, 0);
 });
+
+test('Async questions notify once per item without changing execution, body or pending RPC requests', () => {
+  const f = fixture();
+  f.session.start('t', 'connection-1');
+  f.session.body('t', 'final response', 'connection-1');
+  f.session.waiting({ id: 'approval', turnId: 't', connectionId: 'connection-1', kind: 'approval', title: 'Allow?', payload: {} });
+  const before = f.session.checkpoint();
+  f.session.notifyQuestion('t', 'question', '첫 질문\n두 번째 질문', 'connection-1');
+  f.session.notifyQuestion('t', 'question', 'duplicate', 'connection-1');
+  assert.equal(f.signals.length, 2);
+  assert.equal(f.signals[1]!.status, 'waitingForInput');
+  assert.equal(f.signals[1]!.text, '첫 질문\n두 번째 질문');
+  assert.equal(f.signals[1]!.requestId, undefined, 'an async question has no pending RPC response');
+  assert.deepEqual(f.session.checkpoint(), before);
+  assert.deepEqual([...f.session.requests.keys()], ['approval']);
+  f.session.resolve('approval', 'connection-1');
+  assert.equal(f.session.turns.get('t')!.status, 'running');
+  f.session.finish('t', 'completed', 'connection-1');
+  f.session.notifyQuestion('t', 'late', 'late question', 'connection-1');
+  assert.equal(f.signals.length, 3);
+  assert.equal(f.signals[2]!.text, 'final response');
+});
+
+test('Async question identity includes the turn and connection, and rejects stale or unowned events', () => {
+  const f = fixture();
+  f.session.start('one', 'connection-1'); f.session.start('two', 'connection-1');
+  f.session.notifyQuestion('one', 'same-item', 'one', 'connection-1');
+  f.session.notifyQuestion('two', 'same-item', 'two', 'connection-1');
+  for (const [turn, item, text, connection] of [
+    ['one', 'stale', 'stale', 'old-connection'], ['missing', 'id', 'missing turn', 'connection-1'],
+    ['one', '', 'missing item', 'connection-1'], ['one', 'blank', '  ', 'connection-1'],
+  ]) f.session.notifyQuestion(turn!, item!, text!, connection!);
+  assert.deepEqual(f.signals.map(signal => signal.text), ['one', 'two']);
+  f.session.reconnect('connection-2');
+  f.session.notifyQuestion('one', 'same-item', 'new connection', 'connection-2');
+  f.revoke(); f.session.notifyQuestion('one', 'unowned', 'unowned', 'connection-2');
+  assert.equal(f.signals.length, 3);
+});
 test('Bounded keys, active turns, diagnostics and UTF-8 result storage', () => {
   const f = fixture();
   for (let i = 0; i < 600; i++) { f.session.start(`${i}`, 'connection-1'); f.session.finish(`${i}`, 'completed', 'connection-1'); f.diagnostics.add(i); }

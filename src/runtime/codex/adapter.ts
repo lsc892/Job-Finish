@@ -5,6 +5,7 @@ import type { PermissionsRequestApprovalResponse } from '../../protocol/v2/Permi
 import { Session } from '../../core/session';
 import type { TerminalStatus } from '../../core/model';
 import type { RpcMessage } from '../transport';
+import { record } from '../message';
 
 const SESSION_EVENT_METHODS: readonly string[] = [
   'thread/name/updated', 'turn/started', 'turn/completed', 'item/completed', 'serverRequest/resolved', 'error',
@@ -67,9 +68,17 @@ export class CodexAdapter {
         return;
       }
       case 'item/completed': {
-        // 본문만 보관하고 턴 종료는 turn/completed에서 확정한다.
+        // 비동기 질문은 알리고 최종 응답은 보관하되 턴 종료는 turn/completed에서 확정한다.
         const item = codexObject(params.item);
-        if (item.type !== 'agentMessage' || item.phase === 'commentary') return;
+        if (item.type !== 'agentMessage') return;
+        // request_user_input_async는 별도 서버 요청 없이 질문을 담은 메시지로 전달된다.
+        const questions = Array.isArray(item.questions) ? item.questions.map(record)
+          .map(question => question?.title).filter((title): title is string => typeof title === 'string' && title.trim().length > 0) : [];
+        if (questions.length) {
+          this.session.notifyQuestion(codexId(params.turnId), codexId(item.id), questions.join('\n'), connectionId);
+          return;
+        }
+        if (item.phase === 'commentary') return;
         if (typeof item.text !== 'string') throw new Error('Malformed agent message');
         this.session.body(codexId(params.turnId), item.text, connectionId);
         return;
@@ -114,7 +123,8 @@ export class CodexAdapter {
     if (Array.isArray(turn.items)) {
       for (const item of turn.items) {
         const entry = codexObject(item);
-        if (entry.type !== 'agentMessage' || entry.phase === 'commentary' || typeof entry.text !== 'string') continue;
+        if (entry.type !== 'agentMessage' || entry.phase === 'commentary' || typeof entry.text !== 'string'
+          || (Array.isArray(entry.questions) && entry.questions.length > 0)) continue;
         this.session.body(turnId, entry.text, connectionId);
       }
     }

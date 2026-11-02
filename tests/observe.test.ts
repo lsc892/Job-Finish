@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import { AgentStreamObserver } from '../src/runtime/observe';
 import { Diagnostics, Signal } from '../src/core/model';
+import { Notifications } from '../src/core/notifications';
 
 const agent = resolve('tests/fixtures/observed-agent.cjs');
 const pause = (ms = 10) => new Promise(resolve => setTimeout(resolve, ms));
@@ -23,6 +24,40 @@ const events = (id: string, text = '한국어😀') => [
   { method: 'turn/completed', params: { threadId: 'thread', turn: { id, status: 'completed', items: [] } } },
 ];
 const packet = (id: string) => JSON.stringify({ events: events(id) }) + '\n';
+
+test('Observed async questions reach toast delivery once, obey focus, and preserve the original stream', async t => {
+  const diagnostics = new Diagnostics();
+  let focused = false; let flashes = 0;
+  const toasts: string[] = []; const deliveries: Promise<void>[] = [];
+  const notifications = new Notifications({ focused: () => focused, owns: signal => observer.owns(signal),
+    stopFlash: () => {}, flash: () => { flashes++; }, activate: () => {},
+    toast: async (_signal, message, _click, allowed) => { if (allowed()) toasts.push(message); } });
+  const observer = new AgentStreamObserver('window', () => [{ provider: 'codex', path: resolve('tests/fixtures') }],
+    signal => deliveries.push(notifications.deliver(signal)), diagnostics);
+  t.after(() => observer.dispose()); observer.start();
+  const child = spawn(process.execPath, [agent, 'app-server'], { stdio: 'pipe', windowsHide: true }); cleanup(t, child);
+  const output: Buffer[] = []; child.stdout.on('data', chunk => output.push(chunk));
+  const question = { method: 'item/completed', params: { threadId: 'thread', turnId: 'turn',
+    item: { type: 'agentMessage', id: 'question-1', phase: 'final_answer', delivery: 'async', text: 'question widget payload', questions: [{ title: '답변이 필요합니다😀', options: null }] } } };
+  child.stdin.write(JSON.stringify({ events: [question, question] }) + '\n');
+  await until(() => notifications.results.length === 1); await Promise.all(deliveries);
+  assert.deepEqual(toasts, ['답변이 필요합니다😀']); assert.equal(flashes, 1);
+  focused = true;
+  const next = { ...question, params: { ...question.params, item: { ...question.params.item, id: 'question-2' } } };
+  child.stdin.write(JSON.stringify({ events: [next] }) + '\n');
+  await until(() => notifications.results.length === 2); await Promise.all(deliveries);
+  assert.equal(toasts.length, 1, 'focused windows retain the question without displaying a toast');
+  assert.equal(flashes, 1);
+  const completed = { method: 'turn/completed', params: { threadId: 'thread',
+    turn: { id: 'turn', status: 'completed', items: [{ type: 'agentMessage', phase: 'final_answer', text: 'Done' }] } } };
+  child.stdin.write(JSON.stringify({ events: [completed] }) + '\n');
+  await until(() => notifications.results.length === 3); await Promise.all(deliveries);
+  assert.deepEqual(notifications.results.map(signal => [signal.status, signal.text]),
+    [['waitingForInput', '답변이 필요합니다😀'], ['waitingForInput', '답변이 필요합니다😀'], ['completed', 'Done']]);
+  assert.equal(observer.snapshot().connections[0]!.activeTurns, 0);
+  assert.equal(Buffer.concat(output).toString('utf8'), [question, question, next, completed].map(event => JSON.stringify(event) + '\n').join(''));
+  assert.deepEqual(diagnostics.entries, []);
+});
 
 test('Automatic observation attaches existing and future processes, leaves bytes unchanged, and toggles cleanly', async t => {
   const signals: Signal[] = []; const diagnostics = new Diagnostics();

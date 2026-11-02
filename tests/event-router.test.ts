@@ -29,6 +29,45 @@ test('Existing Codex turns notify without a start event; history responses and d
   for (const event of events) f.router.incoming(event); assert.equal(f.signals.length, 1);
 });
 
+test('Codex async question messages notify once and keep completion body separate', () => {
+  const f = setup('codex');
+  const question = { method: 'item/completed', params: { threadId: 'thread', turnId: 'turn',
+    item: { type: 'agentMessage', id: 'async-question', phase: 'final_answer', delivery: 'async', text: 'question widget payload',
+      questions: [{ title: '어느 환경인가요?', options: ['VS Code', 'Desktop'] }, { title: '로그인했나요?', options: null }] } } };
+  f.router.incoming({ id: 'history', result: { data: [question.params.item] } });
+  assert.equal(f.signals.length, 0, 'saved history must not notify');
+  f.router.incoming(question); f.router.incoming(question);
+  assert.equal(f.signals.length, 1);
+  assert.equal(f.signals[0]!.status, 'waitingForInput');
+  assert.equal(f.signals[0]!.text, '어느 환경인가요?\n로그인했나요?');
+  assert.equal(f.router.snapshot().activeTurns, 1);
+  assert.equal(f.signals[0]!.requestId, undefined);
+  f.router.incoming({ method: 'item/completed', params: { threadId: 'thread', turnId: 'turn',
+    item: { type: 'agentMessage', phase: 'final_answer', text: '완료' } } });
+  f.router.incoming({ method: 'turn/completed', params: { threadId: 'thread',
+    turn: { id: 'turn', status: 'completed', items: [question.params.item] } } });
+  f.router.incoming(question);
+  assert.deepEqual(f.signals.map(signal => [signal.status, signal.text]), [['waitingForInput', '어느 환경인가요?\n로그인했나요?'], ['completed', '완료']]);
+  assert.equal(f.router.snapshot().activeTurns, 0);
+});
+
+test('Codex async questions exclude ordinary commentary, malformed titles, subagents and owned sessions', () => {
+  const f = setup('codex');
+  for (const questions of [undefined, null, [], [null, { title: 42 }, { title: ' ' }]]) {
+    f.router.incoming({ method: 'item/completed', params: { threadId: 'thread', turnId: 'turn',
+      item: { type: 'agentMessage', id: 'ordinary', phase: 'commentary', text: 'working', questions } } });
+  }
+  assert.equal(f.signals.length, 0);
+  f.router.incoming({ method: 'thread/started', params: { thread: { id: 'subagent', parentThreadId: 'parent' } } });
+  f.router.incoming({ method: 'item/completed', params: { threadId: 'subagent', turnId: 'turn',
+    item: { type: 'agentMessage', id: 'excluded', phase: 'commentary', text: '', questions: [{ title: 'Excluded?' }] } } });
+  const owned = setup('codex', 'owned-window', () => true);
+  owned.router.incoming({ method: 'item/completed', params: { threadId: 'owned', turnId: 'turn',
+    item: { type: 'agentMessage', id: 'owned-question', phase: 'commentary', text: '', questions: [{ title: 'Owned?' }] } } });
+  assert.equal(f.signals.length, 0); assert.equal(owned.signals.length, 0);
+  f.router.dispose(); owned.router.dispose();
+});
+
 test('Ephemeral and subagent Codex threads are excluded; windows and owned sessions stay separate', () => {
   const a = setup('codex', 'A'), b = setup('codex', 'B'), own = setup('codex', 'own', () => true);
   a.router.outgoing({ id: 'start', method: 'thread/start', params: { ephemeral: true } });

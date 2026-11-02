@@ -8,6 +8,7 @@ export class Session {
   readonly completed = new Map<string, TerminalStatus>();
   readonly requests = new Map<string, InputRequest>();
   private readonly seenRequests = new Set<string>();
+  private readonly seenQuestions = new Set<string>();
   private title?: string;
   private promptTitle?: string;
   pendingStart?: string;
@@ -86,6 +87,17 @@ export class Session {
     const turn = this.turns.get(request.turnId)!; turn.status = 'waitingForInput'; this.persist();
     this.signal({ ...turn, ...boundedText(request.title) }, undefined, request.id);
   }
+  // 비동기 질문은 한 번만 알리고 실행 상태·본문·RPC 응답 대기는 바꾸지 않는다.
+  notifyQuestion(turnId: string, itemId: string, text: string, connectionId: string): void {
+    if (!this.valid(connectionId)) return;
+    const turn = this.turns.get(turnId);
+    if (!turn || !itemId || !text.trim()) return;
+    const key = JSON.stringify([connectionId, turnId, itemId]);
+    if (this.seenQuestions.has(key)) return;
+    this.seenQuestions.add(key);
+    while (this.seenQuestions.size > LIMITS.dedup) this.seenQuestions.delete(this.seenQuestions.values().next().value!);
+    this.signal({ ...turn, ...boundedText(text), status: 'waitingForInput' });
+  }
   // 해당 턴의 입력 요청이 모두 해소되면 실행 중 상태로 되돌린다.
   resolve(id: string, connectionId: string): void {
     if (!this.valid(connectionId)) return;
@@ -97,11 +109,11 @@ export class Session {
   }
   // 연결이 끊긴 실행은 종료를 추정하지 않고 unknown으로 보존한다.
   disconnected(reason: unknown): void {
-    this.diagnostics.add(reason); this.requests.clear(); this.seenRequests.clear();
+    this.diagnostics.add(reason); this.requests.clear(); this.seenRequests.clear(); this.seenQuestions.clear();
     for (const turn of this.turns.values()) turn.status = 'unknown';
     if (this.owns()) this.persist(); else this.changed();
   }
-  reconnect(connectionId: string): void { this.binding = { ...this.binding, connectionId }; this.requests.clear(); this.seenRequests.clear(); this.changed(); }
+  reconnect(connectionId: string): void { this.binding = { ...this.binding, connectionId }; this.requests.clear(); this.seenRequests.clear(); this.seenQuestions.clear(); this.changed(); }
   startRejected(requestId: string, message: string, connectionId: string): void {
     if (!this.valid(connectionId)) return;
     if (this.pendingStart === requestId) { this.pendingStart = undefined; this.persist(); }
