@@ -4,7 +4,11 @@ import { Diagnostics, LIMITS } from '../../core/model';
 import { EventQueue, RpcMessage, StdioRpc } from '../transport';
 import { codexCommand } from './executable';
 
-export interface CodexConnectionOptions { cwd: string; executable?: string; diagnostic: Diagnostics }
+export interface CodexConnectionOptions {
+  cwd: string;
+  executable?: string;
+  diagnostic: Diagnostics;
+}
 interface ConnectionEvents {
   message(message: RpcMessage): void;
   disconnected(reason: unknown): void;
@@ -38,35 +42,59 @@ export class CodexConnection {
     this.readyState = false;
     this.queue.clear();
     this.clearAnswers();
-    const rpc = new StdioRpc(message => {
-      if (!this.isCurrent(rpc)) return;
-      if (this.readyState) this.events.message(message);
-      else this.queue.push(message);
-    }, error => {
-      if (!this.isCurrent(rpc)) return;
-      this.readyState = false;
-      this.queue.clear();
-      this.events.disconnected(error);
-      this.options.diagnostic.add(error);
-      this.scheduleRecovery();
-    }, message => this.options.diagnostic.add(message));
+    const rpc = this.createTransport();
     this.transport = rpc;
     const command = codexCommand(this.options.executable);
     rpc.start(command.executable, command.args, this.options.cwd);
-    const params: InitializeParams = {
-      clientInfo: { name: 'job_finish', title: 'Job-Finish', version: '0.1.0' },
-      capabilities: { experimentalApi: true, requestAttestation: false, optOutNotificationMethods: [
-        'item/agentMessage/delta', 'item/reasoning/textDelta', 'item/reasoning/summaryTextDelta',
-        'item/commandExecution/outputDelta', 'turn/diff/updated',
-      ] },
-    };
-    await rpc.request('initialize', params);
+    await rpc.request('initialize', this.initializationParams());
     rpc.notify('initialized');
+  }
+
+  private initializationParams(): InitializeParams {
+    return {
+      clientInfo: { name: 'job_finish', title: 'Job-Finish', version: '0.1.0' },
+      capabilities: {
+        experimentalApi: true,
+        requestAttestation: false,
+        optOutNotificationMethods: [
+          'item/agentMessage/delta', 'item/reasoning/textDelta', 'item/reasoning/summaryTextDelta',
+          'item/commandExecution/outputDelta', 'turn/diff/updated',
+        ],
+      },
+    };
+  }
+
+  private createTransport(): StdioRpc {
+    const connection = this;
+    // 생성한 RPC를 캡처해 이전 연결에서 늦게 도착한 이벤트를 구분한다.
+    function handleMessage(message: RpcMessage): void {
+      connection.handleRpcMessage(rpc, message);
+    }
+    function handleDisconnect(error: Error): void {
+      connection.handleRpcDisconnect(rpc, error);
+    }
+    const rpc = new StdioRpc(handleMessage, handleDisconnect, this.options.diagnostic.add.bind(this.options.diagnostic));
+    return rpc;
+  }
+
+  private handleRpcMessage(rpc: StdioRpc, message: RpcMessage): void {
+    if (!this.isCurrent(rpc)) return;
+    if (this.readyState) this.events.message(message);
+    else this.queue.push(message);
+  }
+
+  private handleRpcDisconnect(rpc: StdioRpc, error: Error): void {
+    if (!this.isCurrent(rpc)) return;
+    this.readyState = false;
+    this.queue.clear();
+    this.events.disconnected(error);
+    this.options.diagnostic.add(error);
+    this.scheduleRecovery();
   }
 
   activate(): void {
     this.readyState = true;
-    this.queue.drain(message => this.events.message(message));
+    this.queue.drain(this.events.message.bind(this.events));
   }
 
   close(): void {
@@ -85,16 +113,22 @@ export class CodexConnection {
     }
   }
 
+  // 연결 복구는 1초·2초·4초 간격으로 최대 세 번 예약한다.
   private scheduleRecovery(): void {
-    if (!this.events.canRecover() || this.disposedState || this.recoveryTimer || this.recoveryAttempts >= MAX_RECOVERY_ATTEMPTS) return;
+    if (!this.events.canRecover() || this.disposedState || this.recoveryTimer) return;
+    if (this.recoveryAttempts >= MAX_RECOVERY_ATTEMPTS) return;
     const delay = RECOVERY_BASE_DELAY_MS * 2 ** this.recoveryAttempts++;
-    this.recoveryTimer = setTimeout(() => {
-      this.recoveryTimer = undefined;
-      void this.reconnect().catch(error => {
-        this.options.diagnostic.add(error);
-        this.scheduleRecovery();
-      });
-    }, delay);
+    this.recoveryTimer = setTimeout(this.handleRecoveryTimeout.bind(this), delay);
+  }
+
+  private handleRecoveryTimeout(): void {
+    this.recoveryTimer = undefined;
+    void this.reconnect().catch(this.handleRecoveryFailure.bind(this));
+  }
+
+  private handleRecoveryFailure(error: unknown): void {
+    this.options.diagnostic.add(error);
+    this.scheduleRecovery();
   }
 
   private clearRecoveryTimer(): void {
@@ -113,6 +147,10 @@ export class CodexConnection {
   rememberAnswer(requestId: string, result: unknown): void {
     this.answered.set(requestId, result);
     this.answeredBytes += Buffer.byteLength(JSON.stringify(result));
+    this.evictOverflowAnswers();
+  }
+
+  private evictOverflowAnswers(): void {
     while (this.answered.size > LIMITS.dedup || this.answeredBytes > LIMITS.queueBytes) {
       const oldest = this.answered.keys().next().value!;
       this.answeredBytes -= Buffer.byteLength(JSON.stringify(this.answered.get(oldest)));

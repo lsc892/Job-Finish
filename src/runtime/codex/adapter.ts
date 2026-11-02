@@ -1,4 +1,4 @@
-// Codex 프로토콜 이벤트와 승인 응답을 공통 세션 상태로 변환한다.
+// Codex 턴 종료·승인·질문 이벤트를 공통 세션 상태로 변환한다.
 import type { Turn } from '../../protocol/v2/Turn';
 import type { PermissionsRequestApprovalParams } from '../../protocol/v2/PermissionsRequestApprovalParams';
 import type { PermissionsRequestApprovalResponse } from '../../protocol/v2/PermissionsRequestApprovalResponse';
@@ -6,6 +6,13 @@ import { Session } from '../../core/session';
 import type { TerminalStatus } from '../../core/model';
 import type { RpcMessage } from '../transport';
 
+const SESSION_EVENT_METHODS: readonly string[] = [
+  'thread/name/updated', 'turn/started', 'turn/completed', 'item/completed', 'serverRequest/resolved', 'error',
+  'item/commandExecution/requestApproval', 'item/fileChange/requestApproval',
+  'item/permissions/requestApproval', 'item/tool/requestUserInput',
+];
+
+// completed·failed·interrupted를 완료·오류·취소로 변환한다.
 export function codexStatus(value: string): TerminalStatus | undefined {
   switch (value) {
     case 'completed': return 'completed';
@@ -26,15 +33,17 @@ export function codexId(value: unknown): string {
 }
 
 export function codexApprovalResponse(message: RpcMessage, allow: boolean): unknown {
-  if (message.method === 'item/permissions/requestApproval') {
-    const { permissions } = message.params as PermissionsRequestApprovalParams;
-    codexObject(permissions);
-    return { scope: 'turn', permissions: allow ? {
+  if (message.method !== 'item/permissions/requestApproval') return { decision: allow ? 'accept' : 'decline' };
+
+  const { permissions } = message.params as PermissionsRequestApprovalParams;
+  codexObject(permissions);
+  return {
+    scope: 'turn',
+    permissions: allow ? {
       ...(permissions.network ? { network: permissions.network } : {}),
       ...(permissions.fileSystem ? { fileSystem: permissions.fileSystem } : {}),
-    } : {} } satisfies PermissionsRequestApprovalResponse;
-  }
-  return { decision: allow ? 'accept' : 'decline' };
+    } : {},
+  } satisfies PermissionsRequestApprovalResponse;
 }
 
 /** 소유·관찰 실행의 Codex 프로토콜 이벤트를 공통 세션 상태로 변환한다. */
@@ -43,28 +52,19 @@ export class CodexAdapter {
 
   handle(message: RpcMessage, connectionId: string, admitStarted = false): void {
     if (!this.session.valid(connectionId)) return;
-    const methods = ['thread/name/updated', 'turn/started', 'turn/completed', 'item/completed', 'serverRequest/resolved', 'error',
-      'item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'item/permissions/requestApproval', 'item/tool/requestUserInput'];
-    if (!methods.includes(message.method ?? '')) return;
+    if (!SESSION_EVENT_METHODS.includes(message.method ?? '')) return;
     const params = codexObject(message.params);
     if (codexId(params.threadId) !== this.session.binding.sessionId) return;
     switch (message.method) {
       case 'thread/name/updated':
         this.session.setTitle(params.threadName, connectionId);
         return;
-      case 'turn/started': {
-        const turn = codexObject(params.turn);
-        if (admitStarted) this.session.start(codexId(turn.id), connectionId);
-        else this.session.running(codexId(turn.id), connectionId);
+      case 'turn/started':
+        this.acceptStartedTurn(params.turn, connectionId, admitStarted);
         return;
-      }
-      case 'item/completed': {
-        const item = codexObject(params.item);
-        if (item.type !== 'agentMessage' || item.phase === 'commentary') return;
-        if (typeof item.text !== 'string') throw new Error('Malformed agent message');
-        this.session.body(codexId(params.turnId), item.text, connectionId);
+      case 'item/completed':
+        this.acceptCompletedItem(params, connectionId);
         return;
-      }
       case 'turn/completed':
         this.reconcileTurn(params.turn as Turn, connectionId);
         return;
@@ -79,15 +79,39 @@ export class CodexAdapter {
     }
   }
 
+  private acceptStartedTurn(value: unknown, connectionId: string, admitStarted: boolean): void {
+    const turn = codexObject(value);
+    const turnId = codexId(turn.id);
+    if (admitStarted) this.session.start(turnId, connectionId);
+    else this.session.running(turnId, connectionId);
+  }
+
+  private acceptCompletedItem(params: Record<string, unknown>, connectionId: string): void {
+    // 본문만 보관하고 턴 종료는 turn/completed에서 확정한다.
+    const item = codexObject(params.item);
+    if (item.type !== 'agentMessage' || item.phase === 'commentary') return;
+    if (typeof item.text !== 'string') throw new Error('Malformed agent message');
+    this.session.body(codexId(params.turnId), item.text, connectionId);
+  }
+
+  // 승인·질문 요청을 요청 ID와 턴 ID에 연결해 입력 대기로 전환한다.
   private requestInput(message: RpcMessage, params: Record<string, unknown>, connectionId: string): void {
     if (message.id === undefined) return;
     const turnId = codexId(params.turnId);
-    const question = message.method === 'item/tool/requestUserInput';
-    this.session.waiting({ id: JSON.stringify(message.id), turnId, connectionId,
-      kind: question ? 'question' : 'approval', payload: message,
-      title: question ? JSON.stringify(params.questions) : String(params.command ?? params.reason ?? 'File change approval') });
+    const isQuestion = message.method === 'item/tool/requestUserInput';
+    this.session.waiting({
+      id: JSON.stringify(message.id),
+      turnId,
+      connectionId,
+      kind: isQuestion ? 'question' : 'approval',
+      payload: message,
+      title: isQuestion
+        ? JSON.stringify(params.questions)
+        : String(params.command ?? params.reason ?? 'File change approval'),
+    });
   }
 
+  // 명시적 턴 상태를 확인하고 최종 본문·오류 설명을 반영한 뒤 종료한다.
   reconcileTurn(value: Turn, connectionId: string): void {
     const turn = codexObject(value);
     const turnId = codexId(turn.id);
@@ -97,16 +121,25 @@ export class CodexAdapter {
       this.session.running(turnId, connectionId);
       return;
     }
-    if (Array.isArray(turn.items)) for (const item of turn.items) {
-      const entry = codexObject(item);
-      if (entry.type === 'agentMessage' && entry.phase !== 'commentary' && typeof entry.text === 'string') this.session.body(turnId, entry.text, connectionId);
-    }
-    let detail: string | undefined;
-    if (turn.error) {
-      const error = codexObject(turn.error);
-      const code = typeof error.codexErrorInfo === 'string' ? error.codexErrorInfo : JSON.stringify(error.codexErrorInfo);
-      detail = `${code || 'Codex error'}: ${typeof error.message === 'string' ? error.message : 'No error message received'}`;
-    }
+    this.recordTurnMessages(turn.items, turnId, connectionId);
+    const detail = this.turnErrorDetail(turn.error);
     this.session.finish(turnId, status, connectionId, detail);
+  }
+
+  private recordTurnMessages(items: unknown, turnId: string, connectionId: string): void {
+    if (!Array.isArray(items)) return;
+    for (const item of items) {
+      const entry = codexObject(item);
+      if (entry.type !== 'agentMessage' || entry.phase === 'commentary' || typeof entry.text !== 'string') continue;
+      this.session.body(turnId, entry.text, connectionId);
+    }
+  }
+
+  private turnErrorDetail(value: unknown): string | undefined {
+    if (!value) return;
+    const error = codexObject(value);
+    const code = typeof error.codexErrorInfo === 'string' ? error.codexErrorInfo : JSON.stringify(error.codexErrorInfo);
+    const message = typeof error.message === 'string' ? error.message : 'No error message received';
+    return `${code || 'Codex error'}: ${message}`;
   }
 }

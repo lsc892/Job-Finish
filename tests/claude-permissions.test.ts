@@ -60,6 +60,21 @@ test('An already withdrawn permission is denied without recording a request or k
   assert.equal(getEventListeners(controller.signal, 'abort').length, 0);
 });
 
+test('Synchronous withdrawal while recording permission settles the registered callback and removes its listener', async t => {
+  const f = setup();
+  const controller = new AbortController();
+  const waiting = f.session.waiting.bind(f.session);
+  t.mock.method(f.session, 'waiting', (request: Parameters<Session['waiting']>[0]) => {
+    waiting(request);
+    controller.abort();
+  });
+  assert.deepEqual(await f.ask('during-record', controller.signal), { behavior: 'deny', message: 'Request withdrawn' });
+  assert.equal(f.session.requests.size, 0);
+  assert.equal(getEventListeners(controller.signal, 'abort').length, 0);
+  assert.equal([...f.session.turns.values()][0]!.status, 'running');
+  f.permissions.clear();
+});
+
 test('A response checkpoint failure denies the SDK permission and still removes its listener', async () => {
   const f = setup();
   const controller = new AbortController();

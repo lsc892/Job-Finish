@@ -6,43 +6,90 @@ import { CodexAdapter } from './adapter';
 import type { RpcMessage } from '../transport';
 import { bound, identifier, record } from '../message';
 
+const LIVE_SESSION_METHODS: readonly string[] = [
+  'turn/started', 'turn/completed', 'item/completed', 'serverRequest/resolved', 'error',
+  'item/commandExecution/requestApproval', 'item/fileChange/requestApproval',
+  'item/permissions/requestApproval', 'item/tool/requestUserInput',
+];
+
 /** 관찰한 Codex 연결에서 알림 대상 스레드를 선별하고 실시간 이벤트를 세션에 반영한다. */
 export class CodexEvents implements AgentEvents {
-  private readonly pendingThreads = new Map<string, boolean>();
-  private readonly ignored = new Set<string>();
+  // thread/start 요청 ID별 임시 스레드 여부를 응답까지 보관한다.
+  private readonly pendingThreadStarts = new Map<string, boolean>();
+  private readonly excludedThreads = new Set<string>();
   private readonly titles = new Map<string, { name?: string; preview?: string }>();
-  constructor(private context: EventContext) {}
+  constructor(private readonly context: EventContext) {}
+
   outgoing(message: Record<string, unknown>): void {
-    if (message.method === 'thread/start' && message.id !== undefined) {
-      const params = record(message.params);
-      this.pendingThreads.set(JSON.stringify(message.id), params?.ephemeral === true);
-      bound(this.pendingThreads);
-    }
-    if (message.method === 'turn/start') {
-      const params = record(message.params);
-      const id = identifier(params?.threadId);
-      if (!id || this.ignored.has(id) || !Array.isArray(params?.input)) return;
-      const prompt = params.input.map(record).filter(item => item?.type === 'text' && typeof item.text === 'string').map(item => item!.text).join(' ');
-      this.rememberTitle(id, undefined, prompt);
+    switch (message.method) {
+      case 'thread/start': {
+        if (message.id === undefined) return;
+        const params = record(message.params);
+        this.pendingThreadStarts.set(JSON.stringify(message.id), params?.ephemeral === true);
+        bound(this.pendingThreadStarts);
+        return;
+      }
+      case 'turn/start':
+        this.recordPromptTitle(message.params);
     }
   }
+
+  private recordPromptTitle(value: unknown): void {
+    const params = record(value);
+    const id = identifier(params?.threadId);
+    if (!id || this.excludedThreads.has(id) || !Array.isArray(params?.input)) return;
+    const prompt = params.input
+      .map(record)
+      .filter(item => item?.type === 'text' && typeof item.text === 'string')
+      .map(item => item!.text)
+      .join(' ');
+    this.rememberTitle(id, undefined, prompt);
+  }
+
   incoming(message: Record<string, unknown>): void {
     const params = record(message.params);
     this.recordThreadExclusion(message, params);
+    this.recordIncomingTitles(message, params);
+    this.routeLiveSessionEvent(message, params);
+  }
+
+  private recordThreadExclusion(message: Record<string, unknown>, params: Record<string, unknown> | undefined): void {
+    const result = record(message.result);
+    const thread = record(params?.thread ?? result?.thread);
+    if (!thread || !identifier(thread.id)) return;
+    const pendingKey = JSON.stringify(message.id);
+    if (thread.ephemeral === true || thread.parentThreadId || record(thread.source)?.subAgent
+      || this.pendingThreadStarts.get(pendingKey)) {
+      this.excludedThreads.add(thread.id as string);
+      bound(this.excludedThreads);
+    }
+    this.pendingThreadStarts.delete(pendingKey);
+  }
+
+  // 저장된 이력은 제목에만 사용하고 실시간 턴 상태에는 반영하지 않는다.
+  private recordIncomingTitles(message: Record<string, unknown>, params: Record<string, unknown> | undefined): void {
     const result = record(message.result);
     const thread = record(params?.thread ?? result?.thread);
     if (thread) this.recordTitle(thread);
-    if (Array.isArray(result?.data)) for (const item of result.data) {
-      const entry = record(item); if (entry && typeof entry.preview === 'string') this.recordTitle(entry);
+    if (Array.isArray(result?.data)) {
+      for (const item of result.data) {
+        const entry = record(item);
+        if (entry && typeof entry.preview === 'string') this.recordTitle(entry);
+      }
     }
-    if (message.method === 'thread/name/updated' && params) this.recordTitle({ id: params.threadId, name: params.threadName });
+    if (message.method === 'thread/name/updated' && params) {
+      this.recordTitle({ id: params.threadId, name: params.threadName });
+    }
+  }
+
+  private routeLiveSessionEvent(message: Record<string, unknown>, params: Record<string, unknown> | undefined): void {
     // History metadata may supply a title, but never starts a turn or emits a result.
     if (typeof message.method !== 'string' || !params) return;
-    const id = identifier(params.threadId); if (!id || this.ignored.has(id)) return;
-    const relevant = ['turn/started', 'turn/completed', 'item/completed', 'serverRequest/resolved', 'error',
-      'item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'item/permissions/requestApproval', 'item/tool/requestUserInput'];
-    if (!relevant.includes(message.method)) return;
-    const session = this.context.session(id); if (!session) return;
+    const id = identifier(params.threadId);
+    if (!id || this.excludedThreads.has(id)) return;
+    if (!LIVE_SESSION_METHODS.includes(message.method)) return;
+    const session = this.context.session(id);
+    if (!session) return;
     this.applyTitle(session, id);
     const turn = record(params.turn);
     const turnId = identifier(turn?.id ?? params.turnId);
@@ -54,12 +101,14 @@ export class CodexEvents implements AgentEvents {
 
   private recordTitle(thread: Record<string, unknown>): void {
     const id = identifier(thread.id);
-    if (!id || this.ignored.has(id) || thread.ephemeral === true || thread.parentThreadId || record(thread.source)?.subAgent) return;
+    if (!id || this.excludedThreads.has(id)) return;
+    if (thread.ephemeral === true || thread.parentThreadId || record(thread.source)?.subAgent) return;
     this.rememberTitle(id, thread.name, thread.preview);
   }
 
   private rememberTitle(id: string, name: unknown, preview: unknown): void {
-    const title = sessionTitleText(name); const fallback = sessionTitleText(preview);
+    const title = sessionTitleText(name);
+    const fallback = sessionTitleText(preview);
     if (!title && !fallback) return;
     const previous = this.titles.get(id);
     this.titles.set(id, { name: title ?? previous?.name, preview: previous?.preview ?? fallback });
@@ -74,17 +123,9 @@ export class CodexEvents implements AgentEvents {
     session.setTitle(title?.preview, this.context.connectionId, true);
   }
 
-  private recordThreadExclusion(message: Record<string, unknown>, params: Record<string, unknown> | undefined): void {
-    const result = record(message.result);
-    const thread = record(params?.thread ?? result?.thread);
-    if (!thread || !identifier(thread.id)) return;
-    const pendingKey = JSON.stringify(message.id);
-    if (thread.ephemeral === true || thread.parentThreadId || record(thread.source)?.subAgent || this.pendingThreads.get(pendingKey)) {
-      this.ignored.add(thread.id as string);
-      bound(this.ignored);
-    }
-    this.pendingThreads.delete(pendingKey);
+  dispose(): void {
+    this.pendingThreadStarts.clear();
+    this.excludedThreads.clear();
+    this.titles.clear();
   }
-
-  dispose(): void { this.pendingThreads.clear(); this.ignored.clear(); this.titles.clear(); }
 }

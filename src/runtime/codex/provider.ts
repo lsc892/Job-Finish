@@ -15,24 +15,38 @@ export class CodexProvider extends AgentProvider {
   readonly id = 'codex';
   readonly extensionId = 'openai.chatgpt';
   readonly runCommand = 'runCodex';
+
+  // app-server 실행 인자로 Codex 런타임을 식별한다.
   matchesProcess(args: readonly string[]): boolean { return args.includes('app-server'); }
   runtimeDirectory(): string { return process.env.CODEX_HOME ?? join(homedir(), '.codex'); }
   createEvents(context: EventContext): AgentEvents { return new CodexEvents(context); }
+
   createExecution(context: ExecutionContext): CodexExecution {
-    return new CodexExecution({ cwd: context.cwd, executable: context.config('codexExecutable', ''),
-      model: context.config('codexModel', '') || undefined, mode: context.config('codexMode', 'default'),
-      diagnostic: context.diagnostics, createSession: context.createSession });
+    return new CodexExecution({
+      cwd: context.cwd,
+      executable: context.config('codexExecutable', ''),
+      model: context.config('codexModel', '') || undefined,
+      mode: context.config('codexMode', 'default'),
+      diagnostic: context.diagnostics,
+      createSession: context.createSession,
+    });
   }
+
   protected approvalResponse(request: InputRequest, allow: boolean): unknown {
     return codexApprovalResponse(request.payload as RpcMessage, allow);
   }
+
+  // 질문을 순서대로 묻고 하나라도 취소되면 부분 응답을 보내지 않는다.
   protected async answerQuestions(request: InputRequest, interaction: AgentInteraction): Promise<unknown> {
     const answers: Record<string, { answers: string[] }> = {};
     const params = (request.payload as RpcMessage).params as ToolRequestUserInputParams;
-    for (const q of params.questions) {
-      const answer = await interaction.question(q.question, q.options ?? [], { multiSelect: false, secret: q.isSecret });
+    for (const question of params.questions) {
+      const answer = await interaction.question(question.question, question.options ?? [], {
+        multiSelect: false,
+        secret: question.isSecret,
+      });
       if (!answer) return;
-      answers[q.id] = { answers: answer };
+      answers[question.id] = { answers: answer };
     }
     return { answers };
   }

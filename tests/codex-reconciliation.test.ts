@@ -67,3 +67,49 @@ test('Conflicting results share one read-only lookup and never create or redeliv
   assert.equal(f.signals[0]?.text, 'original');
   assert.equal(f.session.completed.get('completed'), 'completed');
 });
+
+test('Recovery sets the title and checks every active turn before replaying a tracked terminal result', async () => {
+  const f = fixture();
+  f.session.start('tracked', 'connection-1');
+  const methods: string[] = [];
+  const rpc = { connectionId: 'connection-1', connected: true, request: async (method: string) => {
+    methods.push(method);
+    return { data: [
+      { id: 'tracked', status: 'completed', items: [] },
+      { id: 'unobserved', status: 'inProgress', items: [] },
+    ], nextCursor: null };
+  } } as unknown as StdioRpc;
+  const reconciliation = new CodexReconciliation(new CodexAdapter(f.session), f.diagnostics, () => true);
+  await assert.rejects(reconciliation.reconcile({ ...thread(true), name: 'Recovered title' }, rpc), /unobserved active execution/);
+  assert.equal(f.session.sessionTitle, 'Recovered title');
+  assert.deepEqual(methods, ['thread/turns/list']);
+  assert.equal(f.session.turns.get('tracked')?.status, 'running');
+  assert.equal(f.session.completed.size, 0);
+  assert.equal(f.signals.length, 0);
+});
+
+for (const lost of ['connection', 'ownership']) test(`Final body recovery cannot finish a turn after losing ${lost} during the item lookup`, async () => {
+  const f = fixture();
+  f.session.start('tracked', 'connection-1');
+  let current = true;
+  let reply!: (value: unknown) => void;
+  const body = new Promise(resolve => { reply = resolve; });
+  let itemsRequested!: () => void;
+  const requested = new Promise<void>(resolve => { itemsRequested = resolve; });
+  const rpc = { connectionId: 'connection-1', connected: true, request: async (method: string) => {
+    if (method === 'thread/turns/list') return { data: [{ id: 'tracked', status: 'completed', items: [] }], nextCursor: null };
+    itemsRequested();
+    return body;
+  } } as unknown as StdioRpc;
+  const reconciliation = new CodexReconciliation(new CodexAdapter(f.session), f.diagnostics, () => current);
+  const result = assert.rejects(reconciliation.reconcile(thread(), rpc), /connection or ownership changed/);
+  await requested;
+  if (lost === 'connection') current = false;
+  else f.revoke();
+  reply({ data: [{ turnId: 'tracked', item: { type: 'agentMessage', phase: 'final_answer', text: 'late' } }], nextCursor: null });
+  await result;
+  assert.equal(f.session.turns.get('tracked')?.status, 'running');
+  assert.equal(f.session.turns.get('tracked')?.text, '');
+  assert.equal(f.session.completed.size, 0);
+  assert.equal(f.signals.length, 0);
+});

@@ -18,10 +18,13 @@ function fixture() {
   const signals: Signal[] = []; const diagnostics = new Diagnostics();
   const session = new Session(binding({ provider: 'claude' }), () => owns,
     () => { if (failSave) throw new Error('Checkpoint disk unavailable'); }, s => signals.push(s), diagnostics, undefined, () => { changes++; });
-  const queries: { permission: CanUseTool; emit: (m: SDKMessage) => void; end: () => void; closed: boolean; interrupts: number; interrupt: () => Promise<void> }[] = [];
-  const createQuery: typeof query = ({ options }) => {
+  const calls: Parameters<typeof query>[0][] = [];
+  const queries: { permission: CanUseTool; emit: (m: SDKMessage) => void; end: () => void; closed: boolean; closeError?: Error; interrupts: number; interrupt: () => Promise<void> }[] = [];
+  const createQuery: typeof query = request => {
+    calls.push(request);
+    const { options } = request;
     const messages: SDKMessage[] = []; let ended = false; let wake = () => {};
-    const control = { permission: options!.canUseTool!, emit: (m: SDKMessage) => { messages.push(m); wake(); },
+    const control: (typeof queries)[number] = { permission: options!.canUseTool!, emit: (m: SDKMessage) => { messages.push(m); wake(); },
       end: () => { ended = true; wake(); }, closed: false, interrupts: 0, interrupt: async () => {} };
     async function* stream() {
       while (true) {
@@ -31,17 +34,93 @@ function fixture() {
       }
     }
     queries.push(control);
-    return Object.assign(stream(), { close: () => { control.closed = true; control.end(); },
+    return Object.assign(stream(), { close: () => {
+      control.closed = true;
+      control.end();
+      if (control.closeError) throw control.closeError;
+    },
       interrupt: async () => { control.interrupts++; await control.interrupt(); } }) as unknown as Query;
   };
   const execution = new ClaudeExecution({ cwd: process.cwd(), maxTurns: 2, session, resume: false, createQuery });
   const result = (): SDKResultMessage => ({ type: 'result', subtype: 'success', is_error: false, session_id: session.binding.sessionId,
     uuid: 'result-1', user_message_uuid: [...session.turns.keys()][0], result: 'SDK_FIXTURE_OK' }) as unknown as SDKResultMessage;
-  return { execution, session, signals, diagnostics, queries, result, revoke: () => { owns = false; },
+  return { execution, session, signals, diagnostics, queries, calls, result, revoke: () => { owns = false; },
     failSave: () => { failSave = true; }, changes: () => changes };
 }
 function ask(permission: CanUseTool, controller = new AbortController(), id = 'request-1', tool = 'Bash') {
   return permission(tool, { command: 'echo fixture' }, { signal: controller.signal, requestId: id, toolUseID: `tool-${id}` });
+}
+
+test('Claude starts an injected query synchronously and preserves prompt, options and continuation identity', async t => {
+  const f = fixture();
+  t.after(() => f.execution.dispose());
+  const started = f.execution.run('first prompt');
+  assert.equal(f.calls.length, 1, 'injected factories run before the run promise yields');
+  await started;
+  const first = f.calls[0]!;
+  assert.equal(first.options!.cwd, process.cwd());
+  assert.equal(first.options!.maxTurns, 2);
+  assert.equal(first.options!.permissionMode, 'default');
+  assert.deepEqual(first.options!.env, { JOB_FINISH_OWNED_EXECUTION: '1' });
+  assert.deepEqual(first.options!.settingSources, ['user', 'project', 'local']);
+  assert.equal(first.options!.sessionId, f.session.binding.sessionId);
+  assert.equal(first.options!.resume, undefined);
+  assert.equal(typeof first.options!.canUseTool, 'function');
+  const messages: unknown[] = [];
+  for await (const message of first.prompt as AsyncIterable<unknown>) messages.push(message);
+  assert.deepEqual(messages, [{ type: 'user', uuid: [...f.session.turns.keys()][0], session_id: '',
+    parent_tool_use_id: null, message: { role: 'user', content: 'first prompt' } }]);
+
+  f.queries[0]!.emit(f.result());
+  f.queries[0]!.end();
+  await until(() => f.queries[0]!.closed);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  await f.execution.run('second prompt');
+  assert.equal(f.calls[1]!.options!.resume, f.session.binding.sessionId);
+  assert.equal(f.calls[1]!.options!.sessionId, undefined);
+});
+
+test('A query close error still resets completed execution for a later continuation', async t => {
+  const f = fixture();
+  t.after(() => f.execution.dispose());
+  await f.execution.run('first');
+  const first = f.queries[0]!;
+  first.closeError = new Error('controlled query close failure');
+  first.emit(f.result());
+  first.end();
+  await until(() => f.diagnostics.entries.some(entry => entry.message.includes('controlled query close failure')));
+  assert.equal(first.closed, true);
+  assert.equal(f.session.turns.size, 0);
+  await f.execution.run('continuation');
+  assert.equal(f.queries.length, 2);
+  assert.equal(f.calls[1]!.options!.resume, f.session.binding.sessionId);
+});
+
+for (const boundary of ['normal completion', 'dispose'] as const) {
+  test(`Permission cleanup failure preserves the ${boundary} query-close boundary`, async t => {
+    const f = fixture();
+    t.after(() => f.execution.dispose());
+    await f.execution.run('pending input');
+    const current = f.queries[0]!;
+    const controller = new AbortController();
+    void ask(current.permission, controller);
+    const cause = new Error('controlled permission listener cleanup failure');
+    const cleanup = t.mock.method(controller.signal, 'removeEventListener', () => { throw cause; });
+    if (boundary === 'normal completion') {
+      current.end();
+      await until(() => f.diagnostics.entries.some(entry => entry.message.includes(cause.message)));
+      assert.equal(f.session.requests.size, 0, 'failed execution records disconnection');
+      assert.equal([...f.session.turns.values()][0]!.status, 'unknown');
+    } else {
+      assert.throws(() => f.execution.dispose(), error => error === cause);
+      assert.equal(f.session.requests.size, 1, 'dispose does not reach disconnection after clear fails');
+      assert.equal([...f.session.turns.values()][0]!.status, 'waitingForInput');
+    }
+    assert.equal(current.closed, false, 'query close remains after the failing permission cleanup');
+    cleanup.mock.restore();
+    f.execution.dispose();
+    assert.equal(current.closed, true);
+  });
 }
 
 for (const scenario of ['question', 'approval']) test(`Captured actual SDK control callback: ${scenario}`, async t => {

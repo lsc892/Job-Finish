@@ -6,7 +6,13 @@ import { AgentRuntime, RuntimeOptions } from '../execution';
 import { acceptClaudeResult } from './adapter';
 import { ClaudePermissions, ClaudeTurnContext } from './permissions';
 
-export interface ClaudeOptions extends RuntimeOptions<SDKMessage> { maxTurns: number; session: Session; resume: boolean; createQuery?: typeof query }
+interface ClaudeQueryContext extends ClaudeTurnContext { requestId: ReturnType<typeof randomUUID> }
+export interface ClaudeOptions extends RuntimeOptions<SDKMessage> {
+  maxTurns: number;
+  session: Session;
+  resume: boolean;
+  createQuery?: typeof query;
+}
 /** 소유한 Claude 세션의 SDK 질의·결과·도구 권한·중단 수명을 관리한다. */
 export class ClaudeExecution extends AgentRuntime {
   readonly session: Session;
@@ -21,7 +27,7 @@ export class ClaudeExecution extends AgentRuntime {
     super();
     this.session = options.session;
     this.resume = options.resume;
-    this.permissions = new ClaudePermissions(this.session, context => this.accepts(context));
+    this.permissions = new ClaudePermissions(this.session, this.accepts.bind(this));
   }
   async run(prompt: string): Promise<void> {
     if (this.disposed) throw new Error('Claude execution released');
@@ -29,43 +35,92 @@ export class ClaudeExecution extends AgentRuntime {
     if (this.runTask || this.session.turns.size) throw new Error('Session has an active or unresolved execution');
     this.runTask = this.consume(prompt);
     // Attach error handler immediately; the command returns when execution has started.
-    void this.runTask.then(() => { this.runTask = undefined; }, error => {
-      try { this.session.disconnected(error); } catch (saveError) { this.session.diagnostics.add(saveError); }
-      this.runTask = undefined;
-    });
+    void this.runTask.then(this.handleRunCompleted.bind(this), this.handleRunFailed.bind(this));
   }
+
+  private handleRunCompleted(): void {
+    this.runTask = undefined;
+  }
+
+  private handleRunFailed(error: unknown): void {
+    try {
+      this.session.disconnected(error);
+    } catch (saveError) {
+      this.session.diagnostics.add(saveError);
+    }
+    this.runTask = undefined;
+  }
+
   private async consume(prompt: string): Promise<void> {
     const createQuery = this.options.createQuery ?? (await import('@anthropic-ai/claude-agent-sdk')).query;
     if (this.disposed) return;
     this.assertOwnership();
-    const requestId = randomUUID(); this.aborted = false;
-    const connectionId = randomUUID(); this.session.reconnect(connectionId); this.session.start(requestId, connectionId);
-    this.session.setTitle(prompt, connectionId, true);
-    const context: ClaudeTurnContext = { requestId, connectionId, acceptingInput: true }; this.context = context;
-    async function* input(): AsyncGenerator<SDKUserMessage> {
-      yield { type: 'user', uuid: requestId, session_id: '', parent_tool_use_id: null, message: { role: 'user', content: prompt } };
-    }
+    const context = this.beginTurn(prompt);
     try {
-      this.query = createQuery({ prompt: input(), options: {
-        cwd: this.options.cwd, maxTurns: this.options.maxTurns, permissionMode: 'default',
+      this.query = createQuery(this.createQueryArguments(prompt, context));
+      for await (const message of this.query) {
+        if (this.aborted) break;
+        this.handleMessage(message, context);
+      }
+      if (this.session.turns.has(context.requestId)) this.session.disconnected('Claude stream ended without a confirmed result');
+    } finally {
+      this.cleanupQuery(context);
+    }
+  }
+
+  private beginTurn(prompt: string): ClaudeQueryContext {
+    const requestId = randomUUID();
+    this.aborted = false;
+    const connectionId = randomUUID();
+    this.session.reconnect(connectionId);
+    this.session.start(requestId, connectionId);
+    this.session.setTitle(prompt, connectionId, true);
+    const context: ClaudeQueryContext = { requestId, connectionId, acceptingInput: true };
+    this.context = context;
+    return context;
+  }
+
+  private createQueryArguments(prompt: string, context: ClaudeQueryContext): Parameters<typeof query>[0] {
+    return {
+      prompt: this.userInput(prompt, context.requestId),
+      options: {
+        cwd: this.options.cwd,
+        maxTurns: this.options.maxTurns,
+        permissionMode: 'default',
         env: { JOB_FINISH_OWNED_EXECUTION: '1' },
         ...(this.options.model ? { model: this.options.model } : {}),
         ...(this.resume ? { resume: this.session.binding.sessionId } : { sessionId: this.session.binding.sessionId }),
         ...(this.options.executable ? { pathToClaudeCodeExecutable: this.options.executable } : {}),
-        canUseTool: this.permissions.forTurn(context), settingSources: ['user', 'project', 'local'],
-        stderr: message => this.session.diagnostics.add(message),
-      } });
-      for await (const message of this.query) {
-        if (this.aborted) break;
-        this.handle(message, context);
-      }
-      if (this.session.turns.has(requestId)) this.session.disconnected('Claude stream ended without a confirmed result');
+        canUseTool: this.permissions.forTurn(context),
+        settingSources: ['user', 'project', 'local'],
+        stderr: this.session.diagnostics.add.bind(this.session.diagnostics),
+      },
+    };
+  }
+
+  private async *userInput(prompt: string, requestId: ReturnType<typeof randomUUID>): AsyncGenerator<SDKUserMessage> {
+    yield {
+      type: 'user',
+      uuid: requestId,
+      session_id: '',
+      parent_tool_use_id: null,
+      message: { role: 'user', content: prompt },
+    };
+  }
+
+  private cleanupQuery(context: ClaudeTurnContext): void {
+    context.acceptingInput = false;
+    this.permissions.clear();
+    try {
+      this.query?.close();
     } finally {
-      context.acceptingInput = false; this.permissions.clear();
-      try { this.query?.close(); } finally { this.query = undefined; this.context = undefined; this.resume = true; }
+      this.query = undefined;
+      this.context = undefined;
+      this.resume = true;
     }
   }
-  private handle(message: SDKMessage, context: ClaudeTurnContext): void {
+
+  private handleMessage(message: SDKMessage, context: ClaudeTurnContext): void {
     this.options.onEvent?.(message);
     if ('session_id' in message && message.session_id !== this.session.binding.sessionId) throw new Error('Claude session identity mismatch');
     switch (message.type) {
@@ -90,15 +145,33 @@ export class ClaudeExecution extends AgentRuntime {
     await this.query.interrupt(); // Explicit SDK acknowledgment, never infer cancellation from EOF.
     // A result may arrive while awaiting the interrupt acknowledgment.
     if (this.context !== context) return;
+    this.finishInterruptedTurn(context);
+  }
+
+  private finishInterruptedTurn(context: ClaudeTurnContext): void {
     context.acceptingInput = false;
     try {
-      if (this.session.turns.has(context.requestId)) this.session.finish(context.requestId, 'cancelled', context.connectionId, 'User interrupt acknowledged by SDK');
-    } finally { this.permissions.clear(); }
+      if (this.session.turns.has(context.requestId)) {
+        this.session.finish(context.requestId, 'cancelled', context.connectionId, 'User interrupt acknowledged by SDK');
+      }
+    } finally {
+      this.permissions.clear();
+    }
   }
-  async reconnect(): Promise<void> { throw new Error('The SDK cannot verify an interrupted foreground result via history. Unknown execution is retained; release it explicitly before starting a new session.'); }
+
+  // SDK 이력으로 종료를 확인할 수 없어 unknown 실행은 명시적으로 해제할 때까지 유지한다.
+  async reconnect(): Promise<void> {
+    throw new Error('The SDK cannot verify an interrupted foreground result via history. Unknown execution is retained; release it explicitly before starting a new session.');
+  }
   async readResult(): Promise<undefined> { return undefined; }
   dispose(): void {
-    this.disposed = true; this.aborted = true; this.permissions.clear();
-    try { this.query?.close(); } finally { this.session.disconnected('Claude execution released'); }
+    this.disposed = true;
+    this.aborted = true;
+    this.permissions.clear();
+    try {
+      this.query?.close();
+    } finally {
+      this.session.disconnected('Claude execution released');
+    }
   }
 }

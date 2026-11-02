@@ -8,11 +8,22 @@ import type { AgentEvents, AgentInteraction, EventContext, ExecutionContext } fr
 import { ClaudeExecution } from './execution';
 import { ClaudeEvents } from './events';
 
+interface QuestionPayload {
+  input: {
+    questions?: {
+      question: string;
+      options?: { label: string; description?: string }[];
+      multiSelect?: boolean;
+    }[];
+  };
+}
+
 /** Claude 프로세스 식별·실행·관찰 생성과 승인·질문 응답을 제공한다. */
 export class ClaudeProvider extends AgentProvider {
   readonly id = 'claude';
   readonly extensionId = 'anthropic.claude-code';
   readonly runCommand = 'runClaude';
+  // stream-json 출력 인자로 Claude 런타임을 식별한다.
   matchesProcess(args: readonly string[]): boolean {
     return args.some((arg, i) => arg === '--output-format=stream-json' || arg === '--output-format' && args[i + 1] === 'stream-json');
   }
@@ -20,21 +31,29 @@ export class ClaudeProvider extends AgentProvider {
   createEvents(context: EventContext): AgentEvents { return new ClaudeEvents(context); }
   createExecution(context: ExecutionContext): ClaudeExecution {
     const session = context.createSession(context.sessionId ?? randomUUID(), randomUUID());
-    return new ClaudeExecution({ cwd: context.cwd, executable: context.config('claudeExecutable', ''),
-      maxTurns: context.config('claudeMaxTurns', 50), session, resume: !!context.sessionId });
+    return new ClaudeExecution({
+      cwd: context.cwd,
+      executable: context.config('claudeExecutable', ''),
+      maxTurns: context.config('claudeMaxTurns', 50),
+      session,
+      resume: !!context.sessionId,
+    });
   }
   protected approvalResponse(request: InputRequest, allow: boolean): unknown {
     if (allow) return { behavior: 'allow', updatedInput: (request.payload as { input: unknown }).input };
     return { behavior: 'deny', message: 'Denied by user' };
   }
   protected async answerQuestions(request: InputRequest, interaction: AgentInteraction): Promise<unknown> {
-    const payload = request.payload as { input: { questions?: { question: string; options?: { label: string; description?: string }[]; multiSelect?: boolean }[] } };
+    const payload = request.payload as QuestionPayload;
     const claudeAnswers: Record<string, string> = {};
     if (!payload.input.questions?.length) throw new Error('Unsupported Claude question schema');
-    for (const q of payload.input.questions) {
-      const answer = await interaction.question(q.question, q.options ?? [], { multiSelect: !!q.multiSelect, secret: false });
+    for (const question of payload.input.questions) {
+      const answer = await interaction.question(question.question, question.options ?? [], {
+        multiSelect: !!question.multiSelect,
+        secret: false,
+      });
       if (!answer) return;
-      claudeAnswers[q.question] = answer.join(', ');
+      claudeAnswers[question.question] = answer.join(', ');
     }
     return { behavior: 'allow', updatedInput: { ...payload.input, answers: claudeAnswers } };
   }
