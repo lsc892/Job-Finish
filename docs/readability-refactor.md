@@ -29,7 +29,8 @@ src/                                 src/
                                          notifications.ts
                                          window.ts
                                        application/
-                                         sessions.ts
+                                         sessions/
+                                           index.ts · resources.ts · types.ts
   windows/                             windows/
     toast.ts                             toast.ts
                                          toast-process.ts
@@ -51,15 +52,15 @@ src/                                 src/
       index.ts · codex.ts · claude.ts     message.ts
 ```
 
-현재 파일: [확장 진입점](../src/extension.ts), [확장 조립부](../src/vscode/application.ts), [세션 수명](../src/application/sessions.ts#L34), [toast facade](../src/windows/toast.ts#L10), [helper 실행기](../src/windows/toast-process.ts#L12), [클릭 채널](../src/windows/toast-activation.ts#L16), [Provider 계약](../src/runtime/agent-provider.ts#L47), [등록 목록](../src/runtime/providers.ts).
+현재 파일: [확장 진입점](../src/extension.ts), [확장 조립부](../src/vscode/application.ts), [세션 수명](../src/application/sessions/index.ts), [toast facade](../src/windows/toast.ts#L10), [helper 실행기](../src/windows/toast-process.ts#L12), [클릭 채널](../src/windows/toast-activation.ts#L16), [Provider 계약](../src/runtime/agent-provider.ts#L47), [등록 목록](../src/runtime/providers.ts).
 
 <a id="w1"></a>
 
 ## W1 — 세션 수명 관리 분리: 적용 완료
 
-[ApplicationSessions](../src/application/sessions.ts#L34)가 entries·연결 중 작업과 실행·Session·lease의 생성·조기 등록·저장·해제를 함께 소유한다. 확장은 설정·명령·창 이벤트·입력 UI를 조립하고, 목록·lookup·snapshot·소유권·open·detach·dispose API를 호출한다. 저장소·설정·Provider 조회·신호·상태 변경·해제 콜백은 주입하며 세션 수명 모듈은 VS Code에 의존하지 않는다.
+[ApplicationSessions](../src/application/sessions/index.ts)가 entries·연결 중 작업·저장·종료를 조율하고, [SessionResources](../src/application/sessions/resources.ts)가 개별 실행·Session·lease의 생성·조기 등록·해제를 소유한다. 공개 타입·주입 계약은 [types.ts](../src/application/sessions/types.ts)에 둔다. 확장은 설정·명령·창 이벤트·입력 UI를 조립하고, 기존 `application/sessions` 경로에서 목록·lookup·snapshot·소유권·open·detach·dispose API를 호출한다. 저장소·설정·Provider 조회·신호·상태 변경·해제 콜백은 주입하며 세션 모듈은 VS Code에 의존하지 않는다.
 
-의존 방향은 확장 → 세션 수명 → runtime/core다. Codex의 초기 복구 이벤트 전에 Session을 등록하며, 동기 factory의 Session 생성도 지원한다. 신뢰·두 상한·중복 검사, Provider 선택, 실행 생성·연결, 저장과 상태 갱신의 정상 순서를 유지했다.
+의존 방향은 확장 → 세션 조율부 → 개별 자원 → runtime/core다. 자원 객체는 조율부를 import하지 않고 활성 여부·등록·제거 콜백을 받는다. Codex의 초기 복구 이벤트 전에 Session을 등록하며, 동기 factory의 Session 생성도 지원한다. 신뢰·두 상한·중복 검사, Provider 선택, 실행 생성·연결, 저장과 상태 갱신의 정상 순서를 유지했다.
 
 수명 소유권 분리에 맞춰 종료·실패 경계도 보완했다. 연결 전·후와 저장 중 dispose가 실행·lease를 정리하고 늦은 open의 등록·성공 반환을 거부한다. 실패 정리에서 execution.dispose가 실패해도 등록 제거·lease 해제를 계속하며 최초 오류를 보존한다. 이전 선택창의 Entry로 같은 ID의 새 연결을 해제하지 않도록 자원 정체성을 확인하고 조기 등록 Entry는 재사용한다.
 

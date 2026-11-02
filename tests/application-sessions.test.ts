@@ -313,6 +313,33 @@ test('Detach removes registration and notifies release even when both resource c
   assert.deepEqual(h.events.slice(-3), ['dispose', 'release', 'released']);
 });
 
+test('A detached open finishing its save cannot remove a replacement connection with the same session ID', async () => {
+  const saving = deferred();
+  let saves = 0;
+  let disposed = 0;
+  const h = harness(context => execution(() => { disposed++; }, context.createSession('thread', 'connection')), {
+    save: async () => { if (++saves === 1) await saving.promise; },
+  });
+  const pending = h.sessions.open('sample', 'workspace');
+  const rejected = assert.rejects(pending, /Extension deactivated/);
+  const previous = h.sessions.get('thread')!;
+  h.sessions.detach(previous);
+  const current = await h.sessions.open('sample', 'workspace', 'thread');
+
+  saving.resolve();
+  await rejected;
+  assert.equal(h.sessions.get('thread'), current);
+  assert.equal(h.sessions.owns('thread'), true);
+  assert.equal(h.leases[0]?.released, true);
+  assert.equal(h.leases[1]?.released, false);
+  assert.equal(disposed, 1);
+  assert.equal(h.changes(), 1);
+  assert.equal(h.events.filter(event => event === 'release:thread').length, 1);
+  assert.equal(h.events.filter(event => event === 'released').length, 1);
+  h.sessions.dispose();
+  assert.equal(disposed, 2);
+});
+
 test('An entry retained by an old picker cannot detach a replacement connection with the same session ID', async () => {
   let disposed = 0;
   const h = harness(context => execution(() => { disposed++; }, context.createSession('thread', 'connection')));

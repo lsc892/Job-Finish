@@ -1,7 +1,7 @@
 # 세션·core·VS Code UI 코드 단순화
 
 - 기준: 2026-10-27, `33f0e4f`와 최초 변경 없는 작업 트리.
-- 흐름과 계약: [확장 진입점](../../../src/extension.ts) → [Application 조립·상태 표시](../../../src/vscode/application.ts) → [세션 수명](../../../src/application/sessions.ts)·런타임·알림. 명령 ID, API snapshot/test 모양, 소유권과 저장·알림·종료 순서, 설정 적용과 입력 UI를 보존한다.
+- 흐름과 계약: [확장 진입점](../../../src/extension.ts) → [Application 조립·상태 표시](../../../src/vscode/application.ts) → [세션 수명](../../../src/application/sessions/index.ts)·런타임·알림. 명령 ID, API snapshot/test 모양, 소유권과 저장·알림·종료 순서, 설정 적용과 입력 UI를 보존한다.
 - 검토 범위: `src/core/`의 [model](../../../src/core/model.ts)·[Session](../../../src/core/session.ts)·[Ownership/Lease](../../../src/core/ownership.ts)·[Notifications](../../../src/core/notifications.ts), `src/vscode/`의 [commands](../../../src/vscode/commands.ts)·[interaction](../../../src/vscode/interaction.ts)·[notifications](../../../src/vscode/notifications.ts)·[results](../../../src/vscode/results.ts)·[window](../../../src/vscode/window.ts), [manifest와 검사 명령](../../../package.json), [기존 책임 분리 기록](../../readability-analysis/application.md), [세션 경계 테스트](../../../tests/application-sessions.test.ts)·[상태 테스트](../../../tests/state.test.ts)·[소유권 테스트](../../../tests/ownership.test.ts)·[stdio 통합 테스트](../../../tests/integration.test.ts)·[Extension Host 검사](../../../tests/vscode/extension-host.ts)를 확인했다.
 
 ## 후보 현황
@@ -9,7 +9,7 @@
 | ID | 상태 | 대상 | 판단 요약 | 검증 |
 | --- | --- | --- | --- | --- |
 | APP-01 | 적용 완료 | [Application.activate](../../../src/vscode/application.ts) | `updateStatus()` 직전의 `status.command` 대입은 같은 동기 흐름에서 반드시 덮어쓰므로 제거했다. | 관련 기존 테스트 50개, 타입 검사, diff 검사 통과 |
-| APP-02 | 유지 | [ApplicationSessions 정리 경로](../../../src/application/sessions.ts) | 실패한 open의 진단·최초 오류 보존과 detach의 오류 전파가 달라 하나의 공통 정리 함수로 합치지 않는다. | 기존 세션 수명 경계 17개를 포함한 관련 50개 테스트 통과 |
+| APP-02 | 유지 | [ApplicationSessions 정리 경로](../../../src/application/sessions/index.ts) | 실패한 open의 진단·최초 오류 보존과 detach의 오류 전파가 달라 하나의 공통 정리 함수로 합치지 않는다. | 기존 세션 수명 경계 17개를 포함한 관련 50개 테스트 통과 |
 | APP-03 | 유지 | [Session bounded 상태](../../../src/core/session.ts)·[Ownership](../../../src/core/ownership.ts)·[UI 모듈](../../../src/vscode/application.ts) | 중복 제거 상한·durable 저장·토큰 재검사·파일 gate와 UI 책임 경계는 현재 계약을 지킨다. 실제 미사용 private 값은 컴파일러 검사에서 발견되지 않았다. | `npx tsc --noEmit --noUnusedLocals --noUnusedParameters`, 로컬 tsc 직접 실행 모두 통과 |
 
 ## APP-01 — 상태 표시 명령의 중복 초기 대입 제거

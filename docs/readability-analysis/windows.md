@@ -26,7 +26,7 @@
 
 ## W1 — Application의 세션 수명 관리: 승인·적용 완료
 
-[ApplicationSessions](../../src/application/sessions.ts#L34)가 실행·Session·lease와 연결 중 자원·저장·해제를 함께 소유한다. [확장 조립부](../../src/vscode/application.ts)는 설정·Provider 조회·저장소와 신호·상태·해제 콜백을 주입하며 명령·UI·Windows 객체를 연결한다. 의존 방향은 확장 → 세션 수명 → runtime/core이고 세션 수명 모듈은 VS Code에 의존하지 않는다.
+[ApplicationSessions](../../src/application/sessions/index.ts)가 세션 목록·연결 중 작업·저장·종료를 조율하고 [SessionResources](../../src/application/sessions/resources.ts)가 개별 실행·Session·lease의 수명을 소유한다. [확장 조립부](../../src/vscode/application.ts)는 설정·Provider 조회·저장소와 신호·상태·해제 콜백을 주입하며 명령·UI·Windows 객체를 연결한다. 의존 방향은 확장 → 세션 조율부 → 개별 자원 → runtime/core이고 세션 모듈은 VS Code에 의존하지 않는다.
 
 초기 복구 이벤트 전에 Session을 등록하고, 연결 전·후와 저장 중 종료가 늦은 등록·성공 반환을 막는다. 실행 정리 실패 후에도 lease를 해제하며 최초 오류를 유지한다. 이전 선택창 Entry는 같은 ID의 새 연결을 해제할 수 없다. 기존 명령·snapshot/test API·저장 32개 상한은 유지했다.
 
