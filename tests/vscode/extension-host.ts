@@ -109,11 +109,12 @@ export async function runWithApi(api: Api, root: string, role: string): Promise<
       await until(() => api.snapshot().automatic.enabled && api.snapshot().automatic.connections.length === 1);
       writeExternal('REENABLED_OK'); await until(() => api.snapshot().results.length === 4);
       assert.equal(api.snapshot().results[3]!.text, 'REENABLED_OK');
-      const question = { method: 'item/completed', params: { threadId: 'external', turnId: 'ASYNC_QUESTION',
+      const question = { method: 'item/started', params: { threadId: 'external', turnId: 'ASYNC_QUESTION',
         item: { type: 'agentMessage', id: 'question-message', phase: 'final_answer', delivery: 'async',
           text: 'question widget payload', questions: [{ title: 'Which environment?', options: ['VS Code', 'Desktop'] }] } } };
       external.stdin.write(JSON.stringify({ events: [question, question] }) + '\n');
       await until(() => api.snapshot().results.length === 5);
+      external.stdin.write(JSON.stringify({ events: [{ ...question, method: 'item/completed' }] }) + '\n');
       await new Promise(resolve => setTimeout(resolve, 100));
       assert.equal(api.snapshot().results.length, 5, 'duplicate async questions notify once');
       assert.equal(api.snapshot().results[4]!.status, 'waitingForInput');

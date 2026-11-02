@@ -88,6 +88,34 @@ test('Async questions notify once per item without changing execution, body or p
   assert.equal(f.signals[2]!.text, 'final response');
 });
 
+test('Codex rejects foreign session events before parsing their item payloads', () => {
+  const f = fixture(); const adapter = new CodexAdapter(f.session);
+  f.session.start('t', 'connection-1');
+  for (const method of ['item/started', 'item/completed']) {
+    assert.doesNotThrow(() => adapter.handle({ method, params: { threadId: 'foreign', turnId: 't', item: null } }, 'connection-1'));
+  }
+  assert.equal(f.signals.length, 0);
+  assert.equal(f.session.turns.get('t')!.status, 'running');
+});
+
+test('Owned Codex questions notify at item start without pausing the turn or overwriting its response', () => {
+  const f = fixture(); const adapter = new CodexAdapter(f.session);
+  f.session.start('t', 'connection-1'); f.session.body('t', '완료된 응답', 'connection-1');
+  const before = f.session.checkpoint();
+  const params = { threadId: 'thread-A', turnId: 't', item: { type: 'agentMessage', id: 'question',
+    phase: 'final_answer', delivery: 'async', text: '', questions: [{ title: '계속 진행할까요?' }] } };
+  adapter.handle({ method: 'item/started', params }, 'connection-1');
+  assert.equal(f.signals[0]!.text, '계속 진행할까요?');
+  assert.equal(f.signals[0]!.requestId, undefined);
+  assert.deepEqual(f.session.checkpoint(), before);
+  assert.equal(f.session.requests.size, 0);
+  adapter.handle({ method: 'item/completed', params }, 'connection-1');
+  adapter.handle({ method: 'item/started', params: { ...params, item: { type: 'agentMessage', text: 'unfinished' } } }, 'connection-1');
+  assert.equal(f.signals.length, 1);
+  f.session.finish('t', 'completed', 'connection-1');
+  assert.equal(f.signals[1]!.text, '완료된 응답');
+});
+
 test('Async question identity includes the turn and connection, and rejects stale or unowned events', () => {
   const f = fixture();
   f.session.start('one', 'connection-1'); f.session.start('two', 'connection-1');

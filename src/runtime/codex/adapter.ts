@@ -8,7 +8,7 @@ import type { RpcMessage } from '../transport';
 import { record } from '../message';
 
 const SESSION_EVENT_METHODS: readonly string[] = [
-  'thread/name/updated', 'turn/started', 'turn/completed', 'item/completed', 'serverRequest/resolved', 'error',
+  'thread/name/updated', 'turn/started', 'turn/completed', 'item/started', 'item/completed', 'serverRequest/resolved', 'error',
   'item/commandExecution/requestApproval', 'item/fileChange/requestApproval',
   'item/permissions/requestApproval', 'item/tool/requestUserInput',
 ];
@@ -33,6 +33,33 @@ export function codexId(value: unknown): string {
   return value;
 }
 
+export interface CodexSessionEvent {
+  message: RpcMessage;
+  params: Record<string, unknown>;
+  item?: Record<string, unknown>;
+  questionText?: string;
+}
+
+// 소유·관찰 경로가 같은 이벤트 목록과 질문 해석을 사용한다.
+export function codexSessionEvent(message: RpcMessage, sessionId?: string): CodexSessionEvent | undefined {
+  if (!SESSION_EVENT_METHODS.includes(message.method ?? '')) return;
+  const params = codexObject(message.params);
+  const threadId = codexId(params.threadId);
+  if (sessionId !== undefined && threadId !== sessionId) return;
+  let item: Record<string, unknown> | undefined;
+  let questionText: string | undefined;
+  if (message.method === 'item/started' || message.method === 'item/completed') {
+    item = message.method === 'item/started' ? record(params.item) : codexObject(params.item);
+    if (item?.type === 'agentMessage' && Array.isArray(item.questions)) {
+      const titles = item.questions.map(record).map(question => question?.title)
+        .filter((title): title is string => typeof title === 'string' && title.trim().length > 0);
+      if (titles.length) questionText = titles.join('\n');
+    }
+    if (message.method === 'item/started' && !questionText) return;
+  }
+  return { message, params, item, questionText };
+}
+
 export function codexApprovalResponse(message: RpcMessage, allow: boolean): unknown {
   if (message.method !== 'item/permissions/requestApproval') return { decision: allow ? 'accept' : 'decline' };
 
@@ -53,8 +80,14 @@ export class CodexAdapter {
 
   handle(message: RpcMessage, connectionId: string, admitStarted = false): void {
     if (!this.session.valid(connectionId)) return;
-    if (!SESSION_EVENT_METHODS.includes(message.method ?? '')) return;
-    const params = codexObject(message.params);
+    const event = codexSessionEvent(message, this.session.binding.sessionId);
+    if (event) this.apply(event, connectionId, admitStarted);
+  }
+
+  // 관찰 경로는 세션을 선택하기 전에 해석한 이벤트를 그대로 전달한다.
+  apply(event: CodexSessionEvent, connectionId: string, admitStarted = false): void {
+    if (!this.session.valid(connectionId)) return;
+    const { message, params, item, questionText } = event;
     if (codexId(params.threadId) !== this.session.binding.sessionId) return;
     switch (message.method) {
       case 'thread/name/updated':
@@ -67,18 +100,16 @@ export class CodexAdapter {
         else this.session.running(turnId, connectionId);
         return;
       }
+      case 'item/started':
       case 'item/completed': {
         // 비동기 질문은 알리고 최종 응답은 보관하되 턴 종료는 turn/completed에서 확정한다.
-        const item = codexObject(params.item);
-        if (item.type !== 'agentMessage') return;
+        if (item?.type !== 'agentMessage') return;
         // request_user_input_async는 별도 서버 요청 없이 질문을 담은 메시지로 전달된다.
-        const questions = Array.isArray(item.questions) ? item.questions.map(record)
-          .map(question => question?.title).filter((title): title is string => typeof title === 'string' && title.trim().length > 0) : [];
-        if (questions.length) {
-          this.session.notifyQuestion(codexId(params.turnId), codexId(item.id), questions.join('\n'), connectionId);
+        if (questionText) {
+          this.session.notifyQuestion(codexId(params.turnId), codexId(item.id), questionText, connectionId);
           return;
         }
-        if (item.phase === 'commentary') return;
+        if (message.method === 'item/started' || item.phase === 'commentary') return;
         if (typeof item.text !== 'string') throw new Error('Malformed agent message');
         this.session.body(codexId(params.turnId), item.text, connectionId);
         return;

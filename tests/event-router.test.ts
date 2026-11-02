@@ -51,6 +51,44 @@ test('Codex async question messages notify once and keep completion body separat
   assert.equal(f.router.snapshot().activeTurns, 0);
 });
 
+test('Codex async questions notify when displayed, before item completion, and deduplicate both events', () => {
+  const f = setup('codex');
+  const params = { threadId: 'thread', turnId: 'turn',
+    item: { type: 'agentMessage', id: 'question', phase: 'commentary', delivery: 'async', text: '',
+      questions: [{ title: '어느 npm 이름으로 배포할까요?', options: ['새 이름', '기존 이름'] }] } };
+  f.router.incoming({ method: 'item/started', params });
+  assert.deepEqual(f.signals.map(signal => [signal.status, signal.text]), [['waitingForInput', '어느 npm 이름으로 배포할까요?']]);
+  assert.equal(f.router.snapshot().activeTurns, 1);
+  f.router.incoming({ method: 'item/started', params });
+  f.router.incoming({ method: 'item/completed', params });
+  f.router.incoming({ method: 'item/completed', params });
+  assert.equal(f.signals.length, 1);
+  f.router.incoming({ method: 'turn/completed', params: { threadId: 'thread',
+    turn: { id: 'turn', status: 'completed', items: [params.item, { type: 'agentMessage', phase: 'final_answer', text: '배포 완료' }] } } });
+  assert.deepEqual(f.signals.map(signal => [signal.status, signal.text]), [['waitingForInput', '어느 npm 이름으로 배포할까요?'], ['completed', '배포 완료']]);
+  assert.equal(f.router.snapshot().activeTurns, 0);
+  f.router.dispose();
+});
+
+test('Starting ordinary Codex items does not create observed turns or replace the final response', () => {
+  const f = setup('codex');
+  for (const item of [
+    { type: 'commandExecution', id: 'command' },
+    { type: 'agentMessage', id: 'message', phase: 'final_answer', text: 'unfinished', questions: null },
+    { type: 'agentMessage', id: 'empty', phase: 'commentary', questions: [] },
+    { type: 'agentMessage', id: 'malformed', questions: [null, { title: 42 }, { title: ' ' }] },
+  ]) f.router.incoming({ method: 'item/started', params: { threadId: 'thread', turnId: 'turn', item } });
+  assert.equal(f.router.snapshot().sessions, 0);
+  assert.equal(f.signals.length, 0);
+  f.router.incoming({ method: 'item/completed', params: { threadId: 'thread', turnId: 'turn',
+    item: { type: 'agentMessage', phase: 'final_answer', text: '완료된 응답' } } });
+  f.router.incoming({ method: 'item/started', params: { threadId: 'thread', turnId: 'turn',
+    item: { type: 'agentMessage', phase: 'final_answer', text: 'unfinished' } } });
+  f.router.incoming({ method: 'turn/completed', params: { threadId: 'thread', turn: { id: 'turn', status: 'completed', items: [] } } });
+  assert.equal(f.signals[0]!.text, '완료된 응답');
+  f.router.dispose();
+});
+
 test('Codex async questions exclude ordinary commentary, malformed titles, subagents and owned sessions', () => {
   const f = setup('codex');
   for (const questions of [undefined, null, [], [null, { title: 42 }, { title: ' ' }]]) {
@@ -59,11 +97,13 @@ test('Codex async questions exclude ordinary commentary, malformed titles, subag
   }
   assert.equal(f.signals.length, 0);
   f.router.incoming({ method: 'thread/started', params: { thread: { id: 'subagent', parentThreadId: 'parent' } } });
-  f.router.incoming({ method: 'item/completed', params: { threadId: 'subagent', turnId: 'turn',
-    item: { type: 'agentMessage', id: 'excluded', phase: 'commentary', text: '', questions: [{ title: 'Excluded?' }] } } });
   const owned = setup('codex', 'owned-window', () => true);
-  owned.router.incoming({ method: 'item/completed', params: { threadId: 'owned', turnId: 'turn',
-    item: { type: 'agentMessage', id: 'owned-question', phase: 'commentary', text: '', questions: [{ title: 'Owned?' }] } } });
+  for (const method of ['item/started', 'item/completed']) {
+    f.router.incoming({ method, params: { threadId: 'subagent', turnId: 'turn',
+      item: { type: 'agentMessage', id: 'excluded', phase: 'commentary', text: '', questions: [{ title: 'Excluded?' }] } } });
+    owned.router.incoming({ method, params: { threadId: 'owned', turnId: 'turn',
+      item: { type: 'agentMessage', id: 'owned-question', phase: 'commentary', text: '', questions: [{ title: 'Owned?' }] } } });
+  }
   assert.equal(f.signals.length, 0); assert.equal(owned.signals.length, 0);
   f.router.dispose(); owned.router.dispose();
 });

@@ -37,11 +37,13 @@ test('Observed async questions reach toast delivery once, obey focus, and preser
   t.after(() => observer.dispose()); observer.start();
   const child = spawn(process.execPath, [agent, 'app-server'], { stdio: 'pipe', windowsHide: true }); cleanup(t, child);
   const output: Buffer[] = []; child.stdout.on('data', chunk => output.push(chunk));
-  const question = { method: 'item/completed', params: { threadId: 'thread', turnId: 'turn',
+  const question = { method: 'item/started', params: { threadId: 'thread', turnId: 'turn',
     item: { type: 'agentMessage', id: 'question-1', phase: 'final_answer', delivery: 'async', text: 'question widget payload', questions: [{ title: '답변이 필요합니다😀', options: null }] } } };
   child.stdin.write(JSON.stringify({ events: [question, question] }) + '\n');
   await until(() => notifications.results.length === 1); await Promise.all(deliveries);
   assert.deepEqual(toasts, ['답변이 필요합니다😀']); assert.equal(flashes, 1);
+  const questionCompleted = { ...question, method: 'item/completed' };
+  child.stdin.write(JSON.stringify({ events: [questionCompleted] }) + '\n');
   focused = true;
   const next = { ...question, params: { ...question.params, item: { ...question.params.item, id: 'question-2' } } };
   child.stdin.write(JSON.stringify({ events: [next] }) + '\n');
@@ -55,7 +57,7 @@ test('Observed async questions reach toast delivery once, obey focus, and preser
   assert.deepEqual(notifications.results.map(signal => [signal.status, signal.text]),
     [['waitingForInput', '답변이 필요합니다😀'], ['waitingForInput', '답변이 필요합니다😀'], ['completed', 'Done']]);
   assert.equal(observer.snapshot().connections[0]!.activeTurns, 0);
-  assert.equal(Buffer.concat(output).toString('utf8'), [question, question, next, completed].map(event => JSON.stringify(event) + '\n').join(''));
+  assert.equal(Buffer.concat(output).toString('utf8'), [question, question, questionCompleted, next, completed].map(event => JSON.stringify(event) + '\n').join(''));
   assert.deepEqual(diagnostics.entries, []);
 });
 

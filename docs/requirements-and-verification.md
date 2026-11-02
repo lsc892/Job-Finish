@@ -108,7 +108,7 @@ T/U의 turn/completed 수신 → completed / error / cancelled 분류
 
 질문·승인 감지는 provider가 제공하는 요청/응답 계약을 사용한다. 요청 ID·대상 실행·질문 본문과 미해결 상태를 확인해 `waitingForInput`으로 만들고, 답변·요청 해제·턴 종료에 따라 정리한다. 일반 도구 호출을 모두 입력 대기로 처리하지 않는다. 같은 요청의 재전달은 중복 알림으로 만들지 않으며, 사용자 답변은 원래 요청에 대응시킨다. 요청 중계 UI는 연결된 실행에 답변을 전달하고, provider별 이벤트 fixture로 상태 전이를 검증한다.
 
-Codex의 `request_user_input_async`는 별도의 승인 RPC 대신 `item/completed`의 `agentMessage.questions`로 전달된다. 질문의 `title`들을 본문으로 합쳐 기존 `waitingForInput` 알림 경로에 전달하며, 같은 연결·턴·메시지 ID의 질문은 최근 512개 안에서 한 번만 알린다. 이 메시지는 `phase: final_answer`, `delivery: async`일 수 있어 최종 응답 본문과 구분한다. 비동기 질문 알림은 진행 중 턴의 상태·본문·체크포인트와 RPC 응답 대기를 바꾸지 않고, 사용자는 원래 Codex 질문 UI에서 답한다. 실시간 이벤트만 알리며 저장 이력 조회·복구는 질문을 다시 알리지 않고 최종 응답 선택에서도 질문 메시지를 제외한다. 기존 창 소유권·포커스·toast/flash 설정과 클릭 동작을 그대로 적용한다.
+Codex의 `request_user_input_async`는 별도의 승인 RPC 대신 `agentMessage.questions`로 전달된다. 질문이 표시되는 `item/started`부터 질문의 `title`들을 본문으로 합쳐 기존 `waitingForInput` 알림 경로에 전달한다. 시작 이벤트에 질문이 없거나 관찰 전에 시작됐다면 `item/completed`에서 감지하며, 같은 연결·턴·메시지 ID의 질문은 두 이벤트를 합쳐 최근 512개 안에서 한 번만 알린다. 질문이 없는 일반 `item/started`는 실행 상태나 본문에 반영하지 않는다. 질문 메시지는 `phase: final_answer`, `delivery: async`일 수 있어 최종 응답 본문과 구분한다. 비동기 질문 알림은 진행 중 턴의 상태·본문·체크포인트와 RPC 응답 대기를 바꾸지 않고, 사용자는 원래 Codex 질문 UI에서 답한다. 실시간 이벤트만 알리며 저장 이력 조회·복구는 질문을 다시 알리지 않고 최종 응답 선택에서도 질문 메시지를 제외한다. 기존 창 소유권·포커스·toast/flash 설정과 클릭 동작을 그대로 적용한다.
 
 완료·입력 요청·사용량 제한·API 오류·취소 각각의 실제 런타임 이벤트를 확보하고 상태 분류를 검증해야 세 기능 전체의 완료 기준을 충족한다.
 

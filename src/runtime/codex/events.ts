@@ -2,15 +2,9 @@
 import type { AgentEvents, EventContext } from '../agent-provider';
 import { sessionTitleText } from '../../core/model';
 import type { Session } from '../../core/session';
-import { CodexAdapter } from './adapter';
+import { CodexAdapter, codexSessionEvent } from './adapter';
 import type { RpcMessage } from '../transport';
 import { bound, identifier, record } from '../message';
-
-const LIVE_SESSION_METHODS: readonly string[] = [
-  'turn/started', 'turn/completed', 'item/completed', 'serverRequest/resolved', 'error',
-  'item/commandExecution/requestApproval', 'item/fileChange/requestApproval',
-  'item/permissions/requestApproval', 'item/tool/requestUserInput',
-];
 
 /** 관찰한 Codex 연결에서 알림 대상 스레드를 선별하고 실시간 이벤트를 세션에 반영한다. */
 export class CodexEvents implements AgentEvents {
@@ -66,12 +60,14 @@ export class CodexEvents implements AgentEvents {
     }
     if (message.method === 'thread/name/updated' && params) {
       this.recordTitle({ id: params.threadId, name: params.threadName });
+      return;
     }
 
     if (typeof message.method !== 'string' || !params) return;
     const id = identifier(params.threadId);
     if (!id || this.excludedThreads.has(id)) return;
-    if (!LIVE_SESSION_METHODS.includes(message.method)) return;
+    const event = codexSessionEvent(message as RpcMessage);
+    if (!event) return;
     const session = this.context.session(id);
     if (!session) return;
     this.applyTitle(session, id);
@@ -80,7 +76,7 @@ export class CodexEvents implements AgentEvents {
     // A live completion or input request also identifies a turn already running when observation began.
     // Unlike an RPC history response, this comes directly from this window's active runtime connection.
     if (turnId && message.method !== 'error') session.start(turnId, this.context.connectionId);
-    new CodexAdapter(session).handle(message as RpcMessage, this.context.connectionId, true);
+    new CodexAdapter(session).apply(event, this.context.connectionId, true);
   }
 
   private recordTitle(thread: Record<string, unknown>): void {
