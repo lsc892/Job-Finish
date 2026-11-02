@@ -13,7 +13,7 @@ const artifactFile = process.argv.includes('--protocol') ? 'toast-protocol-routi
 const harness = resolve('.generated/toast-harness'); mkdirSync(harness, { recursive: true });
 const manifest = JSON.parse(readFileSync('package.json', 'utf8'));
 writeFileSync(join(harness, 'package.json'), JSON.stringify({ ...manifest, main: './extension.cjs' }));
-await build({ entryPoints: ['tests/toast-host.ts'], outfile: join(harness, 'extension.cjs'), platform: 'node', target: 'node22', format: 'cjs', bundle: true,
+await build({ entryPoints: ['tests/windows/toast-host.ts'], outfile: join(harness, 'extension.cjs'), platform: 'node', target: 'node22', format: 'cjs', bundle: true,
   external: ['vscode', 'koffi', '@anthropic-ai/claude-agent-sdk'] });
 if (!existsSync(join(harness, 'node_modules'))) symlinkSync(resolve('node_modules'), join(harness, 'node_modules'), 'junction');
 if (!existsSync(join(harness, 'dist'))) symlinkSync(resolve('dist'), join(harness, 'dist'), 'junction');
@@ -43,7 +43,7 @@ try {
   const a = read('A-ready.json'); const b = read('B-ready.json');
   const focus = async target => {
     const ready = join(root, `focus-${randomUUID()}.txt`);
-    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', resolve('scripts/focus-test-window.ps1'), '-Hwnd', target.hwnd, '-ReadyFile', ready], { windowsHide: true, stdio: 'ignore' });
+    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', resolve('tests/windows/focus-test-window.ps1'), '-Hwnd', target.hwnd, '-ReadyFile', ready], { windowsHide: true, stdio: 'ignore' });
     children.push(child); await until(() => existsSync(ready)); await pause(100);
   };
   const scenarios = [
@@ -69,9 +69,9 @@ try {
       await pause(800);
       const registered = await command('A', 'snapshot'); lastSnapshot = registered;
       const notificationId = registered.results.at(-1).notificationId;
-      await promisify(execFile)('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', resolve('scripts/activate-test-toast.ps1'), '-NotificationId', notificationId, '-WindowInstanceId', a.windowInstanceId], { windowsHide: true, timeout: 10_000 });
+      await promisify(execFile)('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', resolve('tests/windows/activate-test-toast.ps1'), '-NotificationId', notificationId, '-WindowInstanceId', a.windowInstanceId], { windowsHide: true, timeout: 10_000 });
     }
-    const clickArgs = ['-NoProfile', '-NonInteractive', '-File', resolve('scripts/click-toast.ps1'), '-ToastTitle', title];
+    const clickArgs = ['-NoProfile', '-NonInteractive', '-File', resolve('tests/windows/click-toast.ps1'), '-ToastTitle', title];
     if (process.argv.includes('--debug')) clickArgs.push('-DiagnosticFile', join(root, `click-${unbind}.jsonl`));
     let mouse; let mouseError;
     const clickProcess = process.argv.includes('--protocol') ? { kill() {} } : execFile('powershell.exe', clickArgs, { windowsHide: true, timeout: 25_000 }, (error, stdout, stderr) => {

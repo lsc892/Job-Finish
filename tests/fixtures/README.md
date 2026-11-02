@@ -16,3 +16,10 @@
 - [codex-usage-limit.json](codex-usage-limit.json) — 실제 Codex 사용량 한도 초과 종료 이벤트를 제공한다.
 - [hold-gate.ts](hold-gate.ts) — 별도 프로세스에서 Windows 파일 잠금을 유지해 배제와 강제 종료 복구 검증을 지원한다.
 - [observed-agent.cjs](observed-agent.cjs) — 입력한 이벤트·원시 프레임을 stdout에 전달해 비파괴 관찰 검증을 지원한다.
+
+## 실제 기록에서 fixture 추출
+
+- [capture-fixtures.mjs](capture-fixtures.mjs) — `test-artifacts`의 실제 검증 기록에서 Codex·Claude 종료 이벤트와 Claude 입력 계약을 추출한다.
+- [capture-codex-input.mjs](capture-codex-input.mjs) — Codex 질문·승인·권한·취소·한도 이벤트에서 식별자와 임시 경로를 치환한다.
+
+저장소 루트에서 `node tests/fixtures/capture-fixtures.mjs` 또는 `node tests/fixtures/capture-codex-input.mjs`로 실행한다. 해당 실제 검증 기록이 먼저 준비되어 있어야 하며, 모델을 새로 호출하지 않는다.

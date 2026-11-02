@@ -5,5 +5,5 @@
     "noUncheckedIndexedAccess": true, "forceConsistentCasingInFileNames": true,
     "outDir": "dist", "types": ["node", "vscode"]
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts"]
+  "include": ["src/**/*.ts"]
 }

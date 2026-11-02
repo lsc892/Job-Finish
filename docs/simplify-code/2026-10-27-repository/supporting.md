@@ -4,7 +4,7 @@
 - 흐름과 계약: CLI 인수 해석 → VSIX·버전·호환성 확인 → 레거시 변경 계획 → 백업·정리 → 설치 결과 확인. 미리보기의 무변경, 다른 도구의 hook 보존, 설정 변경·junction 거부, 사용자 설정 백업을 유지한다.
 - 검토 범위: [CLI](../../../tools/installer/src/cli.ts), [설치 계획](../../../tools/installer/src/flow.ts), [VS Code·VSIX](../../../tools/installer/src/vscode.ts), [레거시 조율](../../../tools/installer/src/legacy.ts), [설정·파일 정리](../../../tools/installer/src/uninstall.ts), [Windows 잔여물](../../../tools/installer/src/windows.ts), [설치 도구 빌드](../../../tools/installer/scripts/build.mjs), [사용법](../../../tools/installer/README.md), [설치 일지](../../../tools/installer/일지.md).
 - 테스트 확인: [설치 흐름](../../../tools/installer/tests/flow.test.ts), [레거시 제거](../../../tools/installer/tests/uninstall.test.ts), [VSIX·격리 설치](../../../tools/installer/tests/vscode.test.ts).
-- 지원 스크립트 확인: [확장 빌드](../../../scripts/build.mjs), [프로토콜 복사](../../../scripts/vendor-protocol.mjs), [패키지 검증](../../../scripts/verify-package.mjs), [동일 프로필 검증](../../../scripts/profile-host.mjs), [상태 부하](../../../scripts/load.ts), [라우터 부하](../../../scripts/router-load.ts), [manifest](../../../package.json), [타입 검사 설정](../../../tsconfig.json), [벤더 타입 안내](../../../src/protocol/README.md).
+- 지원 스크립트 확인: [확장 빌드](../../../build/extension.mjs), [프로토콜 복사](../../../build/protocol/vendor-protocol.mjs), [패키지 검증](../../../tests/package/verify-package.mjs), [동일 프로필 검증](../../../tests/vscode/profile-host.mjs), [상태 부하](../../../tests/load/load.ts), [라우터 부하](../../../tests/load/router-load.ts), [manifest](../../../package.json), [타입 검사 설정](../../../tsconfig.json), [벤더 타입 안내](../../../src/protocol/README.md).
 
 ## 판단
 

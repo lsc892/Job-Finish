@@ -122,7 +122,9 @@ Codex 복구는 최근 512개 턴의 상태를 페이지별로 조회하고, 필
 
 ## 코드 안내
 
-[소스 책임](src/README.md) · [빌드·검증 스크립트](scripts/README.md) · [테스트](tests/README.md) · [보조 도구](tools/README.md) · [리소스](resources/README.md) · [설계·검증 문서](docs/README.md) · [VS Code 구성](.vscode/README.md)
+소스코드는 `src/`, 테스트·검증은 `tests/`, 빌드 도구는 `build/`로 구분합니다.
+
+[소스코드](src/README.md) · [테스트](tests/README.md) · [빌드](build/README.md) · [보조 도구](tools/README.md) · [리소스](resources/README.md) · [설계·검증 문서](docs/README.md) · [VS Code 구성](.vscode/README.md)
 
 ## 라이선스
 

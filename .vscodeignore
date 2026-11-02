@@ -5,7 +5,7 @@ AGENTS.md
 .vscode/**
 src/**
 tests/**
-scripts/**
+build/**
 tools/**
 docs/일지.md
 tsconfig.json

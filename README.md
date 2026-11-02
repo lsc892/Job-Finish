@@ -54,7 +54,9 @@ The command removes Job-Finish hooks from user and selected project settings, ba
 
 ## Code guide
 
-[Source responsibilities (Korean)](src/README.md) · [Scripts](scripts/README.md) · [Tests](tests/README.md) · [Tools](tools/README.md) · [Resources](resources/README.md) · [Documents](docs/README.md) · [VS Code configuration](.vscode/README.md)
+Source code lives in `src/`, tests and verification in `tests/`, and build tools in `build/`.
+
+[Source code (Korean)](src/README.md) · [Tests](tests/README.md) · [Build](build/README.md) · [Tools](tools/README.md) · [Resources](resources/README.md) · [Documents](docs/README.md) · [VS Code configuration](.vscode/README.md)
 
 ## License
 

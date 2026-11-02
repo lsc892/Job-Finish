@@ -3,8 +3,8 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { resolve } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { AgentStreamObserver } from '../src/runtime/observe';
-import { Diagnostics, LIMITS, Signal } from '../src/core/model';
+import { AgentStreamObserver } from '../../src/runtime/observe';
+import { Diagnostics, LIMITS, Signal } from '../../src/core/model';
 
 // Synthetic agents supply transport data. The router itself creates no child process.
 global.gc?.(); const baseline = process.memoryUsage();

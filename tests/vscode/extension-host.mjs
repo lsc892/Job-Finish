@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-await build({ entryPoints: ['tests/extension-host.ts'], outfile: '.generated/extension-host.cjs', platform: 'node', format: 'cjs', bundle: true, external: ['vscode', 'koffi'] });
+await build({ entryPoints: ['tests/vscode/extension-host.ts'], outfile: '.generated/extension-host.cjs', platform: 'node', format: 'cjs', bundle: true, external: ['vscode', 'koffi'] });
 const dual = process.argv.includes('--dual');
 const root = mkdtempSync(join(tmpdir(), 'job-finish-host-'));
 const profile = join(root, 'profile'); const workspace = join(root, 'workspace'); mkdirSync(join(profile, 'User'), { recursive: true }); mkdirSync(workspace);

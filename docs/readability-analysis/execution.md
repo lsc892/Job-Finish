@@ -66,5 +66,5 @@ SDK의 `canUseTool`은 실행 문맥이 아직 활성인지 콜백으로 확인�
 
 - `npm run check`: 타입 검사·147개 테스트·확장/C# 빌드 통과. 기존 캡처 메시지·SDK callback·interrupt/result 경합·이력 복구·소유권·추가 Provider 계약을 유지했다.
 - 새 [Claude 권한 경계 테스트](../../tests/claude-permissions.test.ts) 4개로 응답·일괄 거절 후 abort listener 해제, 중복/과대/상한 초과 요청, 이미 철회된 요청의 무기록 거절, 응답 checkpoint 실패 시 SDK에 거절 반환을 확인했다. Provider factory 테스트는 두 실행체의 공통 추상 클래스 사용도 확인한다.
-- 최종 `node scripts/extension-host.mjs`: VS Code 1.143.1의 격리 프로필에서 전체 명령 등록·stopFlash/diagnostics·fixture 완료·취소·해제·자동 관찰 설정 전환이 통과했다. `nativeBound`도 true였다. 원자료는 로컬 `test-artifacts/extension-host.json`이다.
+- 최종 `node tests/vscode/extension-host.mjs`: VS Code 1.143.1의 격리 프로필에서 전체 명령 등록·stopFlash/diagnostics·fixture 완료·취소·해제·자동 관찰 설정 전환이 통과했다. `nativeBound`도 true였다. 원자료는 로컬 `test-artifacts/extension-host.json`이다.
 - runtime 하위 디렉터리는 codex·claude 두 개이며 22개 런타임 모듈의 상대 import와 순환 의존을 확인했다. 문서 상대 링크와 `git diff --check`도 확인했다. 실제 모델 호출·승인/질문 UI 조작·Windows 배너 클릭·사용자 설치본 교체는 수행하지 않았다.

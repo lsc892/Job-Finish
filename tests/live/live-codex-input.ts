@@ -5,13 +5,13 @@ import { randomUUID } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CodexExecution, codexApprovalResponse } from '../src/runtime/codex';
-import { Diagnostics, Signal } from '../src/core/model';
-import { Session } from '../src/core/session';
-import { Ownership } from '../src/core/ownership';
-import { runtimeId } from '../src/runtime/providers';
-import type { RpcMessage } from '../src/runtime/transport';
-import type { ToolRequestUserInputParams } from '../src/protocol/v2/ToolRequestUserInputParams';
+import { CodexExecution, codexApprovalResponse } from '../../src/runtime/codex';
+import { Diagnostics, Signal } from '../../src/core/model';
+import { Session } from '../../src/core/session';
+import { Ownership } from '../../src/core/ownership';
+import { runtimeId } from '../../src/runtime/providers';
+import type { RpcMessage } from '../../src/runtime/transport';
+import type { ToolRequestUserInputParams } from '../../src/protocol/v2/ToolRequestUserInputParams';
 
 async function main(): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'job-finish-codex-input-')); const owner = new Ownership(root);

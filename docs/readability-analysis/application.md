@@ -53,7 +53,7 @@ src/application/sessions.ts     실행·Session·lease·저장 세션 수명
 - [신규 경계 검사](../../tests/application-sessions.test.ts#L68) 17개 통과: 비동기 초기 결과의 소유권, 동기 factory 경계·snapshot·대기 수·저장 상한, maxSessions/maxConnections의 동시 open과 실패 후 용량 반환, 신뢰 검사, claim/load/factory/open/save/Session 누락 실패, dispose 오류 후 정리, 등록 전·후와 저장 중 dispose, 반복 dispose와 detach의 finally 정리, 오래된 Entry의 새 연결 해제 방지.
 - `npx tsx --test tests/application-sessions.test.ts tests/integration.test.ts tests/ownership.test.ts tests/providers.test.ts`: 최종 코드에서 총 41개 통과. 기존 실제 stdio fixture·paged 복구·승인·소유권·Provider 계약도 함께 확인했다.
 - `npm run typecheck`와 담당 파일의 `git diff --check`가 통과했다. 통합 후 최종 `npm run check`의 타입 검사·134개 테스트·확장/C# 빌드도 모두 통과했다.
-- 최종 빌드의 `node scripts/extension-host.mjs`와 `node scripts/extension-host.mjs --dual`이 통과했다. 단일 창의 명령 등록·fixture 실행 완료·취소·해제·자동 관찰 설정 전환, 두 창의 결과 분리·같은 세션의 두 번째 소유자 거부를 확인했다. 두 창의 native flash·포커스 복귀는 OS 전경 전환 거부로 SKIPPED다. 원자료는 로컬 `test-artifacts/extension-host.json`과 `test-artifacts/dual-host.json`에 있다.
+- 최종 빌드의 `node tests/vscode/extension-host.mjs`와 `node tests/vscode/extension-host.mjs --dual`이 통과했다. 단일 창의 명령 등록·fixture 실행 완료·취소·해제·자동 관찰 설정 전환, 두 창의 결과 분리·같은 세션의 두 번째 소유자 거부를 확인했다. 두 창의 native flash·포커스 복귀는 OS 전경 전환 거부로 SKIPPED다. 원자료는 로컬 `test-artifacts/extension-host.json`과 `test-artifacts/dual-host.json`에 있다.
 - 앞선 파일 내부 정리 당시 루트 check의 106개 테스트·확장/C# 빌드와 단일 격리 Extension Host 검사는 통과했으나, 그 결과를 이번 W1 구조 분리의 검증으로 대체하지 않는다.
 - 실제 모델 호출·질문 UI 조작·Windows 배너 클릭과 기본 VS Code 설치는 이 담당 검증에 포함하지 않았다. W1의 미적용 구조 제안은 남지 않았다.
 

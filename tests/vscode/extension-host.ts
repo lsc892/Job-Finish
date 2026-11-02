@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { spawn } from 'node:child_process';
-import { Win32 } from '../src/windows/native';
+import { Win32 } from '../../src/windows/native';
 const koffi: typeof import('koffi', { with: { 'resolution-mode': 'import' } }) = require('koffi');
 
 interface Api {

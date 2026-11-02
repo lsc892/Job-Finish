@@ -55,7 +55,7 @@ Codex 복구는 `thread/resume(excludeTurns: true)` 이후 `thread/turns/list`�
 | 큰 Codex 이력·복구 경합 | 합성 600턴/2 MiB 이상 저장 이력을 페이지별로 재개, 최근 512키 유지, 20 KiB 결과 원문 조회, 미확정 시작 요청 대응, 오래된 연결 응답 배제·조회 예산 초과 처리 검증 |
 | Windows toast pipe | 실제 named pipe로 UTF-8 분할·중복 클릭·sender 종료 후 승인·ID 불일치·미승인 결과·설정/소유권 해제·8 KiB 상한·교체/종료를 검증. 전송 프로세스 종료를 클릭으로 집계하지 않음 |
 | 컴파일된 C# 클릭 경로 | `npm run test:native` 통과. 실제 실행 파일 → 실제 pipe 승인 → HWND 미연결/무효 및 소유권 거부 결과 확인. 이 검증은 전경 창을 변경하지 않음 |
-| C# 실제 전경 전환 | `node scripts/toast-routing.mjs --bound-only --protocol`에서 세 조건 모두 성공한 실행도 있었으나, 등록 변경 후 순차 실행에서는 일반 창·최소화 성공 및 최대화 실패를 확인. 실제 등록된 toast의 URI 실행이며 마우스 클릭 검증과 구분. 전체 통과로 집계하지 않음 |
+| C# 실제 전경 전환 | `node tests/windows/toast-routing.mjs --bound-only --protocol`에서 세 조건 모두 성공한 실행도 있었으나, 등록 변경 후 순차 실행에서는 일반 창·최소화 성공 및 최대화 실패를 확인. 실제 등록된 toast의 URI 실행이며 마우스 클릭 검증과 구분. 전체 통과로 집계하지 않음 |
 | 이전 SnoreToast smoke | 2026-10-06의 별도 프로세스와 명시적 HWND 실험. 아래 과거 기록 참조. 현재 C# 경로의 실제 클릭 증거로 사용하지 않음 |
 | Win32 native ABI | 실제 user32/kernel32 로딩, 전경 핸들 조회, FLASHWINFO x64 32byte 확인 |
 | 10만 턴 / 8세션 부하 | GC 후 감지 상태 heap 증가 606,496 bytes. 진단 100개·종료 키 세션별 512개 이하·활성 턴 0. 이 수치는 SDK/런타임 자식 프로세스 사용량을 포함하지 않음 |
@@ -83,9 +83,9 @@ Codex 복구는 `thread/resume(excludeTurns: true)` 이후 `thread/turns/list`�
 npm ci
 npm run check
 npm run test:native
-node scripts/toast-routing.mjs --bound-only --protocol
+node tests/windows/toast-routing.mjs --bound-only --protocol
 # 실제 토스트 UI 클릭 검증; 찾지 못하면 실패를 기록
-node scripts/toast-routing.mjs --bound-only --debug
+node tests/windows/toast-routing.mjs --bound-only --debug
 npm run test:load
 npm run test:router-load
 npm run test:extension

@@ -5,11 +5,11 @@ import { randomUUID } from 'node:crypto';
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CodexExecution } from '../src/runtime/codex';
-import { Session } from '../src/core/session';
-import { Diagnostics, Signal } from '../src/core/model';
-import { Ownership } from '../src/core/ownership';
-import { runtimeId } from '../src/runtime/providers';
+import { CodexExecution } from '../../src/runtime/codex';
+import { Session } from '../../src/core/session';
+import { Diagnostics, Signal } from '../../src/core/model';
+import { Ownership } from '../../src/core/ownership';
+import { runtimeId } from '../../src/runtime/providers';
 
 async function main(): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'job-finish-history-')); const owner = new Ownership(root);

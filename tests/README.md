@@ -1,6 +1,21 @@
 # tests
 
-세션·제공자·스트림·알림의 회귀와 실제 VS Code·Windows 통합 동작을 검증한다.
+제품 코드의 회귀 테스트와 실제 런타임·VS Code·Windows 검증을 한곳에서 관리한다. 실제 확장 작동 코드는 [src/](../src/README.md), 빌드·프로토콜 생성 도구는 [build/](../build/README.md)에 있다.
+
+| 위치 | 역할 | 실행 명령 |
+| --- | --- | --- |
+| 루트의 `*.test.ts` | 세션·제공자·통신·알림 회귀 검증 | `npm test` |
+| [live/](live/README.md) | 실제 Codex·Claude의 실행·입력·이력 검증 | `npm run test:live`, `npm run test:live:codex-input` |
+| [load/](load/README.md) | 합성 이벤트 부하·메모리 검증 | `npm run test:load`, `npm run test:router-load` |
+| [vscode/](vscode/README.md) | 격리 확장 호스트·창별 소유권·복구 검증 | `npm run test:extension`, `npm run test:windows`, `npm run test:profile` |
+| [windows/](windows/README.md) | 알림·클릭·창 활성화와 C# 프로세스 계약 검증 | `npm run test:toast`, `npm run test:native` |
+| [native-toast/](native-toast/README.md) | C# 등록·COM 계약 테스트 프로젝트 | `test:native`에서 실행 |
+| [package/](package/README.md) | VSIX 설치·포함 파일 검증 | `npm run test:package` |
+| [fixtures/](fixtures/README.md) | 합성 프로세스·보존 이벤트·fixture 추출 도구 | 각 테스트에서 사용 |
+
+명령은 저장소 루트에서 실행한다. `npm test`는 루트의 `*.test.ts`만 실행하며 실계정 호출·UI 검증·부하 측정은 해당 npm 명령으로 선택 실행한다. 테스트용 TypeScript 설정은 [tsconfig.json](tsconfig.json)이며 `npm run typecheck`는 제품과 테스트를 각각 검사한다.
+
+## 기본 회귀 테스트와 공용 도우미
 
 - [application-sessions.test.ts](application-sessions.test.ts) — 세션 열기·용량 제한·소유권 등록·실패 정리와 종료 경쟁의 일관성을 검증한다.
 - [captured.test.ts](captured.test.ts) — 실제 런타임에서 보존한 Codex·Claude 이벤트가 기대한 세션 상태로 해석되는지 검증한다.
@@ -10,12 +25,10 @@
 - [codex-history.test.ts](codex-history.test.ts) — Codex 이력의 페이지 상한·커서 검증·최종 응답 선택과 연결 유효성 확인을 검증한다.
 - [codex-reconciliation.test.ts](codex-reconciliation.test.ts) — Codex 이력 대조 중 소유권·연결 상실과 충돌 결과·미관찰 실행 처리를 검증한다.
 - [event-router.test.ts](event-router.test.ts) — 관찰한 Codex·Claude 이벤트의 알림 변환·격리·중복 제거·입력 수명을 검증한다.
-- [extension-host.ts](extension-host.ts) — 실제 VS Code 확장 호스트에서 명령·외부 스트림·창별 결과·독점 소유권을 검증한다.
 - [helpers.ts](helpers.ts) — 세션 테스트용 바인딩·진단·알림 수집과 소유권 철회 도우미를 제공한다.
 - [integration.test.ts](integration.test.ts) — 실제 stdio 전송과 합성 App Server로 Codex 실행·입력·취소·이력 복원을 통합 검증한다.
 - [observe.test.ts](observe.test.ts) — 기존·신규 에이전트 스트림의 비파괴 관찰과 프레임 경계·종료·설정 전환을 검증한다.
 - [ownership.test.ts](ownership.test.ts) — 창·연결·런타임별 독점 소유권과 소유자 복구·Windows 파일 잠금을 검증한다.
-- [profile-host.ts](profile-host.ts) — 동일 VS Code 프로필의 창별 결과 격리와 재시작·소유권 이전·복구를 검증한다.
 - [providers.test.ts](providers.test.ts) — 제3 제공자의 등록·관찰·실행·입력 변환 경계를 검증한다.
   - `SampleProvider` — 독립 합성 프로토콜로 제공자 확장 지점을 검증한다.
   - 익명 등록 검증 제공자 — 별도 ID와 중복 명령의 등록 거부를 검증한다.
@@ -24,7 +37,6 @@
 - [state.test.ts](state.test.ts) — 세션의 종료·중복·체크포인트·입력·소유권·보관 상한과 제공자 상태 변환을 검증한다.
 - [session-title.test.ts](session-title.test.ts) — 세션 제목·이름 변경·첫 요청 대체·이력 메타데이터·복구·세션 격리와 토스트 제목의 Unicode 상한을 검증한다.
 - [toast-activation.test.ts](toast-activation.test.ts) — 알림 활성화 채널의 연결 상한·유휴 종료·만료와 현재 소유권 확인을 검증한다.
-- [toast-host.ts](toast-host.ts) — 격리 VS Code 창에서 실제 스트림·네이티브 알림·전경 창 관찰을 제어한다.
 - [toast-process.test.ts](toast-process.test.ts) — 네이티브 도우미의 진단 프레임·종료·시간 제한·취소·정리 계약을 검증한다.
 - [toast.test.ts](toast.test.ts) — 실제 Windows 파이프와 제어된 도우미로 알림 전송·등록·클릭 승인·취소를 검증한다.
 - [toast-image.test.ts](toast-image.test.ts) — 기본 이미지·사용자 지정 경로·이미지 끄기와 잘못된 경로의 대체 동작을 검증한다.

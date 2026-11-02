@@ -120,8 +120,8 @@ Windows는 전경 창 변경을 제한하며 단순 API 호출만으로 항상 �
 조사 당시에는 `Job-Finish` 출력과 **Show Diagnostics**의 `events`에서 완료 신호 → toast 실행 → pipe/종료 → 클릭 → 활성화 시도 → 실제 전경 상태를 같은 windowInstanceId·notificationId로 추적했다. 최신 100개 이벤트만 보관하고 이벤트 로그에 응답 본문이나 인증 정보를 추가하지 않았다. 당시 활성화 중단은 `missing-binding`, `input-changed`, `invalid-binding`, `attempts-exhausted` 등으로 구분했다. 현재 C# 경로는 `missing-binding`, `invalid-binding`, `foreground-refused`를 사용한다.
 
 ```sh
-node scripts/toast-routing.mjs --baseline
-node scripts/toast-routing.mjs
+node tests/windows/toast-routing.mjs --baseline
+node tests/windows/toast-routing.mjs
 npm run check
 ```
 

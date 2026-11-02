@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { activate as activateProduct, deactivate as deactivateProduct } from '../src/extension';
+import { activate as activateProduct, deactivate as deactivateProduct } from '../../src/extension';
 import { runWithApi } from './extension-host';
 
 interface Snapshot {

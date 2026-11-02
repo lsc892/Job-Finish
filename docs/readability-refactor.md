@@ -114,8 +114,8 @@ Claude의 pending 콜백·abort listener·응답과 일괄 거절은 [ClaudePerm
 ## W1·W2 분리 당시 검증
 
 - 최종 `npm run check`: 타입 검사·134개 테스트·확장/C# 빌드 모두 통과. 앞선 내부 정리의 106개에서 W1 17개·W2 11개 계약 테스트를 추가했다.
-- 최종 빌드의 `node scripts/extension-host.mjs`: 격리 VS Code 1.143.1에서 명령 등록·fixture 실행 완료·취소·해제·외부 프로세스 관찰·설정 끄기/켜기 통과. 원자료는 로컬 `test-artifacts/extension-host.json`에 있다.
-- `node scripts/extension-host.mjs --dual`: A/B 창의 UUID·결과 분리와 같은 세션의 두 번째 소유자 거부 통과. 두 창 모두 OS 전경 전환이 거부되어 native flash·포커스 복귀 검사는 SKIPPED다. 원자료는 로컬 `test-artifacts/dual-host.json`에 있다.
+- 최종 빌드의 `node tests/vscode/extension-host.mjs`: 격리 VS Code 1.143.1에서 명령 등록·fixture 실행 완료·취소·해제·외부 프로세스 관찰·설정 끄기/켜기 통과. 원자료는 로컬 `test-artifacts/extension-host.json`에 있다.
+- `node tests/vscode/extension-host.mjs --dual`: A/B 창의 UUID·결과 분리와 같은 세션의 두 번째 소유자 거부 통과. 두 창 모두 OS 전경 전환이 거부되어 native flash·포커스 복귀 검사는 SKIPPED다. 원자료는 로컬 `test-artifacts/dual-host.json`에 있다.
 - `git diff --check`: 통과. 문서의 상대 파일 링크와 줄 위치 범위도 확인했다.
 - 세션 Map·프레임 버퍼·이력 조회의 핵심 자료구조·상한·알고리즘은 유지한다. 연결 중 카운터는 자원을 추적하는 Set으로 바꿨다. 추가 객체와 추적은 수명 소유권을 위한 것이며 성능 개선이나 메모리 절감률을 측정한 것은 아니다.
 - 실제 모델 호출·질문 UI 조작·Windows 배너·사용자 클릭은 이번에 실행하지 않았다. C# helper와 설치 도구 소스는 수정하지 않았고 사용자 설치본 교체도 수행하지 않았다.
@@ -123,7 +123,7 @@ Claude의 pending 콜백·abort listener·응답과 일괄 거절은 [ClaudePerm
 ## C1·E1 검증 결과와 범위
 
 - `npm run check`: 타입 검사·143개 테스트·확장/C# 빌드 통과. 기존 134개 테스트에 연결·이력 대조 경계 테스트 9개를 추가했다.
-- 최종 `node scripts/extension-host.mjs`: 격리 VS Code 1.143.1에서 전체 명령 등록·stopFlash/diagnostics 실행·fixture 완료·취소·해제·외부 프로세스 관찰·설정 끄기/켜기 통과. 원자료는 로컬 `test-artifacts/extension-host.json`에 있다. 최종 실행의 `nativeBound`는 false였다.
-- 최종 `node scripts/extension-host.mjs --dual`: 두 창의 UUID·결과 분리와 같은 세션의 두 번째 소유자 거부가 통과했다. 두 창 모두 OS 전경 전환 거부로 native flash·포커스 복귀 검사는 SKIPPED다. 원자료는 로컬 `test-artifacts/dual-host.json`에 있다.
+- 최종 `node tests/vscode/extension-host.mjs`: 격리 VS Code 1.143.1에서 전체 명령 등록·stopFlash/diagnostics 실행·fixture 완료·취소·해제·외부 프로세스 관찰·설정 끄기/켜기 통과. 원자료는 로컬 `test-artifacts/extension-host.json`에 있다. 최종 실행의 `nativeBound`는 false였다.
+- 최종 `node tests/vscode/extension-host.mjs --dual`: 두 창의 UUID·결과 분리와 같은 세션의 두 번째 소유자 거부가 통과했다. 두 창 모두 OS 전경 전환 거부로 native flash·포커스 복귀 검사는 SKIPPED다. 원자료는 로컬 `test-artifacts/dual-host.json`에 있다.
 - `git diff --check`와 변경 문서의 상대 링크·줄 위치 범위를 확인했다. 새 Codex 모듈과 VS Code UI·알림·창 모듈은 각 조립부를 역참조하지 않는다.
 - 실제 모델 호출·승인/질문 UI 조작·Windows 배너 클릭·사용자 설치본 교체는 수행하지 않았다. 기능 정책이나 성능 개선을 위한 변경은 포함하지 않았다.
