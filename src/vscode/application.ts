@@ -50,7 +50,11 @@ export class Application {
       results: () => showResults(this.notifications.results, this.sessions),
       bindWindow: () => this.notifications.window.bind(),
       stopFlash: () => this.notifications.window.stopFlash(),
-      diagnostics: () => this.showDiagnostics(),
+      diagnostics: () => {
+        this.output.clear();
+        this.output.appendLine(JSON.stringify(this.api.snapshot(), (_key, value: unknown) => typeof value === 'bigint' ? value.toString() : value, 2));
+        this.output.show();
+      },
       report: error => { this.diagnostics.add(error); void vscode.window.showErrorMessage(`Job-Finish: ${error}`); },
       changed: () => this.updateStatus(),
     });
@@ -103,12 +107,6 @@ export class Application {
     this.status.text = `${icon} JF ${this.windowInstanceId.slice(0, 8)} · ${state}`;
     this.status.command = waiting ? 'jobFinish.respond' : 'jobFinish.results';
     this.status.tooltip = 'Job-Finish · automatic notifications · Settings: Job-Finish Enabled · Show Results';
-  }
-
-  private showDiagnostics(): void {
-    this.output.clear();
-    this.output.appendLine(JSON.stringify(this.api.snapshot(), (_key, value: unknown) => typeof value === 'bigint' ? value.toString() : value, 2));
-    this.output.show();
   }
 
   dispose(): void {

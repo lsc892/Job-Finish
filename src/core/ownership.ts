@@ -38,12 +38,6 @@ export class Ownership {
   claim(binding: SessionBinding): Lease {
     const keys = [sessionKey(binding), JSON.stringify(['saved-session', binding.provider, binding.sessionId])];
     const token = randomUUID();
-    const paths = this.claimLocks(keys, binding, token);
-    const statePath = join(this.root, hash(keys[0]!) + '.state.json');
-    return new Lease(paths, token, this.releaseAll.bind(this, paths, token), statePath);
-  }
-
-  private claimLocks(keys: string[], binding: SessionBinding, token: string): string[] {
     const paths: string[] = [];
     try {
       for (const key of keys) {
@@ -53,19 +47,23 @@ export class Ownership {
       this.releaseAll(paths, token);
       throw error;
     }
-    return paths;
+    const statePath = join(this.root, hash(keys[0]!) + '.state.json');
+    return new Lease(paths, token, this.releaseAll.bind(this, paths, token), statePath);
   }
 
   // 세션 키의 SHA-256 해시를 파일명으로 사용해 배타 잠금을 생성한다.
   private claimLock(key: string, binding: SessionBinding, token: string): string {
     const path = join(this.root, hash(key) + '.lock');
-    this.withOwnershipGate(path, this.claimUnderGate.bind(this, path, key, binding, token));
+    this.withOwnershipGate(path, () => {
+      this.reclaimStaleOwner(path);
+      const fd = openSync(path, 'wx');
+      try {
+        writeFileSync(fd, JSON.stringify({ token, pid: process.pid, windowInstanceId: binding.windowInstanceId, key }));
+      } finally {
+        closeSync(fd);
+      }
+    });
     return path;
-  }
-
-  private claimUnderGate(path: string, key: string, binding: SessionBinding, token: string): void {
-    this.reclaimStaleOwner(path);
-    this.writeOwner(path, { token, pid: process.pid, windowInstanceId: binding.windowInstanceId, key });
   }
 
   private reclaimStaleOwner(path: string): void {
@@ -80,26 +78,18 @@ export class Ownership {
     unlinkSync(path);
   }
 
-  private writeOwner(path: string, record: OwnerRecord): void {
-    const fd = openSync(path, 'wx');
-    try {
-      writeFileSync(fd, JSON.stringify(record));
-    } finally {
-      closeSync(fd);
-    }
-  }
-
   private withOwnershipGate(path: string, action: () => void): void {
     const gatePath = path + '.gate';
     if (process.platform === 'win32') {
       withWindowsFileGate(gatePath, action);
       return;
     }
-    this.withPortableFileGate(gatePath, action);
-  }
-
-  private withPortableFileGate(gatePath: string, action: () => void): void {
-    const fd = this.openPortableGate(gatePath);
+    let fd: number;
+    try {
+      fd = openSync(gatePath, 'wx');
+    } catch {
+      throw new Error(`Ownership operation busy or interrupted. Retry; if persistent, inspect ${gatePath} with all Job-Finish windows closed.`);
+    }
     try {
       writeFileSync(fd, JSON.stringify({ pid: process.pid }));
       action();
@@ -109,26 +99,16 @@ export class Ownership {
     }
   }
 
-  private openPortableGate(gatePath: string): number {
-    try {
-      return openSync(gatePath, 'wx');
-    } catch {
-      throw new Error(`Ownership operation busy or interrupted. Retry; if persistent, inspect ${gatePath} with all Job-Finish windows closed.`);
-    }
-  }
-
   private releaseAll(paths: string[], token: string): void {
     for (const path of paths) this.release(path, token);
   }
 
   // 잠금에 기록된 임의 토큰이 내 토큰과 같을 때만 소유권을 해제한다.
   private release(path: string, token: string): void {
-    this.withOwnershipGate(path, this.releaseUnderGate.bind(this, path, token));
-  }
-
-  private releaseUnderGate(path: string, token: string): void {
-    if (readOwnerRecord(path)?.token !== token) return;
-    unlinkSync(path);
+    this.withOwnershipGate(path, () => {
+      if (readOwnerRecord(path)?.token !== token) return;
+      unlinkSync(path);
+    });
   }
 }
 /** 소유권 토큰을 검증하며 세션 체크포인트의 저장·복원과 임대 해제를 관리한다. */

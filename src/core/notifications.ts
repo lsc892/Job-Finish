@@ -22,15 +22,10 @@ export class Notifications {
     if (this.ports.enabled?.() === false || this.ports.focused()) { this.ports.stopFlash(); return; }
     this.ports.flash(signal);
     await this.ports.toast(signal, toastText(signal.text || signal.detail || signal.status),
-      this.handleToastClick.bind(this, signal), this.canShowToast.bind(this, signal));
-  }
-
-  private handleToastClick(signal: Signal): void {
-    this.ports.stopFlash(signal.notificationId);
-    if (this.ports.enabled?.() !== false && this.ports.owns(signal)) this.ports.activate(signal);
-  }
-
-  private canShowToast(signal: Signal): boolean {
-    return this.ports.enabled?.() !== false && !this.ports.focused() && this.ports.owns(signal);
+      () => {
+        this.ports.stopFlash(signal.notificationId);
+        if (this.ports.enabled?.() !== false && this.ports.owns(signal)) this.ports.activate(signal);
+      },
+      () => this.ports.enabled?.() !== false && !this.ports.focused() && this.ports.owns(signal));
   }
 }

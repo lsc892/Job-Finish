@@ -65,7 +65,10 @@ export class Session {
     turn.status = status; turn.resultId = resultId;
     this.completed.set(id, status);
     while (this.completed.size > LIMITS.dedup) this.completed.delete(this.completed.keys().next().value!);
-    this.clearRequests(id); this.turns.delete(id);
+    for (const [requestId, request] of this.requests) {
+      if (request.turnId === id) this.requests.delete(requestId);
+    }
+    this.turns.delete(id);
     this.persist(); // Durable before delivery: crash may lose delivery, never promise exactly-once.
     this.signal(turn, detail);
   }
@@ -113,7 +116,6 @@ export class Session {
   checkpoint(): Checkpoint { return { version: 1, completed: [...this.completed], turns: [...this.turns.values()], ...(this.pendingStart ? { pendingStart: this.pendingStart } : {}),
     ...(this.title ? { sessionTitle: this.title } : {}), ...(this.promptTitle ? { promptTitle: this.promptTitle } : {}) }; }
   private persist(): void { this.save(this.checkpoint()); this.changed(); }
-  private clearRequests(turnId: string): void { for (const [id, r] of this.requests) if (r.turnId === turnId) this.requests.delete(id); }
   private signal(turn: TurnState, detail?: string, requestId?: string): void {
     if (!this.owns()) return;
     this.emit({ ...this.binding, sessionTitle: this.sessionTitle, notificationId: randomUUID(), turnId: turn.id, status: turn.status,
