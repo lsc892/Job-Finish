@@ -52,7 +52,7 @@ src/                                 src/
       index.ts · codex.ts · claude.ts     message.ts
 ```
 
-현재 파일: [확장 진입점](../src/extension.ts), [확장 조립부](../src/vscode/application.ts), [세션 수명](../src/application/sessions/index.ts), [toast facade](../src/windows/toast.ts#L10), [helper 실행기](../src/windows/toast-process.ts#L12), [클릭 채널](../src/windows/toast-activation.ts#L16), [Provider 계약](../src/runtime/agent-provider.ts#L47), [등록 목록](../src/runtime/providers.ts).
+현재 파일: [확장 진입점](../src/extension.ts), [확장 조립부](../src/vscode/application.ts), [세션 수명](../src/application/sessions/index.ts), [toast facade](../src/windows/toast/index.ts#L10), [helper 실행기](../src/windows/toast/process.ts#L12), [클릭 채널](../src/windows/toast/activation.ts#L16), [Provider 계약](../src/runtime/agent-provider.ts#L47), [등록 목록](../src/runtime/providers.ts).
 
 <a id="w1"></a>
 
@@ -70,7 +70,7 @@ src/                                 src/
 
 ## W2 — toast 프로세스와 클릭 채널 분리: 적용 완료
 
-[WindowsToast](../src/windows/toast.ts#L10)는 등록 Promise·세대·현재 알림 선택과 교체·stop·dispose를 조율한다. [ToastProcessRunner](../src/windows/toast-process.ts#L12)는 helper별 입출력·진단·timeout·close 판정과 완료 Promise·취소 핸들·전체 child 집합을 소유한다. [ToastActivation](../src/windows/toast-activation.ts#L16)은 pipe·socket·만료 타이머와 승인 socket·클릭·결과의 1회 처리 상태를 소유한다.
+[WindowsToast](../src/windows/toast/index.ts#L10)는 등록 Promise·세대·현재 알림 선택과 교체·stop·dispose를 조율한다. [ToastProcessRunner](../src/windows/toast/process.ts#L12)는 helper별 입출력·진단·timeout·close 판정과 완료 Promise·취소 핸들·전체 child 집합을 소유한다. [ToastActivation](../src/windows/toast/activation.ts#L16)은 pipe·socket·만료 타이머와 승인 socket·클릭·결과의 1회 처리 상태를 소유한다.
 
 의존 방향은 facade → process/activation이며 하위 객체가 facade나 서로를 import하지 않는다. 현재 알림 판정과 만료는 콜백으로 연결한다. 기존 `ToastRequest`·`ToastTarget`·`ToastProcessPorts`의 import 경로는 facade의 type 재export로 유지했다.
 

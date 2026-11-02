@@ -6,7 +6,7 @@ import { notificationTitle, Notifications } from '../core/notifications';
 import { AgentStreamObserver, AgentRoot } from '../runtime/observe';
 import { agentProviders } from '../runtime/providers';
 import { WindowsToast } from '../windows/toast';
-import { toastImagePath } from '../windows/toast-image';
+import { toastImagePath } from '../windows/toast/image';
 import { CodeWindow } from './window';
 
 interface NotificationPorts {

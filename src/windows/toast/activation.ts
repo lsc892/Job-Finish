@@ -1,7 +1,7 @@
 // 토스트 클릭 named pipe에서 알림·창 ID와 현재 활성화 권한을 검증한다.
 import { randomUUID } from 'node:crypto';
 import { createServer, Server, Socket } from 'node:net';
-import { Diagnostics } from '../core/model';
+import { Diagnostics } from '../../core/model';
 
 export interface ToastTarget { hwnd: string; pid: number; executable: string }
 export interface ToastRequest {
@@ -42,19 +42,11 @@ export class ToastActivation {
     }
     this.sockets.add(socket);
     const stream: CallbackStream = { socket, received: '', bytes: 0 };
-    socket.on('close', this.handleSocketClose.bind(this, socket));
+    socket.on('close', () => { this.sockets.delete(socket); });
     socket.on('error', this.diagnostics.add.bind(this.diagnostics));
-    socket.setTimeout(CLICK_SOCKET_TIMEOUT_MS, this.handleSocketTimeout.bind(this, socket));
+    socket.setTimeout(CLICK_SOCKET_TIMEOUT_MS, () => socket.destroy());
     socket.setEncoding('utf8');
     socket.on('data', this.handleSocketData.bind(this, stream));
-  }
-
-  private handleSocketClose(socket: Socket): void {
-    this.sockets.delete(socket);
-  }
-
-  private handleSocketTimeout(socket: Socket): void {
-    socket.destroy();
   }
 
   private handleSocketData(stream: CallbackStream, chunk: string): void {
@@ -69,24 +61,20 @@ export class ToastActivation {
       const line = stream.received.slice(0, newline);
       stream.received = stream.received.slice(newline + 1);
       try {
-        if (!this.handleCallbackMessage(stream.socket, line)) return;
+        // 알림 ID와 창 UUID가 일치하는 클릭·활성화 결과만 처리한다.
+        const event = JSON.parse(line) as Record<string, unknown>;
+        const socket = stream.socket;
+        if (event.notificationId !== this.request.notificationId || event.windowInstanceId !== this.request.windowInstanceId) {
+          socket.destroy();
+          return;
+        }
+        if (event.event === 'toast.click' && !this.authorizeClick(socket)) return;
+        if (event.event === 'window.activation.result') this.completeActivation(socket, event);
       } catch (error) {
         this.diagnostics.add(error);
         stream.socket.destroy();
       }
     }
-  }
-
-  // 알림 ID와 창 UUID가 일치하는 클릭·활성화 결과만 처리한다.
-  private handleCallbackMessage(socket: Socket, line: string): boolean {
-    const event = JSON.parse(line) as Record<string, unknown>;
-    if (event.notificationId !== this.request.notificationId || event.windowInstanceId !== this.request.windowInstanceId) {
-      socket.destroy();
-      return false;
-    }
-    if (event.event === 'toast.click') return this.authorizeClick(socket);
-    if (event.event === 'window.activation.result') this.completeActivation(socket, event);
-    return true;
   }
 
   // 현재 알림의 유효성과 활성화 권한을 확인해 최초 클릭 하나만 승인한다.

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { toastImagePath } from '../src/windows/toast-image';
+import { toastImagePath } from '../src/windows/toast/image';
 
 test('Toast images support the bundled default, custom workspace files, disabling, and invalid-path fallback', t => {
   const extension = resolve('.');

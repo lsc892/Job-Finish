@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { connect, Socket } from 'node:net';
 import { Diagnostics } from '../src/core/model';
-import { ToastActivation } from '../src/windows/toast-activation';
+import { ToastActivation } from '../src/windows/toast/activation';
 
 async function client(pipe: string): Promise<Socket> {
   const socket = connect(`\\\\.\\pipe\\${pipe}`);

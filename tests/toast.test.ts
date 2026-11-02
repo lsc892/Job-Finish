@@ -7,7 +7,7 @@ import { ChildProcess } from 'node:child_process';
 import { connect, Socket } from 'node:net';
 import { PassThrough } from 'node:stream';
 import { WindowsToast, ToastProcessPorts } from '../src/windows/toast';
-import { ToastActivation } from '../src/windows/toast-activation';
+import { ToastActivation } from '../src/windows/toast/activation';
 import { Diagnostics } from '../src/core/model';
 import { notificationTitle } from '../src/core/notifications';
 import { AgentEventRouter } from '../src/runtime/event-router';

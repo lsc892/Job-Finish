@@ -15,7 +15,10 @@ const FILE_FLAG_DELETE_ON_CLOSE = 0x04000000;
 /** 프로세스가 종료돼도 Windows가 핸들과 gate 파일을 회수하는 배타 잠금 안에서 작업한다. */
 export function withWindowsFileGate<T>(path: string, action: () => T): T {
   const native = getWindowsGateApi();
-  const handle = openGateHandle(native, path);
+  // 공유를 금지한 핸들을 확보하고 닫을 때 gate 파일도 함께 회수한다.
+  const flags = FILE_FLAG_DELETE_ON_CLOSE | FILE_ATTRIBUTE_NORMAL;
+  const handle = native.open(toNamespacedPath(path), GENERIC_READ_WRITE, 0, null, OPEN_ALWAYS, flags, 0) as number | bigint;
+  if (BigInt(handle) === -1n) throw new Error(`Ownership operation busy or unavailable (Win32 ${native.error()}): ${path}`);
   try {
     return action();
   } finally {
@@ -33,13 +36,4 @@ function getWindowsGateApi(): WindowsGateApi {
     error: kernel.func('__stdcall', 'GetLastError', 'uint32', []),
   };
   return api;
-}
-
-function openGateHandle(native: WindowsGateApi, path: string): number | bigint {
-  // OPEN_ALWAYS + no sharing also handles abandoned gates left by older versions.
-  // Null security attributes keep the handle out of child processes.
-  const flags = FILE_FLAG_DELETE_ON_CLOSE | FILE_ATTRIBUTE_NORMAL;
-  const handle = native.open(toNamespacedPath(path), GENERIC_READ_WRITE, 0, null, OPEN_ALWAYS, flags, 0) as number | bigint;
-  if (BigInt(handle) === -1n) throw new Error(`Ownership operation busy or unavailable (Win32 ${native.error()}): ${path}`);
-  return handle;
 }

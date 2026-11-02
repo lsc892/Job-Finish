@@ -6,7 +6,7 @@
 
 ## 검토 범위
 
-- TypeScript: [toast](../../../src/windows/toast.ts), [helper 실행기](../../../src/windows/toast-process.ts), [클릭 채널](../../../src/windows/toast-activation.ts), [native ABI와 창 식별](../../../src/windows/native.ts), [flash](../../../src/windows/flash.ts), [소유권 gate](../../../src/windows/gate.ts).
+- TypeScript: [toast](../../../src/windows/toast/index.ts), [helper 실행기](../../../src/windows/toast/process.ts), [클릭 채널](../../../src/windows/toast/activation.ts), [native ABI와 창 식별](../../../src/windows/native.ts), [flash](../../../src/windows/flash.ts), [소유권 gate](../../../src/windows/gate.ts).
 - C#: [진입점과 protocol/COM 공통 클릭 처리](../../../tools/windows-toast/Program.cs), [COM 호스팅](../../../tools/windows-toast/ComActivator.cs), [등록](../../../tools/windows-toast/Registration.cs), [전송 관측](../../../tools/windows-toast/ToastDelivery.cs), [HWND 활성화](../../../tools/windows-toast/Focus.cs), [프로젝트 설정](../../../tools/windows-toast/JobFinish.Native.csproj).
 - 호출·검증 경로: [VS Code 창 관리](../../../src/vscode/window.ts), [toast 테스트](../../../tests/toast.test.ts), [helper 테스트](../../../tests/toast-process.test.ts), [클릭 채널 테스트](../../../tests/toast-activation.test.ts), [Windows 테스트](../../../tests/windows.test.ts), [Extension Host의 창 열거](../../../tests/vscode/extension-host.ts), [toast host의 창 열거](../../../tests/windows/toast-host.ts), [native 계약 스크립트](../../../tests/windows/native-toast-contract.mjs), [격리 바로가기 테스트](../../../tests/native-toast/Program.cs), [COM 계약 테스트](../../../tests/native-toast/com-activation/ComActivationTests.cs), [기존 책임 분리 기록](../../readability-analysis/windows.md).
 

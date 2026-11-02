@@ -2,19 +2,27 @@
 
 2026-10-27 기준. [통합 검토안](../readability-refactor.md)의 Windows 영역 상세 기록이다. 파일 내부 정리 후 사용자가 검토안 전체 적용을 승인했고, W2의 프로세스·클릭 채널 분리와 경계 검증을 완료했다.
 
+<a id="consolidation-2026-11-02"></a>
+
+## 2026-11-02 — 사용자: 토스트 통합과 폴더 정리
+
+- **의사결정**: 토스트 등록의 검증/완료/실패와 전달 준비·helper 시작/완료, 진단 프레임 추출·JSON 검증을 해당 메소드·콜백으로 통합한다. 토스트 조율·프로세스·클릭 채널·이미지는 `src/windows/toast/`로 모으고 각각 `index.ts`·`process.ts`·`activation.ts`·`image.ts`에 둔다. flash 반복과 gate 핸들 확보의 짧은 하위 단계도 사용 위치에 둔다.
+- **근거**: 수신·완료 처리의 작은 보조 메소드와 같은 접두사의 파일이 흩어져 실행 흐름과 위치 탐색을 방해했다. helper가 종료된 후에도 클릭 채널은 유지되어야 하므로 자원 소유자의 분리는 유지한다. 200줄을 조금 넘는 조율부도 현재 알림의 등록·세대·교체라는 한 수명을 관리하므로 추가 분할하지 않는다.
+- **결과**: `windows/toast` import와 공개 타입, 등록 공유/재시도·세대 재검사·전달 확인·오류 우선순위·클릭 승인·각종 상한과 C# JSON/COM 계약을 유지했다. 내부 모듈 import와 문서 링크를 새 폴더에 맞췄다. 타입 검사·전체 193개 테스트·확장/C# 빌드와 격리 Extension Host의 native 바인딩이 통과했다. 실제 배너 클릭과 설치본 교체는 수행하지 않았다.
+
 ## 검토 범위와 현재 흐름
 
-[WindowsToast](../../src/windows/toast.ts#L10), [프로세스 실행기](../../src/windows/toast-process.ts#L12), [클릭 채널](../../src/windows/toast-activation.ts#L16), [WindowIdentity](../../src/windows/native.ts#L55), [FlashController](../../src/windows/flash.ts#L4), [게이트](../../src/windows/gate.ts#L5), C# [Program](../../tools/windows-toast/Program.cs#L13)·[COM 호스팅](../../tools/windows-toast/ComActivator.cs#L4)·[등록](../../tools/windows-toast/Registration.cs#L5)·[전달 관찰](../../tools/windows-toast/ToastDelivery.cs#L5)·[포커스](../../tools/windows-toast/Focus.cs#L4)를 검토했다.
+[WindowsToast](../../src/windows/toast/index.ts#L10), [프로세스 실행기](../../src/windows/toast/process.ts#L12), [클릭 채널](../../src/windows/toast/activation.ts#L16), [WindowIdentity](../../src/windows/native.ts#L55), [FlashController](../../src/windows/flash.ts#L4), [게이트](../../src/windows/gate.ts#L5), C# [Program](../../tools/windows-toast/Program.cs#L13)·[COM 호스팅](../../tools/windows-toast/ComActivator.cs#L4)·[등록](../../tools/windows-toast/Registration.cs#L5)·[전달 관찰](../../tools/windows-toast/ToastDelivery.cs#L5)·[포커스](../../tools/windows-toast/Focus.cs#L4)를 검토했다.
 
-[show](../../src/windows/toast.ts#L37)는 등록 완료와 세대 재검사 → 클릭 pipe 열기 → helper 실행 → 진단을 통한 전송 완료 판정 순서로 처리한다. helper가 종료되어도 클릭 pipe는 살아 있다. 클릭은 ID 대조 → 현재 소유권에 따른 승인 응답 → 승인 socket의 활성화 결과 1회 처리 순서다.
+[show](../../src/windows/toast/index.ts#L37)는 등록 완료와 세대 재검사 → 클릭 pipe 열기 → helper 실행 → 진단을 통한 전송 완료 판정 순서로 처리한다. helper가 종료되어도 클릭 pipe는 살아 있다. 클릭은 ID 대조 → 현재 소유권에 따른 승인 응답 → 승인 socket의 활성화 결과 1회 처리 순서다.
 
 ## 적용 내용과 동작 보존
 
-- facade의 [launchToast](../../src/windows/toast.ts#L58)는 전송 진단을 검증하고, [ToastProcessRunner.run](../../src/windows/toast-process.ts#L16)은 helper 입출력과 완료·취소를 소유한다. 반환된 `completion`은 기존 Promise 체인에 바로 연결하며 추가 `await`나 중간 Promise 체인을 만들지 않았다. 동기 launch 오류도 완료 Promise의 거절로 전달한다.
-- [클릭 승인](../../src/windows/toast-activation.ts#L59)과 [활성화 결과 처리](../../src/windows/toast-activation.ts#L71)는 클릭 채널이 소유한다. ID 검증과 거절 시 프레임 처리 종료, 승인 socket·결과 1회 처리, 사용자 콜백 오류의 독립적인 기록 경계는 유지했다.
-- helper timeout·stderr·진단 상한은 [프로세스 모듈](../../src/windows/toast-process.ts#L7)에, 클릭 pipe 수명·socket·callback 상한은 [활성화 모듈](../../src/windows/toast-activation.ts#L10)에 둔다. 값과 비교 규칙은 바꾸지 않았다. helper 완료는 `exit`가 아닌 stdout/stderr가 배출된 `close`에서 최종 판정한다.
+- facade의 [launchToast](../../src/windows/toast/index.ts#L58)는 전송 진단을 검증하고, [ToastProcessRunner.run](../../src/windows/toast/process.ts#L16)은 helper 입출력과 완료·취소를 소유한다. 반환된 `completion`은 기존 Promise 체인에 바로 연결하며 추가 `await`나 중간 Promise 체인을 만들지 않았다. 동기 launch 오류도 완료 Promise의 거절로 전달한다.
+- [클릭 승인](../../src/windows/toast/activation.ts#L59)과 [활성화 결과 처리](../../src/windows/toast/activation.ts#L71)는 클릭 채널이 소유한다. ID 검증과 거절 시 프레임 처리 종료, 승인 socket·결과 1회 처리, 사용자 콜백 오류의 독립적인 기록 경계는 유지했다.
+- helper timeout·stderr·진단 상한은 [프로세스 모듈](../../src/windows/toast/process.ts#L7)에, 클릭 pipe 수명·socket·callback 상한은 [활성화 모듈](../../src/windows/toast/activation.ts#L10)에 둔다. 값과 비교 규칙은 바꾸지 않았다. helper 완료는 `exit`가 아닌 stdout/stderr가 배출된 `close`에서 최종 판정한다.
 - 교체·stop은 이전 `show` 대기를 먼저 해소한 뒤 채널과 해당 helper를 정리한다. 전체 dispose는 추가로 등록을 포함한 살아 있는 모든 helper를 정리한다. 전송 완료 뒤 클릭 채널의 수명은 별도로 유지한다.
-- C#과 `native`·`flash`·`gate`는 변경하지 않았다. 기존 공개 타입은 [toast.ts 재export](../../src/windows/toast.ts#L6)로 유지하고, C# JSON·COM 계약·알고리즘·자료구조도 유지했다.
+- C#과 `native`·`flash`·`gate`는 변경하지 않았다. 기존 공개 타입은 [toast.ts 재export](../../src/windows/toast/index.ts#L6)로 유지하고, C# JSON·COM 계약·알고리즘·자료구조도 유지했다.
 
 ## 검증 결과와 범위
 
@@ -40,9 +48,9 @@
 
 | 적용 위치 | 역할과 상태 | 유지한 계약 |
 | --- | --- | --- |
-| [toast.ts](../../src/windows/toast.ts#L10) | registration·generation, 현재 알림 선택, 활성 채널과 실행별 취소 핸들의 조율 | 기존 공개 initialize/show/stop/dispose와 타입 export 경로 |
-| [toast-process.ts](../../src/windows/toast-process.ts#L12) | 실행별 cancel·completion·pid, stdout 파서, stderr·바이트·시간 상한, 전체 child 집합 | [프로세스 주입 타입](../../src/windows/toast-process.ts#L4), close 뒤 최종 실패 판정 |
-| [toast-activation.ts](../../src/windows/toast-activation.ts#L16) | pipe·socket·만료, clicked·authorizedSocket·completed | [ToastRequest](../../src/windows/toast-activation.ts#L6)의 canActivate/onClick과 [네이티브 활성화](../../tools/windows-toast/Program.cs#L121) |
+| [toast.ts](../../src/windows/toast/index.ts#L10) | registration·generation, 현재 알림 선택, 활성 채널과 실행별 취소 핸들의 조율 | 기존 공개 initialize/show/stop/dispose와 타입 export 경로 |
+| [toast-process.ts](../../src/windows/toast/process.ts#L12) | 실행별 cancel·completion·pid, stdout 파서, stderr·바이트·시간 상한, 전체 child 집합 | [프로세스 주입 타입](../../src/windows/toast/process.ts#L4), close 뒤 최종 실패 판정 |
+| [toast-activation.ts](../../src/windows/toast/activation.ts#L16) | pipe·socket·만료, clicked·authorizedSocket·completed | [ToastRequest](../../src/windows/toast/activation.ts#L6)의 canActivate/onClick과 [네이티브 활성화](../../tools/windows-toast/Program.cs#L121) |
 
 의존 방향은 facade → process/activation이다. 하위 모듈은 서로 또는 facade를 import하지 않는다. 클릭 채널은 현재 알림인지 확인하는 콜백을 받고, 만료를 facade에 통지하며 private 필드를 직접 수정하지 않는다. 실행 핸들의 완료 Promise는 `close` 또는 timeout에서만 결정하고 취소는 해당 helper에만 전달한다. 전송 완료 뒤 pipe는 최대 5분 유지된다. 상한과 프레임별 처리 비용·보관량은 기존과 동일하다.
 

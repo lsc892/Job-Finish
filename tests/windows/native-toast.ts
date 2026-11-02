@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { WindowsToast } from '../../src/windows/toast';
-import { toastImagePath } from '../../src/windows/toast-image';
+import { toastImagePath } from '../../src/windows/toast/image';
 import { Diagnostics } from '../../src/core/model';
 import { Win32, WindowIdentity } from '../../src/windows/native';
 async function main(): Promise<void> {

@@ -11,16 +11,14 @@ export class FlashController {
     if (!this.valid(binding) || this.focused() || this.native.foreground() === binding.hwnd) return;
     const deadline = timeoutMs === 0 ? Infinity : this.time.now() + timeoutMs;
     if (mode === 'manual') this.native.flash(binding.hwnd, true); else this.native.flashEx(binding.hwnd, 2 | 12);
-    const timer = this.time.every(this.handleFlashTick.bind(this, binding, mode, deadline), 500);
+    // 500ms마다 창 유효성·포커스·만료를 확인하고 수동 깜박임을 반복한다.
+    const timer = this.time.every(() => {
+      const shouldStop = !this.valid(binding) || this.focused()
+        || this.native.foreground() === binding.hwnd || this.time.now() >= deadline;
+      if (shouldStop) this.stop();
+      else if (mode === 'manual') this.native.flash(binding.hwnd, true);
+    }, 500);
     this.active = { binding, notificationId, timer };
-  }
-
-  // 500ms마다 창 유효성·포커스·만료를 확인하고 수동 깜박임을 반복한다.
-  private handleFlashTick(binding: WindowBinding, mode: 'manual' | 'system', deadline: number): void {
-    const shouldStop = !this.valid(binding) || this.focused()
-      || this.native.foreground() === binding.hwnd || this.time.now() >= deadline;
-    if (shouldStop) this.stop();
-    else if (mode === 'manual') this.native.flash(binding.hwnd, true);
   }
   stop(notificationId?: string): void {
     const active = this.active;

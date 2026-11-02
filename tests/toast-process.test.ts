@@ -5,7 +5,7 @@ import { EventEmitter } from 'node:events';
 import { ChildProcess } from 'node:child_process';
 import { PassThrough } from 'node:stream';
 import { Diagnostics } from '../src/core/model';
-import { ToastProcessRunner } from '../src/windows/toast-process';
+import { ToastProcessRunner } from '../src/windows/toast/process';
 
 function setup(closeOnKill = true) {
   const children: { child: EventEmitter; stdin: PassThrough; stdout: PassThrough; stderr: PassThrough; kills: number }[] = [];
