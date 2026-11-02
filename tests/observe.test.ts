@@ -4,6 +4,7 @@ import type { TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { ChildProcess, spawn } from 'node:child_process';
 import { resolve } from 'node:path';
+import { PassThrough, Writable } from 'node:stream';
 import { AgentStreamObserver } from '../src/runtime/observe';
 import { Diagnostics, Signal } from '../src/core/model';
 
@@ -40,6 +41,38 @@ test('Automatic observation attaches existing and future processes, leaves bytes
   existing.stdin.write(packet('disabled')); await pause(60); assert.equal(signals.length, 2); assert.equal(observer.snapshot().connections.length, 0);
   observer.start(); existing.stdin.write(packet('enabled')); await until(() => signals.length === 3);
   assert.equal(signals[2]!.turnId, 'enabled'); assert.ok(diagnostics.entries.length === 0);
+});
+
+test('Observation preserves the stdin write receiver, overload arguments and return value, and removes its listeners', t => {
+  const child = spawn(process.execPath, [agent, 'app-server'], { stdio: 'pipe', windowsHide: true });
+  cleanup(t, child);
+  const writes: { receiver: Writable; args: unknown[] }[] = [];
+  const originalWrite = function(this: Writable, ...args: unknown[]): boolean {
+    writes.push({ receiver: this, args });
+    return false;
+  } as Writable['write'];
+  child.stdin.write = originalWrite;
+  const listenersBefore = [child.stdout.listenerCount('data'), child.stdout.listenerCount('end'), child.listenerCount('close')];
+  const observer = new AgentStreamObserver('window', () => [{ provider: 'codex', path: resolve('tests/fixtures') }], () => {}, new Diagnostics());
+  t.after(() => observer.dispose());
+  observer.start();
+  assert.equal(observer.snapshot().connections.length, 1);
+
+  const receiver = new PassThrough();
+  const callback = () => {};
+  const text = '{"method":"unrelated"}\n';
+  const bytes = Buffer.from(text);
+  assert.equal(Reflect.apply(child.stdin.write, receiver, [text, 'utf8', callback]), false);
+  assert.equal(Reflect.apply(child.stdin.write, child.stdin, [bytes, callback]), false);
+  assert.deepEqual(writes, [
+    { receiver, args: [text, 'utf8', callback] },
+    { receiver: child.stdin, args: [bytes, callback] },
+  ]);
+
+  observer.stop();
+  observer.stop();
+  assert.equal(child.stdin.write, originalWrite);
+  assert.deepEqual([child.stdout.listenerCount('data'), child.stdout.listenerCount('end'), child.listenerCount('close')], listenersBefore);
 });
 
 test('Malformed and oversized observations detach without killing, consuming, or changing the original child', async t => {
