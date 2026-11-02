@@ -12,6 +12,6 @@
 - [providers.ts](providers.ts) — 기본 Claude·Codex 제공자를 등록하고 실행 환경 식별자를 조회한다.
 - [transport.ts](transport.ts)
   - `RpcError`: RPC 응답의 오류 코드와 메시지를 전달한다.
-  - `JsonLines`: 크기가 제한된 JSON Lines 메시지를 분리하고 RPC 형식을 검증한다.
+  - `JsonLines`: JSON Lines 분리·UTF-8/JSON 해석·식별자/요청/응답 검증·버퍼 확장을 역할별 메소드로 처리한다.
   - `EventQueue`: 초기화 전 RPC 이벤트를 용량 상한 안에서 보관·전달한다.
-  - `StdioRpc`: 관리하는 자식 프로세스와 요청·응답·알림·종료를 처리한다.
+  - `StdioRpc`: 프로세스 이벤트 수신·요청 등록/만료·전송·응답 매칭/완료·대기 요청 취소·정상/강제 종료를 역할별 메소드로 처리한다.

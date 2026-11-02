@@ -1,7 +1,7 @@
 // UTF-8 JSONL 프레임·RPC 봉투·초기 이벤트 큐와 stdio 요청 수명을 검증한다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { EventQueue, JsonLines, RpcMessage, StdioRpc } from '../src/runtime/transport';
+import { EventQueue, JsonLines, RpcError, RpcMessage, StdioRpc } from '../src/runtime/transport';
 import { LIMITS } from '../src/core/model';
 
 test('Every UTF-8 byte/JSON boundary and multiple frames decode identically', () => {
@@ -36,4 +36,70 @@ test('Real stdio RPC matches responses and rejects pending requests on EOF', asy
   rpc.start(process.execPath, ['-e', "process.stdin.once('data', chunk => { const m=JSON.parse(chunk); process.stdout.write(JSON.stringify({id:m.id,result:'ok'})+'\\n'); process.exitCode=0; process.stdin.destroy(); })"], process.cwd());
   assert.equal(await rpc.request('initialize', {}), 'ok');
   await new Promise(resolve => setTimeout(resolve, 150)); assert.match(disconnected, /EOF|exited/); rpc.dispose();
+});
+
+test('RPC matches out-of-order responses, preserves false results and reports unknown responses', async t => {
+  const messages: RpcMessage[] = [];
+  const diagnostics: string[] = [];
+  const rpc = new StdioRpc(message => messages.push(message), () => {}, message => diagnostics.push(message));
+  t.after(() => rpc.dispose());
+  const child = `
+    const requests = [];
+    const send = message => process.stdout.write(JSON.stringify(message) + '\\n');
+    require('node:readline').createInterface({ input: process.stdin }).on('line', line => {
+      requests.push(JSON.parse(line));
+      if (requests.length !== 2) return;
+      send({ id: 'unknown', result: null });
+      send({ method: 'progress', params: { value: 1 } });
+      send({ id: requests[1].id, result: false });
+      send({ id: requests[0].id, error: { code: -32000, message: 'Controlled RPC error' } });
+    });
+  `;
+  rpc.start(process.execPath, ['-e', child], process.cwd());
+  const failure = assert.rejects(rpc.request('first', {}), error =>
+    error instanceof RpcError && error.code === -32000 && error.message === 'Controlled RPC error');
+  assert.equal(await rpc.request('second', {}), false);
+  await failure;
+  assert.deepEqual(messages, [{ method: 'progress', params: { value: 1 } }]);
+  assert.deepEqual(diagnostics, ['Response to unknown RPC request']);
+  assert.equal(rpc.connected, true);
+});
+
+test('A timed-out RPC rejects its own request specifically and closes other pending requests once', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const disconnects: Error[] = [];
+  const rpc = new StdioRpc(() => {}, error => disconnects.push(error), () => {});
+  t.after(() => rpc.dispose());
+  rpc.start(process.execPath, ['-e', 'process.stdin.resume()'], process.cwd());
+  const first = rpc.request('first', {});
+  t.mock.timers.tick(10_000);
+  const second = rpc.request('second', {});
+  const outcomes = Promise.allSettled([first, second]);
+  t.mock.timers.tick(19_999);
+  assert.equal(rpc.connected, true);
+  assert.equal(disconnects.length, 0);
+  t.mock.timers.tick(1);
+  const results = await outcomes;
+  assert.deepEqual(results.map(result => result.status === 'rejected' ? result.reason.message : 'resolved'),
+    ['RPC timeout: first; outcome unknown', 'Connection closed; outcome unknown']);
+  assert.equal(disconnects.length, 1);
+  assert.equal(disconnects[0]!.message, 'RPC timeout: first; outcome unknown');
+  assert.equal(rpc.connected, false);
+  t.mock.timers.tick(30_000);
+  assert.equal(disconnects.length, 1);
+});
+
+test('RPC pending capacity rejects only the excess request and disposal settles every admitted request', async t => {
+  const rpc = new StdioRpc(() => {}, () => {}, () => {});
+  t.after(() => rpc.dispose());
+  rpc.start(process.execPath, ['-e', 'process.stdin.resume()'], process.cwd());
+  const pending = Array.from({ length: LIMITS.requests }, () => rpc.request('held', {}));
+  const outcomes = Promise.allSettled(pending);
+  await assert.rejects(rpc.request('excess', {}), /RPC pending request limit exceeded/);
+  assert.equal(rpc.connected, true);
+  rpc.dispose();
+  const results = await outcomes;
+  assert.equal(results.length, LIMITS.requests);
+  assert.ok(results.every(result => result.status === 'rejected' && result.reason.message === 'Connection closed; outcome unknown'));
+  await assert.rejects(rpc.request('after-dispose', {}), /Connection closed/);
 });
