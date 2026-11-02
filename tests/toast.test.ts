@@ -7,6 +7,7 @@ import { ChildProcess } from 'node:child_process';
 import { connect, Socket } from 'node:net';
 import { PassThrough } from 'node:stream';
 import { WindowsToast, ToastProcessPorts } from '../src/windows/toast';
+import { ToastActivation } from '../src/windows/toast-activation';
 import { Diagnostics } from '../src/core/model';
 import { notificationTitle } from '../src/core/notifications';
 import { AgentEventRouter } from '../src/runtime/event-router';
@@ -194,6 +195,38 @@ test('Focus and cancellation are rechecked after asynchronous registration', { s
     if (action === 'focus') allowed = false;
     else if (action === 'stop') f.toast.stop(); else f.toast.dispose();
     f.releaseRegistration(); await completion; assert.equal(f.launched.length, 0);
+  }
+});
+
+test('A late click-channel ready callback rechecks policy and cannot disturb a replacement toast', { skip: process.platform !== 'win32' }, async t => {
+  for (const action of ['focus', 'stop', 'dispose', 'replace'] as const) {
+    const f = setup();
+    t.after(() => f.toast.dispose());
+    let allowed = true;
+    let ready: (() => void) | undefined;
+    const listen = ToastActivation.prototype.listen;
+    const heldListen = t.mock.method(ToastActivation.prototype, 'listen', function (
+      this: ToastActivation, onReady: () => void, onFailure: (error: Error) => void
+    ) {
+      listen.call(this, () => { ready = onReady; }, onFailure);
+    });
+    const pending = f.toast.show(f.request(`waiting-${action}`), () => allowed);
+    await until(() => ready !== undefined);
+    heldListen.mock.restore();
+
+    if (action === 'focus') allowed = false;
+    else if (action === 'replace') await f.toast.show(f.request('replacement'));
+    else f.toast[action]();
+    ready!();
+    await pending;
+
+    assert.equal(f.launched.length, action === 'replace' ? 1 : 0);
+    if (action === 'replace') {
+      assert.equal(f.launched[0]!.killed, false);
+      const socket = await client(f.launched[0]!.payload.pipe);
+      t.after(() => socket.destroy());
+      assert.equal(await authorize(socket, 'replacement'), true);
+    }
   }
 });
 

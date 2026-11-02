@@ -68,6 +68,55 @@ test('Malformed or oversized diagnostics cancel their helper and preserve the ca
   }
 });
 
+test('Concurrent helpers keep partial diagnostics and failures isolated', async t => {
+  const f = setup();
+  t.after(() => f.runner.dispose());
+  const firstEvents: Record<string, unknown>[] = [];
+  const secondEvents: Record<string, unknown>[] = [];
+  const first = f.runner.run(['--show'], { notificationId: 'first' }, event => firstEvents.push(event));
+  const second = f.runner.run(['--show'], { notificationId: 'second' }, event => secondEvents.push(event));
+  const firstChild = f.children[0]!;
+  const secondChild = f.children[1]!;
+  const cause = new Error('first helper input failed');
+  const firstFailure = assert.rejects(first.completion, error => error === cause);
+
+  firstChild.stdout.write('{"event":"first');
+  secondChild.stdout.write('{"event":"second');
+  firstChild.stdout.write('"}\n');
+  firstChild.stdin.emit('error', cause);
+  secondChild.stdout.write('"}\n');
+  secondChild.child.emit('close', 0, null);
+  await Promise.all([firstFailure, second.completion]);
+
+  assert.deepEqual(firstEvents, [{ event: 'first' }]);
+  assert.deepEqual(secondEvents, [{ event: 'second' }]);
+  assert.deepEqual(f.children.map(child => child.kills), [1, 0]);
+});
+
+test('A diagnostic consumer failure stops the current batch and is preserved until stream close', async t => {
+  const f = setup(false);
+  t.after(() => f.runner.dispose());
+  const cause = new Error('diagnostic consumer failed');
+  const events: Record<string, unknown>[] = [];
+  const run = f.runner.run(['--register'], undefined, event => {
+    events.push(event);
+    throw cause;
+  });
+  let completed = false;
+  const failure = assert.rejects(run.completion, error => error === cause).then(() => { completed = true; });
+  const child = f.children[0]!;
+
+  child.stderr.write('less specific helper error');
+  child.stdout.write('{"event":"first"}\n{"event":"second"}\n');
+  await Promise.resolve();
+  assert.deepEqual(events, [{ event: 'first' }]);
+  assert.equal(child.kills, 1);
+  assert.equal(completed, false, 'a diagnostic failure still waits for drained streams');
+
+  child.child.emit('close', 0, null);
+  await failure;
+});
+
 test('A helper timeout rejects at 15 seconds even when cancellation never closes its streams', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const f = setup(false); t.after(() => f.runner.dispose());

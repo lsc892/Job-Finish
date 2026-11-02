@@ -47,3 +47,17 @@
 의존 방향은 facade → process/activation이다. 하위 모듈은 서로 또는 facade를 import하지 않는다. 클릭 채널은 현재 알림인지 확인하는 콜백을 받고, 만료를 facade에 통지하며 private 필드를 직접 수정하지 않는다. 실행 핸들의 완료 Promise는 `close` 또는 timeout에서만 결정하고 취소는 해당 helper에만 전달한다. 전송 완료 뒤 pipe는 최대 5분 유지된다. 상한과 프레임별 처리 비용·보관량은 기존과 동일하다.
 
 호출부는 기존 `WindowsToast`와 공개 타입 경로를 그대로 사용하므로 변경하지 않았다. 검증 결과와 미실행 범위는 위에 기록했다. 변경 전후 배치는 [통합 검토안](../readability-refactor.md#변경-전후-배치)에 연결한다.
+
+## 변경 일지
+
+### 2026-11-02 — 사용자
+
+<a id="toast-readability-2026-11-02"></a>
+
+#### Windows 알림·토스트의 이벤트 처리와 종료 흐름 정리
+
+- **의사결정**: 두 파일의 공개 API와 자원 소유권을 유지하며 내부 처리 단계를 구분한다. Codex는 `show()`에 요청 검증·이전 알림 취소·등록 대기·전송 시작 순서를 남기고, 클릭 채널 준비와 전송 대기는 `waitForDelivery()`로 분리했다. 현재 알림은 `ActiveToast`로 명명하고 대기 해소 콜백은 `finishDelivery`, 관찰 완료 상태는 `observationComplete`, 프로세스 수신 상태는 `stdoutBuffer`·`diagnosticBytes`로 구체화했다.
+- **근거**: 진입점에 검증·자원 생성·준비 콜백이 함께 있었고 `cancel`이 Promise 대기만 해소한다는 의미가 helper 취소와 섞여 있었다. 프로세스 종료의 기존 오류·stderr·종료 코드·미완성 진단 우선순위도 긴 한 식에 압축되어 있었다. 새 모듈이나 추상화 대신 같은 파일에서 단계와 상태를 드러낸다.
+- **결과**: 프레임 추출과 JSON 객체 검증을 구분하고, 종료 판정은 저장된 오류 → 비정상 종료/미완성 진단 → 성공 순서의 조기 반환으로 정리했다. 교체·중지는 기존대로 `show()` 대기를 먼저 해소하고 채널·helper를 정리하며, 등록 후와 채널 준비 후의 세대·허용 정책 재검사도 유지한다. 기존 공개 타입·네이티브 payload/진단·15초 제한·출력 상한·등록 공유/재시도·전송 뒤 클릭 채널 유지 계약은 바꾸지 않았다. 변경 전 관련 테스트 26개가 통과했고, 진단 수신 콜백 실패의 프레임 처리 중단·원인 보존·`close` 대기와 늦은 채널 준비의 포커스 변경·stop·dispose·새 알림 보호를 검사하는 회귀 테스트 2개를 보강했다. 최종 `npm run typecheck`, `npm exec -- tsx --test tests/toast-process.test.ts tests/toast.test.ts tests/toast-activation.test.ts`의 28개 테스트, `git diff --check`가 통과했다. 제어된 helper와 실제 Windows named pipe로 검사했으며 실제 네이티브 등록·배너 표시·사용자 클릭, 확장 빌드·설치는 실행하지 않았다.
+
+토스트 등록·전송·클릭 pipe와 helper의 이벤트 등록부도 이름 있는 처리기를 연결하도록 정리했다. 소켓별 수신 버퍼와 helper별 진단·오류 상태는 각각의 문맥에 보관하며, 동시 helper의 부분 프레임과 실패가 서로 영향을 주지 않는 회귀 테스트를 포함한다. `Notifications`의 클릭·표시 정책, `CodeWindow`의 포커스 변경, `FlashController`의 반복 타이머도 같은 방식으로 구분했다. 최종 통합 검증에서 타입 검사와 전체 테스트 193개가 통과했다.

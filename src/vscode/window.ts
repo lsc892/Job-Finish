@@ -32,14 +32,16 @@ export class CodeWindow {
   stopFlash(id?: string): void { this.flash?.stop(id); }
 
   watchFocus(): vscode.Disposable {
-    return vscode.window.onDidChangeWindowState(state => {
-      this.diagnostics.trace('window.focus', { windowInstanceId: this.windowInstanceId, focused: state.focused, foreground: this.native?.foreground().toString() });
-      this.identity?.changed();
-      if (state.focused) {
-        this.stopFlash();
-        void this.observe()?.catch(error => this.diagnostics.add(error));
-      }
-    });
+    return vscode.window.onDidChangeWindowState(this.handleWindowStateChanged, this);
+  }
+
+  private handleWindowStateChanged(state: vscode.WindowState): void {
+    this.diagnostics.trace('window.focus', { windowInstanceId: this.windowInstanceId, focused: state.focused, foreground: this.native?.foreground().toString() });
+    this.identity?.changed();
+    if (state.focused) {
+      this.stopFlash();
+      void this.observe()?.catch(this.diagnostics.add.bind(this.diagnostics));
+    }
   }
 
   async bind(): Promise<void> {
