@@ -103,3 +103,22 @@ test('RPC pending capacity rejects only the excess request and disposal settles 
   assert.ok(results.every(result => result.status === 'rejected' && result.reason.message === 'Connection closed; outcome unknown'));
   await assert.rejects(rpc.request('after-dispose', {}), /Connection closed/);
 });
+
+test('RPC serialization failure closes the connection and settles every pending request once', async t => {
+  const disconnects: Error[] = [];
+  const rpc = new StdioRpc(() => {}, error => disconnects.push(error), () => {});
+  t.after(() => rpc.dispose());
+  rpc.start(process.execPath, ['-e', 'process.stdin.resume()'], process.cwd());
+  const held = rpc.request('held', {});
+  const circular: Record<string, unknown> = {};
+  circular.self = circular;
+  const results = await Promise.allSettled([held, rpc.request('invalid', circular)]);
+  assert.deepEqual(results.map(result => result.status === 'rejected' ? result.reason.message : 'resolved'),
+    ['Connection closed; outcome unknown', 'Connection closed; outcome unknown']);
+  assert.equal(rpc.connected, false);
+  assert.equal(disconnects.length, 1);
+  assert.ok(disconnects[0] instanceof TypeError);
+  rpc.dispose();
+  await assert.rejects(rpc.request('after-failure', {}), /Connection closed/);
+  assert.equal(disconnects.length, 1);
+});

@@ -10,8 +10,4 @@
 - [message.ts](message.ts) — 관찰 메시지의 객체·식별자를 검증하고 중복 추적 크기를 제한한다.
 - [observe.ts](observe.ts) — `Frames`는 관찰 프레임을 분리하고 `AgentStreamObserver`는 Extension Host 자식 프로세스를 관찰해 실행 신호를 전달한다.
 - [providers.ts](providers.ts) — 기본 Claude·Codex 제공자를 등록하고 실행 환경 식별자를 조회한다.
-- [transport.ts](transport.ts)
-  - `RpcError`: RPC 응답의 오류 코드와 메시지를 전달한다.
-  - `JsonLines`: JSON Lines 분리·UTF-8/JSON 해석·식별자/요청/응답 검증·버퍼 확장을 역할별 메소드로 처리한다.
-  - `EventQueue`: 초기화 전 RPC 이벤트를 용량 상한 안에서 보관·전달한다.
-  - `StdioRpc`: 프로세스 이벤트 수신·요청 등록/만료·전송·응답 매칭/완료·대기 요청 취소·정상/강제 종료를 역할별 메소드로 처리한다.
+- [transport.ts](transport.ts) — 기존 JSONL·RPC 공개 import 경로를 유지한다. 구현은 [transport](transport/README.md)의 메시지 형식·JSONL 해석·초기 이벤트 큐·대기 요청·stdio 통신 모듈로 나눈다.
