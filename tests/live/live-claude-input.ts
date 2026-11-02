@@ -31,7 +31,16 @@ class ClaudeInputProbe {
     this.lease = owner.claim(binding);
     this.session = new Session(binding, () => this.lease.valid(), state => this.lease.save(state),
       signal => this.signals.push(signal), this.diagnostics);
-    this.execution = this.createExecution(root, createQuery);
+    this.execution = new ClaudeExecution({
+      cwd: root, maxTurns: this.scenario === 'turn-limit' ? 1 : 4, session: this.session, resume: false,
+      onEvent: message => {
+        if (message.type === 'result' || message.type === 'rate_limit_event') this.events.push(message);
+      },
+      createQuery: args => createQuery({ ...args, options: {
+        ...args.options, settingSources: [], tools: [this.isQuestion ? 'AskUserQuestion' : 'Write'],
+        canUseTool: this.recordRequests(args.options!.canUseTool!),
+      } }),
+    });
   }
 
   private get isQuestion(): boolean { return this.scenario === 'question' || this.scenario === 'cancel'; }
@@ -40,30 +49,23 @@ class ClaudeInputProbe {
     try {
       await this.execution.run(this.prompt());
       await this.waitForCompletion();
-      this.verifyCompletion();
-      this.verifyWrittenFile();
-      this.verifyTurnLimit();
-      return this.successReport();
+      assert.equal(this.handled, true, 'Actual SDK control request must be observed');
+      const expected = this.scenario === 'cancel' ? 'cancelled' : this.scenario === 'turn-limit' ? 'error' : 'completed';
+      assert.equal(this.signals.at(-1)!.status, expected);
+      assert.equal(this.session.requests.size, 0);
+      if (!this.isQuestion) assert.equal(readFileSync(this.target, 'utf8'), 'JOB_FINISH_APPROVAL_OK');
+      if (this.scenario === 'turn-limit') assert.ok(this.events.some(event => 'subtype' in event && event.subtype === 'error_max_turns'));
+      console.log(JSON.stringify({ scenario: this.scenario, passed: true, status: this.signals.at(-1)!.status, inputRequests: this.requests.length }));
+      return { scenario: this.scenario, passed: true, signals: this.signals, requests: this.requests, events: this.events };
     } catch (error) {
-      return this.failureReport(error);
+      console.error(`${this.scenario}: ${error}`);
+      process.exitCode = 1;
+      return { scenario: this.scenario, passed: false, error: String(error), signals: this.signals,
+        requests: this.requests, events: this.events, diagnostics: this.diagnostics.entries };
     } finally {
-      this.dispose();
+      this.execution.dispose();
+      this.lease.release();
     }
-  }
-
-  private createExecution(root: string, createQuery: typeof query): ClaudeExecution {
-    return new ClaudeExecution({
-      cwd: root, maxTurns: this.scenario === 'turn-limit' ? 1 : 4, session: this.session, resume: false,
-      onEvent: message => this.recordEvent(message),
-      createQuery: args => createQuery({ ...args, options: {
-        ...args.options, settingSources: [], tools: [this.isQuestion ? 'AskUserQuestion' : 'Write'],
-        canUseTool: this.recordRequests(args.options!.canUseTool!),
-      } }),
-    });
-  }
-
-  private recordEvent(message: SDKMessage): void {
-    if (message.type === 'result' || message.type === 'rate_limit_event') this.events.push(message);
   }
 
   private recordRequests(canUseTool: CanUseTool): CanUseTool {
@@ -95,60 +97,24 @@ class ClaudeInputProbe {
   }
 
   private async handleRequest(request: InputRequest): Promise<void> {
+    // 취소는 SDK 확인을 기다리고 질문·쓰기 요청은 도구와 입력을 검증한 뒤 응답한다.
     if (this.scenario === 'cancel') {
       await this.execution.cancel();
       return;
     }
-    if (this.isQuestion) this.answerQuestion(request);
-    else this.approveWrite(request);
-  }
-
-  private answerQuestion(request: InputRequest): void {
-    const { toolName, input } = request.payload as { toolName: string; input: Record<string, unknown> };
-    assert.equal(toolName, 'AskUserQuestion');
-    const questions = input.questions as { question: string }[];
-    const answers = Object.fromEntries(questions.map(question => [question.question, 'Blue']));
-    this.execution.respond(request.id, { behavior: 'allow', updatedInput: { ...input, answers } });
-  }
-
-  private approveWrite(request: InputRequest): void {
-    const { toolName, input } = request.payload as { toolName: string; input: Record<string, unknown> };
-    assert.equal(toolName, 'Write');
-    assert.equal(input.file_path, this.target);
-    assert.equal(input.content, 'JOB_FINISH_APPROVAL_OK');
-    this.execution.respond(request.id, { behavior: 'allow', updatedInput: input });
-  }
-
-  private verifyCompletion(): void {
-    assert.equal(this.handled, true, 'Actual SDK control request must be observed');
-    const expected = this.scenario === 'cancel' ? 'cancelled' : this.scenario === 'turn-limit' ? 'error' : 'completed';
-    assert.equal(this.signals.at(-1)!.status, expected);
-    assert.equal(this.session.requests.size, 0);
-  }
-
-  private verifyWrittenFile(): void {
-    if (!this.isQuestion) assert.equal(readFileSync(this.target, 'utf8'), 'JOB_FINISH_APPROVAL_OK');
-  }
-
-  private verifyTurnLimit(): void {
-    if (this.scenario === 'turn-limit') assert.ok(this.events.some(event => 'subtype' in event && event.subtype === 'error_max_turns'));
-  }
-
-  private successReport(): unknown {
-    console.log(JSON.stringify({ scenario: this.scenario, passed: true, status: this.signals.at(-1)!.status, inputRequests: this.requests.length }));
-    return { scenario: this.scenario, passed: true, signals: this.signals, requests: this.requests, events: this.events };
-  }
-
-  private failureReport(error: unknown): unknown {
-    console.error(`${this.scenario}: ${error}`);
-    process.exitCode = 1;
-    return { scenario: this.scenario, passed: false, error: String(error), signals: this.signals,
-      requests: this.requests, events: this.events, diagnostics: this.diagnostics.entries };
-  }
-
-  private dispose(): void {
-    this.execution.dispose();
-    this.lease.release();
+    if (this.isQuestion) {
+      const { toolName, input } = request.payload as { toolName: string; input: Record<string, unknown> };
+      assert.equal(toolName, 'AskUserQuestion');
+      const questions = input.questions as { question: string }[];
+      const answers = Object.fromEntries(questions.map(question => [question.question, 'Blue']));
+      this.execution.respond(request.id, { behavior: 'allow', updatedInput: { ...input, answers } });
+    } else {
+      const { toolName, input } = request.payload as { toolName: string; input: Record<string, unknown> };
+      assert.equal(toolName, 'Write');
+      assert.equal(input.file_path, this.target);
+      assert.equal(input.content, 'JOB_FINISH_APPROVAL_OK');
+      this.execution.respond(request.id, { behavior: 'allow', updatedInput: input });
+    }
   }
 }
 

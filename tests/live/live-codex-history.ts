@@ -46,12 +46,18 @@ class CodexHistoryProbe {
   async run(): Promise<unknown> {
     try {
       await this.runtime.open(this.terminal.sessionId);
-      this.verifyCheckpoint();
-      if (this.source.report.scenario !== 'cancel') await this.verifyStoredResult();
-      await this.verifyReconnect();
-      return this.successReport();
+      assert.equal(this.runtime.session!.completed.get(this.terminal.turnId), this.terminal.status);
+      if (this.source.report.scenario !== 'cancel') {
+        assert.equal(await this.runtime.readResult(this.terminal.turnId), this.terminal.text);
+      }
+      await this.runtime.reconnect();
+      assert.equal(this.signals.length, 0);
+      const result = { scenario: this.source.report.scenario, passed: true, status: this.terminal.status, pagedHistory: true, modelCalls: 0 };
+      console.log(JSON.stringify(result));
+      return result;
     } finally {
-      this.dispose();
+      this.runtime.dispose();
+      this.lease?.release();
     }
   }
 
@@ -63,29 +69,6 @@ class CodexHistoryProbe {
     return new Session(binding, () => lease.valid(), state => lease.save(state), signal => this.signals.push(signal), this.diagnostics);
   }
 
-  private verifyCheckpoint(): void {
-    assert.equal(this.runtime.session!.completed.get(this.terminal.turnId), this.terminal.status);
-  }
-
-  private async verifyStoredResult(): Promise<void> {
-    assert.equal(await this.runtime.readResult(this.terminal.turnId), this.terminal.text);
-  }
-
-  private async verifyReconnect(): Promise<void> {
-    await this.runtime.reconnect();
-    assert.equal(this.signals.length, 0);
-  }
-
-  private successReport(): unknown {
-    const result = { scenario: this.source.report.scenario, passed: true, status: this.terminal.status, pagedHistory: true, modelCalls: 0 };
-    console.log(JSON.stringify(result));
-    return result;
-  }
-
-  private dispose(): void {
-    this.runtime.dispose();
-    this.lease?.release();
-  }
 }
 
 function saveResults(results: unknown[]): void {

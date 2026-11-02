@@ -38,7 +38,12 @@ class CodexInputProbe {
       cwd: root, executable: process.env.JOB_FINISH_LIVE_CODEX_EXECUTABLE,
       model: process.env.JOB_FINISH_LIVE_CODEX_MODEL, mode: this.isQuestion ? 'plan' : 'default',
       sandbox: 'read-only', permissionRequests: scenario === 'permissions', diagnostic: this.diagnostics,
-      onEvent: message => this.recordEvent(message),
+      onEvent: message => {
+        const method = message.method;
+        if (!method) return;
+        if (['turn/started', 'turn/completed', 'serverRequest/resolved', 'item/completed'].includes(method) ||
+          method.endsWith('requestApproval') || method.endsWith('requestUserInput')) this.events.push(message);
+      },
       createSession: (sessionId, connectionId) => this.createSession(sessionId, connectionId),
     });
   }
@@ -50,14 +55,27 @@ class CodexInputProbe {
       await this.execution.open();
       await this.execution.run(this.prompt());
       await this.waitForCompletion();
-      this.verifyCompletion();
-      if (this.scenario !== 'cancel') await this.verifyStoredResult();
-      await this.verifyReconnect();
-      return this.successReport();
+      assert.equal(this.handled, true, 'Must observe an actual input request');
+      assert.equal(this.signals.at(-1)!.status, this.scenario === 'cancel' ? 'cancelled' : 'completed');
+      assert.equal(this.execution.session!.requests.size, 0);
+      if (this.scenario !== 'cancel') {
+        const terminal = this.signals.at(-1)!;
+        assert.equal(await this.execution.readResult(terminal.turnId), terminal.text, 'Actual paged final result retrieval');
+      }
+      const count = this.signals.length;
+      await this.execution.reconnect();
+      assert.equal(this.signals.length, count, 'No replay after actual reconnect');
+      console.log(JSON.stringify({ scenario: this.scenario, passed: true, status: this.signals.at(-1)!.status }));
+      return { scenario: this.scenario, passed: true, signals: this.signals, events: this.events, replies: this.replies };
     } catch (error) {
-      return this.failureReport(error);
+      const reason = this.hasUsageLimit() ? 'Actual account usage limit reached; stopping further model probes' : error;
+      console.error(`${this.scenario}: ${reason}`);
+      process.exitCode = 1;
+      return { scenario: this.scenario, passed: false, error: String(error), signals: this.signals,
+        events: this.events, replies: this.replies, diagnostics: this.diagnostics.entries };
     } finally {
-      this.dispose();
+      this.execution.dispose();
+      this.lease?.release();
     }
   }
 
@@ -72,13 +90,6 @@ class CodexInputProbe {
     const lease = this.owner.claim(binding);
     this.lease = lease;
     return new Session(binding, () => lease.valid(), state => lease.save(state), signal => this.signals.push(signal), this.diagnostics);
-  }
-
-  private recordEvent(message: RpcMessage): void {
-    const method = message.method;
-    if (!method) return;
-    if (['turn/started', 'turn/completed', 'serverRequest/resolved', 'item/completed'].includes(method) ||
-      method.endsWith('requestApproval') || method.endsWith('requestUserInput')) this.events.push(message);
   }
 
   private prompt(): string {
@@ -106,68 +117,25 @@ class CodexInputProbe {
   }
 
   private async handleRequest(request: InputRequest): Promise<void> {
+    // 취소·질문·승인을 시나리오별로 검증하고 실제 전달한 응답만 기록한다.
     if (this.scenario === 'cancel') {
-      await this.interrupt();
+      await this.execution.cancel();
+      this.replies.push({ action: 'interrupt' });
       return;
     }
-    if (this.isQuestion) this.answerQuestion(request);
-    else this.denyApproval(request);
-  }
-
-  private async interrupt(): Promise<void> {
-    await this.execution.cancel();
-    this.replies.push({ action: 'interrupt' });
-  }
-
-  private answerQuestion(request: InputRequest): void {
-    assert.equal(request.kind, 'question');
-    const params = (request.payload as RpcMessage).params as ToolRequestUserInputParams;
-    const response = { answers: Object.fromEntries(params.questions.map(question => [question.id, { answers: ['Blue'] }])) };
-    this.execution.respond(request.id, response);
-    this.replies.push({ requestId: request.id, response });
-  }
-
-  private denyApproval(request: InputRequest): void {
-    const message = request.payload as RpcMessage;
-    assert.equal(message.method, this.scenario === 'permissions' ? 'item/permissions/requestApproval' : 'item/commandExecution/requestApproval');
-    const response = codexApprovalResponse(message, false);
-    this.execution.respond(request.id, response);
-    this.replies.push({ requestId: request.id, response });
-  }
-
-  private verifyCompletion(): void {
-    assert.equal(this.handled, true, 'Must observe an actual input request');
-    assert.equal(this.signals.at(-1)!.status, this.scenario === 'cancel' ? 'cancelled' : 'completed');
-    assert.equal(this.execution.session!.requests.size, 0);
-  }
-
-  private async verifyStoredResult(): Promise<void> {
-    const terminal = this.signals.at(-1)!;
-    assert.equal(await this.execution.readResult(terminal.turnId), terminal.text, 'Actual paged final result retrieval');
-  }
-
-  private async verifyReconnect(): Promise<void> {
-    const count = this.signals.length;
-    await this.execution.reconnect();
-    assert.equal(this.signals.length, count, 'No replay after actual reconnect');
-  }
-
-  private successReport(): CodexInputReport {
-    console.log(JSON.stringify({ scenario: this.scenario, passed: true, status: this.signals.at(-1)!.status }));
-    return { scenario: this.scenario, passed: true, signals: this.signals, events: this.events, replies: this.replies };
-  }
-
-  private failureReport(error: unknown): CodexInputReport {
-    const reason = this.hasUsageLimit() ? 'Actual account usage limit reached; stopping further model probes' : error;
-    console.error(`${this.scenario}: ${reason}`);
-    process.exitCode = 1;
-    return { scenario: this.scenario, passed: false, error: String(error), signals: this.signals,
-      events: this.events, replies: this.replies, diagnostics: this.diagnostics.entries };
-  }
-
-  private dispose(): void {
-    this.execution.dispose();
-    this.lease?.release();
+    if (this.isQuestion) {
+      assert.equal(request.kind, 'question');
+      const params = (request.payload as RpcMessage).params as ToolRequestUserInputParams;
+      const response = { answers: Object.fromEntries(params.questions.map(question => [question.id, { answers: ['Blue'] }])) };
+      this.execution.respond(request.id, response);
+      this.replies.push({ requestId: request.id, response });
+    } else {
+      const message = request.payload as RpcMessage;
+      assert.equal(message.method, this.scenario === 'permissions' ? 'item/permissions/requestApproval' : 'item/commandExecution/requestApproval');
+      const response = codexApprovalResponse(message, false);
+      this.execution.respond(request.id, response);
+      this.replies.push({ requestId: request.id, response });
+    }
   }
 }
 

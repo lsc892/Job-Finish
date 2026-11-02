@@ -12,8 +12,6 @@ import { Session } from '../../src/core/session';
 import { Lease, Ownership } from '../../src/core/ownership';
 import { runtimeId } from '../../src/runtime/providers';
 import type { AgentExecution } from '../../src/runtime/execution';
-import type { RpcMessage } from '../../src/runtime/transport';
-import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk' with { "resolution-mode": "import" };
 
 type LiveProvider = 'codex' | 'claude';
 interface LiveRuntime {
@@ -32,8 +30,36 @@ class LiveProbe {
 
   constructor(private readonly provider: LiveProvider, root: string, private readonly owner: Ownership) {
     const factories = {
-      codex: () => this.createCodexRuntime(root),
-      claude: () => this.createClaudeRuntime(root),
+      codex: () => {
+        const execution = new CodexExecution({
+          cwd: root, diagnostic: this.diagnostics,
+          executable: process.env.JOB_FINISH_LIVE_CODEX_EXECUTABLE,
+          model: process.env.JOB_FINISH_LIVE_CODEX_MODEL,
+          createSession: (sessionId, connectionId) => this.createSession(sessionId, connectionId),
+          onEvent: message => {
+            if (['turn/started', 'turn/completed', 'item/completed'].includes(message.method ?? '')) this.events.push(message);
+          },
+        });
+        return {
+          execution,
+          initialize: () => execution.open(),
+          verifyCompleted: async () => {
+            await execution.reconnect();
+            if (this.signals.length !== 1) throw new Error('Historical result replayed after reconnection');
+            console.log('Codex reconnect: no historical re-notification');
+          },
+        };
+      },
+      claude: () => {
+        const execution = new ClaudeExecution({
+          cwd: root, maxTurns: 2, resume: false,
+          session: this.createSession(randomUUID(), randomUUID()),
+          onEvent: message => {
+            if (message.type === 'result') this.events.push(message);
+          },
+        });
+        return { execution };
+      },
     };
     this.runtime = factories[provider]();
   }
@@ -43,34 +69,24 @@ class LiveProbe {
       await this.runtime.initialize?.();
       await this.runtime.execution.run(PROMPT);
       await this.waitForResult();
-      this.recordSnapshot(report);
-      this.logSummary();
-      await this.verifyCompletion();
+      report.push({ provider: this.provider, signals: this.signals, events: this.events,
+        diagnostics: this.diagnostics.entries, state: this.runtime.execution.session?.checkpoint() });
+      const latest = this.signals.at(-1);
+      console.log(JSON.stringify({ provider: this.provider, status: latest?.status ?? 'unknown',
+        text: latest?.text, diagnostic: this.diagnostics.entries.at(-1)?.message }));
+      if (this.signals.at(-1)?.status !== 'completed') {
+        process.exitCode = 1;
+        return;
+      }
+      await this.runtime.verifyCompleted?.();
     } catch (error) {
-      this.recordFailure(report, error);
+      report.push({ provider: this.provider, error: String(error), diagnostics: this.diagnostics.entries });
+      console.log(`${this.provider}: ${error}`);
+      process.exitCode = 1;
     } finally {
-      this.dispose();
+      this.runtime.execution.dispose();
+      this.lease?.release();
     }
-  }
-
-  private createCodexRuntime(root: string): LiveRuntime {
-    const execution = new CodexExecution({
-      cwd: root, diagnostic: this.diagnostics,
-      executable: process.env.JOB_FINISH_LIVE_CODEX_EXECUTABLE,
-      model: process.env.JOB_FINISH_LIVE_CODEX_MODEL,
-      createSession: (sessionId, connectionId) => this.createSession(sessionId, connectionId),
-      onEvent: message => this.recordCodexEvent(message),
-    });
-    return { execution, initialize: () => execution.open(), verifyCompleted: () => this.verifyCodexReconnect(execution) };
-  }
-
-  private createClaudeRuntime(root: string): LiveRuntime {
-    const execution = new ClaudeExecution({
-      cwd: root, maxTurns: 2, resume: false,
-      session: this.createSession(randomUUID(), randomUUID()),
-      onEvent: message => this.recordClaudeEvent(message),
-    });
-    return { execution };
   }
 
   private createSession(sessionId: string, connectionId: string): Session {
@@ -81,65 +97,14 @@ class LiveProbe {
     return new Session(binding, () => lease.valid(), state => lease.save(state), signal => this.signals.push(signal), this.diagnostics);
   }
 
-  private recordCodexEvent(message: RpcMessage): void {
-    if (['turn/started', 'turn/completed', 'item/completed'].includes(message.method ?? '')) this.events.push(message);
-  }
-
-  private recordClaudeEvent(message: SDKMessage): void {
-    if (message.type === 'result') this.events.push(message);
-  }
-
-  private hasResult(): boolean {
-    return this.signals.some(signal => signal.status !== 'waitingForInput');
-  }
-
-  private isExecutionUnknown(): boolean {
-    const turns = this.runtime.execution.session?.turns;
-    return !!turns?.size && [...turns.values()].every(turn => turn.status === 'unknown');
-  }
-
   private async waitForResult(): Promise<void> {
+    // 최대 90초 동안 종료 결과를 기다리되 모든 턴이 unknown이면 즉시 검증으로 넘어간다.
     const deadline = Date.now() + 90_000;
-    while (!this.hasResult() && Date.now() < deadline) {
-      if (this.isExecutionUnknown()) return;
+    while (!this.signals.some(signal => signal.status !== 'waitingForInput') && Date.now() < deadline) {
+      const turns = this.runtime.execution.session?.turns;
+      if (turns?.size && [...turns.values()].every(turn => turn.status === 'unknown')) return;
       await delay(250);
     }
-  }
-
-  private recordSnapshot(report: unknown[]): void {
-    report.push({ provider: this.provider, signals: this.signals, events: this.events,
-      diagnostics: this.diagnostics.entries, state: this.runtime.execution.session?.checkpoint() });
-  }
-
-  private logSummary(): void {
-    const latest = this.signals.at(-1);
-    console.log(JSON.stringify({ provider: this.provider, status: latest?.status ?? 'unknown',
-      text: latest?.text, diagnostic: this.diagnostics.entries.at(-1)?.message }));
-  }
-
-  private async verifyCompletion(): Promise<void> {
-    if (this.signals.at(-1)?.status !== 'completed') {
-      process.exitCode = 1;
-      return;
-    }
-    await this.runtime.verifyCompleted?.();
-  }
-
-  private async verifyCodexReconnect(execution: CodexExecution): Promise<void> {
-    await execution.reconnect();
-    if (this.signals.length !== 1) throw new Error('Historical result replayed after reconnection');
-    console.log('Codex reconnect: no historical re-notification');
-  }
-
-  private recordFailure(report: unknown[], error: unknown): void {
-    report.push({ provider: this.provider, error: String(error), diagnostics: this.diagnostics.entries });
-    console.log(`${this.provider}: ${error}`);
-    process.exitCode = 1;
-  }
-
-  private dispose(): void {
-    this.runtime.execution.dispose();
-    this.lease?.release();
   }
 }
 
