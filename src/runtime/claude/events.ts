@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import type { SDKResultMessage } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
 import { LIMITS, sessionTitleText } from '../../core/model';
+import type { InputRequest } from '../../core/model';
 import type { Session } from '../../core/session';
 import type { AgentEvents, EventContext } from '../agent-provider';
 import { acceptClaudeResult } from './adapter';
@@ -16,22 +17,9 @@ export class ClaudeEvents implements AgentEvents {
   constructor(private context: EventContext) {}
   outgoing(message: Record<string, unknown>): void {
     switch (message.type) {
-      case 'user': {
-        // Retain identifiers and a bounded title preview, not full prompts or tool contents.
-        if (this.queuedInputs.length >= LIMITS.turns) throw new Error('Observed Claude input queue exceeds limit');
-        const id = identifier(message.uuid);
-        const content = record(message.message)?.content;
-        const prompt = typeof content === 'string' ? content : Array.isArray(content)
-          ? content.map(record).filter(item => item?.type === 'text' && typeof item.text === 'string').map(item => item!.text).join(' ') : undefined;
-        this.queuedInputs.push({ id: id ?? randomUUID(), supplied: !!id, title: sessionTitleText(prompt) });
-        const sessionId = identifier(message.session_id) ?? this.sessionId;
-        if (sessionId) {
-          const session = this.context.session(sessionId);
-          session?.setTitle(this.queuedInputs[0]!.title, this.context.connectionId, true);
-          session?.start(this.queuedInputs[0]!.id, this.context.connectionId);
-        }
+      case 'user':
+        this.acceptUserInput(message);
         return;
-      }
       case 'control_response': {
         if (!this.sessionId) return;
         const response = record(message.response);
@@ -50,15 +38,39 @@ export class ClaudeEvents implements AgentEvents {
       }
     }
   }
+
+  private acceptUserInput(message: Record<string, unknown>): void {
+    // Retain identifiers and a bounded title preview, not full prompts or tool contents.
+    if (this.queuedInputs.length >= LIMITS.turns) throw new Error('Observed Claude input queue exceeds limit');
+    const id = identifier(message.uuid);
+    const content = record(message.message)?.content;
+    const prompt = this.extractPromptText(content);
+    this.queuedInputs.push({ id: id ?? randomUUID(), supplied: !!id, title: sessionTitleText(prompt) });
+    const sessionId = identifier(message.session_id) ?? this.sessionId;
+    if (sessionId) this.startFirstQueuedInput(sessionId);
+  }
+
+  private extractPromptText(content: unknown): string | undefined {
+    if (typeof content === 'string') return content;
+    if (!Array.isArray(content)) return;
+    return content.map(record)
+      .filter(item => item?.type === 'text' && typeof item.text === 'string')
+      .map(item => item!.text).join(' ');
+  }
+
+  private startFirstQueuedInput(sessionId: string): void {
+    const session = this.context.session(sessionId);
+    session?.setTitle(this.queuedInputs[0]!.title, this.context.connectionId, true);
+    session?.start(this.queuedInputs[0]!.id, this.context.connectionId);
+  }
+
   incoming(message: Record<string, unknown>): void {
     const sessionId = identifier(message.session_id);
     if (sessionId) this.sessionId = sessionId;
     switch (message.type) {
       case 'system':
         if (message.subtype === 'init' && sessionId && this.queuedInputs.length) {
-          const session = this.context.session(sessionId);
-          session?.setTitle(this.queuedInputs[0]!.title, this.context.connectionId, true);
-          session?.start(this.queuedInputs[0]!.id, this.context.connectionId);
+          this.startFirstQueuedInput(sessionId);
         }
         return;
       case 'result':
@@ -68,7 +80,9 @@ export class ClaudeEvents implements AgentEvents {
         this.acceptToolRequest(message);
         return;
       case 'control_cancel_request':
-        if (this.sessionId && identifier(message.request_id)) this.context.existingSession(this.sessionId)?.resolve(message.request_id as string, this.context.connectionId);
+        if (this.sessionId && identifier(message.request_id)) {
+          this.context.existingSession(this.sessionId)?.resolve(message.request_id as string, this.context.connectionId);
+        }
         return;
       case 'control_response':
         this.acceptControlResponse(message);
@@ -76,15 +90,36 @@ export class ClaudeEvents implements AgentEvents {
     }
   }
 
+  // 결과를 검증해 실행에 연결하고 종료 반영 뒤 중복 기록과 입력 큐를 정리한다.
   private acceptResult(message: Record<string, unknown>, sessionId: string): void {
+    const resultId = this.validateResult(message);
+    if (this.receivedResults.has(resultId)) return;
+    const session = this.context.session(sessionId);
+    if (!session) return;
+    const binding = this.bindResultToTurn(session, message, resultId);
+    if (!binding) return;
+
+    acceptClaudeResult(session, binding.turnId, message as unknown as SDKResultMessage, this.context.connectionId);
+    this.recordAcceptedResult(resultId, binding.hasQueuedInput);
+  }
+
+  private validateResult(message: Record<string, unknown>): string {
     const resultId = identifier(message.uuid);
-    if (!resultId || typeof message.is_error !== 'boolean' || typeof message.subtype !== 'string') throw new Error('Malformed observed Claude result');
+    if (
+      !resultId
+      || typeof message.is_error !== 'boolean'
+      || typeof message.subtype !== 'string'
+    ) {
+      throw new Error('Malformed observed Claude result');
+    }
     const validBody = message.subtype === 'success'
       ? typeof message.result === 'string'
       : Array.isArray(message.errors) && message.errors.every(error => typeof error === 'string');
     if (!validBody) throw new Error('Malformed observed Claude result body');
-    if (this.receivedResults.has(resultId)) return;
-    const session = this.context.session(sessionId); if (!session) return;
+    return resultId;
+  }
+
+  private bindResultToTurn(session: Session, message: Record<string, unknown>, resultId: string): { turnId: string; hasQueuedInput: boolean } | undefined {
     const userMessageId = identifier(message.user_message_uuid);
     const queuedInput = this.queuedInputs[0];
     if (userMessageId && queuedInput?.supplied && queuedInput.id !== userMessageId) return;
@@ -93,10 +128,13 @@ export class ClaudeEvents implements AgentEvents {
     const previousId = queuedInput?.id ?? (session.turns.size === 1 ? session.turns.keys().next().value : undefined);
     this.transferTurn(session, previousId, turnId);
     session.start(turnId, this.context.connectionId);
-    acceptClaudeResult(session, turnId, message as unknown as SDKResultMessage, this.context.connectionId);
+    return { turnId, hasQueuedInput: !!queuedInput };
+  }
+
+  private recordAcceptedResult(resultId: string, hasQueuedInput: boolean): void {
     this.receivedResults.add(resultId);
     bound(this.receivedResults);
-    if (queuedInput) this.queuedInputs.shift();
+    if (hasQueuedInput) this.queuedInputs.shift();
   }
 
   private transferTurn(session: Session, previousId: string | undefined, turnId: string): void {
@@ -112,20 +150,44 @@ export class ClaudeEvents implements AgentEvents {
     session.body(turnId, previous.text, this.context.connectionId);
   }
 
+  // 도구 승인·질문 요청을 현재 실행의 입력 대기로 등록한다.
   private acceptToolRequest(message: Record<string, unknown>): void {
     const request = record(message.request);
     const id = identifier(message.request_id);
     if (!id || request?.subtype !== 'can_use_tool' || !this.sessionId) return;
-    const session = this.context.session(this.sessionId); if (!session) return;
+    const session = this.context.session(this.sessionId);
+    if (!session) return;
+    const turnId = this.startToolRequestTurn(session, id);
+    const inputRequest = this.createToolInputRequest(request, id, turnId);
+    session.waiting(inputRequest);
+  }
+
+  private startToolRequestTurn(session: Session, id: string): string {
     const turnId = this.queuedInputs[0]?.id ?? [...session.turns.keys()][0] ?? `input:${id}`;
     session.start(turnId, this.context.connectionId);
+    return turnId;
+  }
+
+  private createToolInputRequest(request: Record<string, unknown>, id: string, turnId: string): InputRequest {
     const question = request.tool_name === 'AskUserQuestion';
     const input = record(request.input);
-    const questions = Array.isArray(input?.questions)
+    const questionText = this.extractQuestionText(input);
+    return {
+      id,
+      turnId,
+      connectionId: this.context.connectionId,
+      kind: question ? 'question' : 'approval',
+      title: question
+        ? questionText || 'Claude needs an answer'
+        : `Claude: ${String(request.tool_name ?? 'tool')} approval`,
+      payload: null,
+    };
+  }
+
+  private extractQuestionText(input: Record<string, unknown> | undefined): string {
+    return Array.isArray(input?.questions)
       ? input.questions.map(question => record(question)?.question).filter(title => typeof title === 'string').join('\n')
       : '';
-    session.waiting({ id, turnId, connectionId: this.context.connectionId, kind: question ? 'question' : 'approval',
-      title: question ? questions || 'Claude needs an answer' : `Claude: ${String(request.tool_name ?? 'tool')} approval`, payload: null });
   }
 
   private acceptControlResponse(message: Record<string, unknown>): void {

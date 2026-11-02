@@ -60,6 +60,59 @@ test('Claude questions and acknowledged interrupt use the existing control strea
   assert.equal(f.signals[1]!.status, 'cancelled');
 });
 
+test('Claude tool requests describe approvals or questions and keep the turn active until its result', () => {
+  const cases = [
+    { request: { tool_name: 'Write', input: {} }, title: 'Claude: Write approval' },
+    { request: {}, title: 'Claude: tool approval' },
+    { request: { tool_name: 'AskUserQuestion', input: { questions: [
+      { question: '첫 질문' }, null, { question: 42 }, { question: '두 번째 질문' },
+    ] } }, title: '첫 질문\n두 번째 질문' },
+    { request: { tool_name: 'AskUserQuestion', input: { questions: [
+      { question: '' }, { question: ' 다음 질문 ' },
+    ] } }, title: '\n 다음 질문 ' },
+    { request: { tool_name: 'AskUserQuestion', input: { questions: [] } }, title: 'Claude needs an answer' },
+  ];
+
+  for (const scenario of cases) {
+    const f = setup('claude');
+    f.router.outgoing({ type: 'user', uuid: 'request', session_id: 'session' });
+    f.router.incoming({ type: 'system', subtype: 'init', session_id: 'session' });
+    f.router.incoming({ type: 'control_request', request_id: 'pending',
+      request: { subtype: 'can_use_tool', ...scenario.request } });
+    assert.equal(f.signals.length, 1);
+    assert.equal(f.signals[0]!.status, 'waitingForInput');
+    assert.equal(f.signals[0]!.text, scenario.title);
+    assert.equal(f.signals[0]!.turnId, 'request');
+    assert.equal(f.router.snapshot().activeTurns, 1);
+
+    f.router.incoming(result('finished'));
+    assert.deepEqual(f.signals.map(signal => signal.status), ['waitingForInput', 'completed']);
+    assert.equal(f.router.snapshot().activeTurns, 0);
+    f.router.dispose();
+  }
+});
+
+test('A rejected Claude result does not consume queued input or suppress a corrected result with the same ID', () => {
+  const f = setup('claude');
+  f.router.outgoing({ type: 'user', uuid: 'first', session_id: 'session' });
+  f.router.outgoing({ type: 'user', uuid: 'second', session_id: 'session' });
+
+  assert.throws(() => f.router.incoming({ ...result('first-result'), user_message_uuid: 42 }), /not bound to this execution/);
+  assert.equal(f.signals.length, 0);
+  assert.equal(f.router.snapshot().activeTurns, 1);
+
+  f.router.incoming(result('first-result', 'first'));
+  assert.equal(f.signals[0]!.turnId, 'first');
+  f.router.incoming({ type: 'control_request', request_id: 'next-approval',
+    request: { subtype: 'can_use_tool', tool_name: 'Write' } });
+  assert.equal(f.signals[1]!.turnId, 'second');
+  assert.equal(f.signals[1]!.status, 'waitingForInput');
+  f.router.incoming(result('second-result', 'second'));
+  assert.deepEqual(f.signals.map(signal => signal.status), ['completed', 'waitingForInput', 'completed']);
+  assert.equal(f.router.snapshot().activeTurns, 0);
+  f.router.dispose();
+});
+
 test('Observed errors stay errors, missing result text fails, and disposal stops all delivery', () => {
   for (const [provider, fixtureName] of [['codex', 'codex-api-error'], ['claude', 'claude-auth-error']] as const) {
     const f = setup(provider); for (const event of fixture(fixtureName).events) f.router.incoming(event);
