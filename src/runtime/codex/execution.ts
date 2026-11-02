@@ -32,9 +32,9 @@ export class CodexExecution extends AgentRuntime {
     super();
     this.connection = new CodexConnection(options, {
       message: this.handle.bind(this),
-      disconnected: this.handleDisconnect.bind(this),
+      disconnected: reason => this.session?.disconnected(reason),
       recover: this.recover.bind(this),
-      canRecover: this.hasSession.bind(this),
+      canRecover: () => !!this.session,
     });
   }
 
@@ -46,33 +46,25 @@ export class CodexExecution extends AgentRuntime {
         this.bindSession(sessionId, rpc);
         await this.resumeThread(rpc);
       } else {
-        const result = await this.startThread(rpc);
-        this.bindStartedThread(result, rpc);
+        const params: ThreadStartParams = {
+          cwd: this.options.cwd,
+          approvalPolicy: 'on-request',
+          approvalsReviewer: 'user',
+          sandbox: this.options.sandbox ?? 'workspace-write',
+          ...(this.options.permissionRequests ? { config: { 'features.request_permissions_tool': true } } : {}),
+          ...(this.options.model ? { model: this.options.model } : {}),
+        };
+        const result = await rpc.request<{ thread: Thread; model?: string }>('thread/start', params);
+        this.effectiveModel = result.model;
+        this.bindSession(codexId(result.thread?.id), this.connection.rpc!);
+        this.session!.setTitle(result.thread.name, rpc.connectionId);
+        this.session!.setTitle(result.thread.preview, rpc.connectionId, true);
       }
       this.connection.activate();
     } catch (error) {
       this.connection.close();
       throw error;
     }
-  }
-
-  private startThread(rpc: StdioRpc): Promise<{ thread: Thread; model?: string }> {
-    const params: ThreadStartParams = {
-      cwd: this.options.cwd,
-      approvalPolicy: 'on-request',
-      approvalsReviewer: 'user',
-      sandbox: this.options.sandbox ?? 'workspace-write',
-      ...(this.options.permissionRequests ? { config: { 'features.request_permissions_tool': true } } : {}),
-      ...(this.options.model ? { model: this.options.model } : {}),
-    };
-    return rpc.request('thread/start', params);
-  }
-
-  private bindStartedThread(result: { thread: Thread; model?: string }, rpc: StdioRpc): void {
-    this.effectiveModel = result.model;
-    this.bindSession(codexId(result.thread?.id), this.connection.rpc!);
-    this.session!.setTitle(result.thread.name, rpc.connectionId);
-    this.session!.setTitle(result.thread.preview, rpc.connectionId, true);
   }
 
   private bindSession(sessionId: string, rpc: StdioRpc): void {
@@ -109,51 +101,37 @@ export class CodexExecution extends AgentRuntime {
       this.session.setTitle(prompt, rpc.connectionId, true);
       // 응답보다 이벤트가 먼저 와도 추적할 수 있도록 전송 전에 시작 요청을 저장한다.
       this.session.beginStart(startRequestId, rpc.connectionId);
-      const params = this.turnStartParams(prompt, startRequestId, model);
+      const params: TurnStartParams = {
+        threadId: this.session.binding.sessionId,
+        clientUserMessageId: startRequestId,
+        input: [{ type: 'text', text: prompt, text_elements: [] }],
+        ...(this.options.mode ? {
+          collaborationMode: {
+            mode: this.options.mode,
+            settings: { model: model!, reasoning_effort: null, developer_instructions: null },
+          },
+        } : {}),
+      };
       const result = await rpc.request<{ turn: Turn }>('turn/start', params);
-      this.acceptStartResponse(result, rpc);
+      if (rpc !== this.connection.rpc || !rpc.connected || !this.session.valid(rpc.connectionId)) {
+        throw new Error('Start response connection changed; reconcile the saved request');
+      }
+      this.session.start(codexId(result.turn?.id), rpc.connectionId);
+      this.adapter!.reconcileTurn(result.turn, rpc.connectionId);
     } catch (error) {
-      this.handleStartFailure(error, rpc, startRequestId);
+      if (rpc !== this.connection.rpc || !this.session.valid(rpc.connectionId)) {
+        this.options.diagnostic.add(error);
+      } else if (error instanceof RpcError) {
+        // 시작 거절은 요청 ID로 기록하며 제공자가 보내지 않은 턴 ID를 만들지 않는다.
+        this.options.diagnostic.add(`turn/start rejected (${error.code}): ${error.message}`);
+        this.session.startRejected(startRequestId, error.message, rpc.connectionId);
+      } else {
+        this.session.disconnected(error);
+      }
       throw error;
     } finally {
       this.starting = false;
     }
-  }
-
-  private turnStartParams(prompt: string, startRequestId: string, model: string | undefined): TurnStartParams {
-    return {
-      threadId: this.session!.binding.sessionId,
-      clientUserMessageId: startRequestId,
-      input: [{ type: 'text', text: prompt, text_elements: [] }],
-      ...(this.options.mode ? {
-        collaborationMode: {
-          mode: this.options.mode,
-          settings: { model: model!, reasoning_effort: null, developer_instructions: null },
-        },
-      } : {}),
-    };
-  }
-
-  private acceptStartResponse(result: { turn: Turn }, rpc: StdioRpc): void {
-    if (rpc !== this.connection.rpc || !rpc.connected || !this.session!.valid(rpc.connectionId)) {
-      throw new Error('Start response connection changed; reconcile the saved request');
-    }
-    this.session!.start(codexId(result.turn?.id), rpc.connectionId);
-    this.adapter!.reconcileTurn(result.turn, rpc.connectionId);
-  }
-
-  private handleStartFailure(error: unknown, rpc: StdioRpc, startRequestId: string): void {
-    if (rpc !== this.connection.rpc || !this.session!.valid(rpc.connectionId)) {
-      this.options.diagnostic.add(error);
-      return;
-    }
-    if (error instanceof RpcError) {
-      // Request failure has its own identity, never invent a provider turn ID.
-      this.options.diagnostic.add(`turn/start rejected (${error.code}): ${error.message}`);
-      this.session!.startRejected(startRequestId, error.message, rpc.connectionId);
-      return;
-    }
-    this.session!.disconnected(error);
   }
 
   async cancel(): Promise<void> {
@@ -176,10 +154,6 @@ export class CodexExecution extends AgentRuntime {
   }
 
   reconnect(): Promise<void> { return this.connection.reconnect(); }
-
-  private hasSession(): boolean { return !!this.session; }
-
-  private handleDisconnect(reason: unknown): void { this.session?.disconnected(reason); }
 
   private async recover(): Promise<void> {
     if (!this.session || this.connection.disposed) throw new Error('No session to recover');
@@ -204,10 +178,6 @@ export class CodexExecution extends AgentRuntime {
     if (this.connection.replayAnswer(message)) return;
     if (message.method === 'turn/completed') this.reconciliation!.reconcileConflictingResult(message, this.connection.rpc!);
     this.adapter!.handle(message, this.connection.rpc!.connectionId, this.starting);
-    this.rejectUnsupportedRequest(message);
-  }
-
-  private rejectUnsupportedRequest(message: RpcMessage): void {
     if (message.id === undefined || !message.method) return;
     if (this.session!.requests.has(JSON.stringify(message.id))) return;
     this.connection.rpc!.reject(message.id, 'Unsupported or unbound Job-Finish request');

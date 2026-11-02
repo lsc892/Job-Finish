@@ -31,66 +31,29 @@ export class ClaudePermissions {
     if (this.pending.size >= LIMITS.requests || Buffer.byteLength(JSON.stringify(input)) > LIMITS.textBytes) {
       throw new Error('Claude input request exceeds bounded capacity');
     }
-    return this.waitForPermission(context, toolName, input, options);
-  }
-
-  private waitForPermission(
-    context: ClaudeTurnContext,
-    toolName: string,
-    input: Parameters<CanUseTool>[1],
-    options: ToolPermissionOptions,
-  ): Promise<PermissionResult> {
     const id = options.requestId || options.toolUseID;
     // SDK deduplicates in-flight control requests before invoking the callback.
     if (this.pending.has(id)) throw new Error('Duplicate concurrent SDK control callback');
-    return new Promise<PermissionResult>(
-      this.registerPermission.bind(this, id, context, toolName, input, options),
-    );
-  }
-
-  private registerPermission(
-    id: string,
-    context: ClaudeTurnContext,
-    toolName: string,
-    input: Parameters<CanUseTool>[1],
-    options: ToolPermissionOptions,
-    resolve: (answer: PermissionResult) => void,
-  ): void {
-    const abort = this.handleWithdrawal.bind(this, id);
-    function removeAbortListener(): void {
-      options.signal.removeEventListener('abort', abort);
-    }
-    this.pending.set(id, { context, resolve, cleanup: removeAbortListener });
-    options.signal.addEventListener('abort', abort, { once: true });
-    this.recordPermissionRequest(id, context, toolName, input, options, abort);
-  }
-
-  private recordPermissionRequest(
-    id: string,
-    context: ClaudeTurnContext,
-    toolName: string,
-    input: Parameters<CanUseTool>[1],
-    options: ToolPermissionOptions,
-    abort: () => void,
-  ): void {
-    try {
-      this.session.waiting({
-        id,
-        turnId: context.requestId,
-        connectionId: context.connectionId,
-        kind: toolName === 'AskUserQuestion' ? 'question' : 'approval',
-        title: options.title ?? `${toolName}: ${JSON.stringify(input)}`,
-        payload: { toolName, input },
-      });
-      if (options.signal.aborted || !this.session.requests.has(id)) abort();
-    } catch (error) {
-      this.session.diagnostics.add(error);
-      this.settle(id, { behavior: 'deny', message: 'Cannot record input request' });
-    }
-  }
-
-  private handleWithdrawal(id: string): void {
-    this.settle(id, { behavior: 'deny', message: 'Request withdrawn' });
+    // 대기 콜백과 abort 구독을 함께 등록하고 기록 실패·철회·응답에서 한 번만 정리한다.
+    return new Promise<PermissionResult>(resolve => {
+      const abort = (): void => this.settle(id, { behavior: 'deny', message: 'Request withdrawn' });
+      this.pending.set(id, { context, resolve, cleanup: () => options.signal.removeEventListener('abort', abort) });
+      options.signal.addEventListener('abort', abort, { once: true });
+      try {
+        this.session.waiting({
+          id,
+          turnId: context.requestId,
+          connectionId: context.connectionId,
+          kind: toolName === 'AskUserQuestion' ? 'question' : 'approval',
+          title: options.title ?? `${toolName}: ${JSON.stringify(input)}`,
+          payload: { toolName, input },
+        });
+        if (options.signal.aborted || !this.session.requests.has(id)) abort();
+      } catch (error) {
+        this.session.diagnostics.add(error);
+        this.settle(id, { behavior: 'deny', message: 'Cannot record input request' });
+      }
+    });
   }
 
   respond(id: string, result: unknown): void {

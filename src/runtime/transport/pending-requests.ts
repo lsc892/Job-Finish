@@ -21,27 +21,21 @@ export class PendingRequests {
   request<T>(method: string, params: unknown): Promise<T> {
     if (this.pending.size >= LIMITS.requests) return Promise.reject(new Error('RPC pending request limit exceeded'));
     const id = randomUUID();
+    // 타이머와 요청을 전송 전에 등록하고 만료 시 해당 요청 거절 뒤 연결을 실패 처리한다.
     return new Promise<T>((resolve, reject) => {
-      this.registerRequest(id, method, value => resolve(value as T), reject);
-      this.sendRequest({ id, method, params });
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        const error = new Error(`RPC timeout: ${method}; outcome unknown`);
+        reject(error);
+        this.fail(error);
+      }, RPC_TIMEOUT_MS);
+      this.pending.set(id, { resolve: value => resolve(value as T), reject, timer });
+      try {
+        this.send({ id, method, params });
+      } catch (error) {
+        this.fail(error);
+      }
     });
-  }
-
-  private registerRequest(id: RpcId, method: string, resolve: (value: unknown) => void, reject: (error: Error) => void): void {
-    const timer = setTimeout(this.timeoutRequest.bind(this, id, method, reject), RPC_TIMEOUT_MS);
-    this.pending.set(id, { resolve, reject, timer });
-  }
-
-  private timeoutRequest(id: RpcId, method: string, reject: (error: Error) => void): void {
-    this.pending.delete(id);
-    const error = new Error(`RPC timeout: ${method}; outcome unknown`);
-    reject(error);
-    this.fail(error);
-  }
-
-  private sendRequest(message: RpcMessage): void {
-    try { this.send(message); }
-    catch (error) { this.fail(error); }
   }
 
   completeResponse(message: RpcMessage): void {
@@ -50,10 +44,6 @@ export class PendingRequests {
     if (!pending) { this.diagnostic('Response to unknown RPC request'); return; }
     clearTimeout(pending.timer);
     this.pending.delete(message.id);
-    this.settleResponse(pending, message);
-  }
-
-  private settleResponse(pending: PendingRequest, message: RpcMessage): void {
     if (message.error) {
       pending.reject(new RpcError(message.error.code, message.error.message));
       return;

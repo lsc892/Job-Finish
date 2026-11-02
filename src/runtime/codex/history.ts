@@ -1,6 +1,5 @@
 // 현재 연결에서 Codex 턴·항목 이력을 제한된 페이지로 조회한다.
 import type { ThreadItem } from '../../protocol/v2/ThreadItem';
-import type { ThreadItemEntry } from '../../protocol/v2/ThreadItemEntry';
 import type { Turn } from '../../protocol/v2/Turn';
 import type { ThreadTurnsListParams } from '../../protocol/v2/ThreadTurnsListParams';
 import type { ThreadTurnsListResponse } from '../../protocol/v2/ThreadTurnsListResponse';
@@ -53,25 +52,20 @@ export class CodexHistory {
         threadId: this.threadId, limit: TURNS_PER_PAGE, sortDirection: 'desc', itemsView: 'notLoaded', cursor,
       };
       const page = await this.requestPage<ThreadTurnsListResponse>('thread/turns/list', params);
-      metadataBytes = this.appendTurnPage(page, turns, turnIds, metadataBytes);
+      if (!Array.isArray(page.data) || page.data.length > TURNS_PER_PAGE) throw new Error('Invalid Codex turn page');
+      for (const turn of page.data) {
+        if (typeof turn.id !== 'string' || !turn.id || turnIds.has(turn.id)) {
+          throw new Error('Invalid or repeated Codex history turn');
+        }
+        turnIds.add(turn.id);
+        const metadata = { ...turn, items: [] };
+        metadataBytes += Buffer.byteLength(JSON.stringify(metadata));
+        if (metadataBytes > LIMITS.queueBytes) throw new Error('Codex history metadata exceeds 4 MiB');
+        turns.push(metadata);
+      }
       cursor = this.validateNextCursor(page.nextCursor, seenCursors);
     } while (cursor && turns.length < LIMITS.dedup);
     return { turns, truncated: !!cursor };
-  }
-
-  private appendTurnPage(page: ThreadTurnsListResponse, turns: Turn[], seenIds: Set<string>, metadataBytes: number): number {
-    if (!Array.isArray(page.data) || page.data.length > TURNS_PER_PAGE) throw new Error('Invalid Codex turn page');
-    for (const turn of page.data) {
-      if (typeof turn.id !== 'string' || !turn.id || seenIds.has(turn.id)) {
-        throw new Error('Invalid or repeated Codex history turn');
-      }
-      seenIds.add(turn.id);
-      const metadata = { ...turn, items: [] };
-      metadataBytes += Buffer.byteLength(JSON.stringify(metadata));
-      if (metadataBytes > LIMITS.queueBytes) throw new Error('Codex history metadata exceeds 4 MiB');
-      turns.push(metadata);
-    }
-    return metadataBytes;
   }
 
   private async *items(turnId: string, direction: 'asc' | 'desc'): AsyncGenerator<ThreadItem> {
@@ -85,19 +79,15 @@ export class CodexHistory {
       const page = await this.requestPage<ThreadItemsListResponse>('thread/items/list', params);
       if (!Array.isArray(page.data) || page.data.length > ITEMS_PER_PAGE) throw new Error('Invalid Codex item page');
       for (const entry of page.data) {
-        this.assertTurnItem(entry, turnId);
+        if (entry.turnId !== turnId || !entry.item || typeof entry.item !== 'object') {
+          throw new Error('Codex history item belongs to another turn');
+        }
         itemCount++;
         yield entry.item;
       }
       cursor = this.validateNextCursor(page.nextCursor, seenCursors);
     } while (cursor && itemCount < LIMITS.dedup);
     if (cursor) throw new Error('Codex turn history exceeds 512-item lookup budget');
-  }
-
-  private assertTurnItem(entry: ThreadItemEntry, turnId: string): void {
-    if (entry.turnId !== turnId || !entry.item || typeof entry.item !== 'object') {
-      throw new Error('Codex history item belongs to another turn');
-    }
   }
 
   async matchesStart(turnId: string, requestId: string): Promise<boolean> {

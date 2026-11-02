@@ -42,16 +42,16 @@ export class CodexConnection {
     this.readyState = false;
     this.queue.clear();
     this.clearAnswers();
-    const rpc = this.createTransport();
+    // RPC 인스턴스를 캡처해 이전 연결에서 늦게 도착한 이벤트를 제외한다.
+    const rpc = new StdioRpc(
+      message => this.handleRpcMessage(rpc, message),
+      error => this.handleRpcDisconnect(rpc, error),
+      this.options.diagnostic.add.bind(this.options.diagnostic),
+    );
     this.transport = rpc;
     const command = codexCommand(this.options.executable);
     rpc.start(command.executable, command.args, this.options.cwd);
-    await rpc.request('initialize', this.initializationParams());
-    rpc.notify('initialized');
-  }
-
-  private initializationParams(): InitializeParams {
-    return {
+    const params: InitializeParams = {
       clientInfo: { name: 'job_finish', title: 'Job-Finish', version: '0.1.0' },
       capabilities: {
         experimentalApi: true,
@@ -62,19 +62,8 @@ export class CodexConnection {
         ],
       },
     };
-  }
-
-  private createTransport(): StdioRpc {
-    const connection = this;
-    // 생성한 RPC를 캡처해 이전 연결에서 늦게 도착한 이벤트를 구분한다.
-    function handleMessage(message: RpcMessage): void {
-      connection.handleRpcMessage(rpc, message);
-    }
-    function handleDisconnect(error: Error): void {
-      connection.handleRpcDisconnect(rpc, error);
-    }
-    const rpc = new StdioRpc(handleMessage, handleDisconnect, this.options.diagnostic.add.bind(this.options.diagnostic));
-    return rpc;
+    await rpc.request('initialize', params);
+    rpc.notify('initialized');
   }
 
   private handleRpcMessage(rpc: StdioRpc, message: RpcMessage): void {
@@ -123,12 +112,10 @@ export class CodexConnection {
 
   private handleRecoveryTimeout(): void {
     this.recoveryTimer = undefined;
-    void this.reconnect().catch(this.handleRecoveryFailure.bind(this));
-  }
-
-  private handleRecoveryFailure(error: unknown): void {
-    this.options.diagnostic.add(error);
-    this.scheduleRecovery();
+    void this.reconnect().catch(error => {
+      this.options.diagnostic.add(error);
+      this.scheduleRecovery();
+    });
   }
 
   private clearRecoveryTimer(): void {
@@ -147,10 +134,7 @@ export class CodexConnection {
   rememberAnswer(requestId: string, result: unknown): void {
     this.answered.set(requestId, result);
     this.answeredBytes += Buffer.byteLength(JSON.stringify(result));
-    this.evictOverflowAnswers();
-  }
-
-  private evictOverflowAnswers(): void {
+    // 응답을 삽입한 순서대로 제거해 개수와 직렬화 바이트 상한을 함께 지킨다.
     while (this.answered.size > LIMITS.dedup || this.answeredBytes > LIMITS.queueBytes) {
       const oldest = this.answered.keys().next().value!;
       this.answeredBytes -= Buffer.byteLength(JSON.stringify(this.answered.get(oldest)));

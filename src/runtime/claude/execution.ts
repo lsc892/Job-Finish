@@ -6,7 +6,6 @@ import { AgentRuntime, RuntimeOptions } from '../execution';
 import { acceptClaudeResult } from './adapter';
 import { ClaudePermissions, ClaudeTurnContext } from './permissions';
 
-interface ClaudeQueryContext extends ClaudeTurnContext { requestId: ReturnType<typeof randomUUID> }
 export interface ClaudeOptions extends RuntimeOptions<SDKMessage> {
   maxTurns: number;
   session: Session;
@@ -35,67 +34,63 @@ export class ClaudeExecution extends AgentRuntime {
     if (this.runTask || this.session.turns.size) throw new Error('Session has an active or unresolved execution');
     this.runTask = this.consume(prompt);
     // Attach error handler immediately; the command returns when execution has started.
-    void this.runTask.then(this.handleRunCompleted.bind(this), this.handleRunFailed.bind(this));
-  }
-
-  private handleRunCompleted(): void {
-    this.runTask = undefined;
-  }
-
-  private handleRunFailed(error: unknown): void {
-    try {
-      this.session.disconnected(error);
-    } catch (saveError) {
-      this.session.diagnostics.add(saveError);
-    }
-    this.runTask = undefined;
+    void this.runTask.then(() => {
+      this.runTask = undefined;
+    }, error => {
+      try {
+        this.session.disconnected(error);
+      } catch (saveError) {
+        this.session.diagnostics.add(saveError);
+      }
+      this.runTask = undefined;
+    });
   }
 
   private async consume(prompt: string): Promise<void> {
     const createQuery = this.options.createQuery ?? (await import('@anthropic-ai/claude-agent-sdk')).query;
     if (this.disposed) return;
     this.assertOwnership();
-    const context = this.beginTurn(prompt);
-    try {
-      this.query = createQuery(this.createQueryArguments(prompt, context));
-      for await (const message of this.query) {
-        if (this.aborted) break;
-        this.handleMessage(message, context);
-      }
-      if (this.session.turns.has(context.requestId)) this.session.disconnected('Claude stream ended without a confirmed result');
-    } finally {
-      this.cleanupQuery(context);
-    }
-  }
-
-  private beginTurn(prompt: string): ClaudeQueryContext {
+    // 연결 세대와 요청 ID를 전송 전에 등록해 이 query의 입력·결과만 수락한다.
     const requestId = randomUUID();
     this.aborted = false;
     const connectionId = randomUUID();
     this.session.reconnect(connectionId);
     this.session.start(requestId, connectionId);
     this.session.setTitle(prompt, connectionId, true);
-    const context: ClaudeQueryContext = { requestId, connectionId, acceptingInput: true };
+    const context: ClaudeTurnContext = { requestId, connectionId, acceptingInput: true };
     this.context = context;
-    return context;
-  }
-
-  private createQueryArguments(prompt: string, context: ClaudeQueryContext): Parameters<typeof query>[0] {
-    return {
-      prompt: this.userInput(prompt, context.requestId),
-      options: {
-        cwd: this.options.cwd,
-        maxTurns: this.options.maxTurns,
-        permissionMode: 'default',
-        env: { JOB_FINISH_OWNED_EXECUTION: '1' },
-        ...(this.options.model ? { model: this.options.model } : {}),
-        ...(this.resume ? { resume: this.session.binding.sessionId } : { sessionId: this.session.binding.sessionId }),
-        ...(this.options.executable ? { pathToClaudeCodeExecutable: this.options.executable } : {}),
-        canUseTool: this.permissions.forTurn(context),
-        settingSources: ['user', 'project', 'local'],
-        stderr: this.session.diagnostics.add.bind(this.session.diagnostics),
-      },
-    };
+    try {
+      this.query = createQuery({
+        prompt: this.userInput(prompt, requestId),
+        options: {
+          cwd: this.options.cwd,
+          maxTurns: this.options.maxTurns,
+          permissionMode: 'default',
+          env: { JOB_FINISH_OWNED_EXECUTION: '1' },
+          ...(this.options.model ? { model: this.options.model } : {}),
+          ...(this.resume ? { resume: this.session.binding.sessionId } : { sessionId: this.session.binding.sessionId }),
+          ...(this.options.executable ? { pathToClaudeCodeExecutable: this.options.executable } : {}),
+          canUseTool: this.permissions.forTurn(context),
+          settingSources: ['user', 'project', 'local'],
+          stderr: this.session.diagnostics.add.bind(this.session.diagnostics),
+        },
+      });
+      for await (const message of this.query) {
+        if (this.aborted) break;
+        this.handleMessage(message, context);
+      }
+      if (this.session.turns.has(context.requestId)) this.session.disconnected('Claude stream ended without a confirmed result');
+    } finally {
+      context.acceptingInput = false;
+      this.permissions.clear();
+      try {
+        this.query?.close();
+      } finally {
+        this.query = undefined;
+        this.context = undefined;
+        this.resume = true;
+      }
+    }
   }
 
   private async *userInput(prompt: string, requestId: ReturnType<typeof randomUUID>): AsyncGenerator<SDKUserMessage> {
@@ -106,18 +101,6 @@ export class ClaudeExecution extends AgentRuntime {
       parent_tool_use_id: null,
       message: { role: 'user', content: prompt },
     };
-  }
-
-  private cleanupQuery(context: ClaudeTurnContext): void {
-    context.acceptingInput = false;
-    this.permissions.clear();
-    try {
-      this.query?.close();
-    } finally {
-      this.query = undefined;
-      this.context = undefined;
-      this.resume = true;
-    }
   }
 
   private handleMessage(message: SDKMessage, context: ClaudeTurnContext): void {
@@ -145,10 +128,6 @@ export class ClaudeExecution extends AgentRuntime {
     await this.query.interrupt(); // Explicit SDK acknowledgment, never infer cancellation from EOF.
     // A result may arrive while awaiting the interrupt acknowledgment.
     if (this.context !== context) return;
-    this.finishInterruptedTurn(context);
-  }
-
-  private finishInterruptedTurn(context: ClaudeTurnContext): void {
     context.acceptingInput = false;
     try {
       if (this.session.turns.has(context.requestId)) {

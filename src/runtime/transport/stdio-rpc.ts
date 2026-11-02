@@ -29,11 +29,7 @@ export class StdioRpc {
       cwd, windowsHide: true, shell: false, stdio: 'pipe',
       env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', JOB_FINISH_OWNED_EXECUTION: '1' },
     });
-    this.attachProcessEvents(this.child);
-  }
-
-  // 자식 프로세스의 출력 도착·스트림 종료·오류 이벤트에 처리기를 등록한다.
-  private attachProcessEvents(child: ChildProcessWithoutNullStreams): void {
+    const child = this.child;
     child.stdout.on('data', this.handleStdoutData.bind(this));
     child.stdout.on('end', this.handleStdoutEnd.bind(this));
     child.stderr.on('data', this.handleStderrData.bind(this));
@@ -98,18 +94,11 @@ export class StdioRpc {
     this.closed = true;
     this.decoder.clear();
     this.requests.rejectAll();
-    this.closeOwnedProcess();
-  }
-
-  private closeOwnedProcess(): void {
     const child = this.child;
     if (!child) return;
     child.stdin.end(); // Give the owned App Server time to close its SDK/MCP children on EOF.
     if (child.exitCode !== null || child.signalCode !== null) return;
-    this.scheduleForcedShutdown(child);
-  }
-
-  private scheduleForcedShutdown(child: ChildProcessWithoutNullStreams): void {
+    // EOF로 정상 종료를 요청하고 1.5초 뒤에도 남은 소유 프로세스만 강제 종료한다.
     const force = setTimeout(child.kill.bind(child), PROCESS_SHUTDOWN_GRACE_MS);
     force.unref();
     child.once('exit', clearTimeout.bind(undefined, force));

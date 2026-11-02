@@ -24,49 +24,36 @@ export class JsonLines {
   private decodeMessage(): RpcMessage {
     const text = new TextDecoder('utf-8', { fatal: true }).decode(this.partial.subarray(0, this.length));
     this.length = 0;
-    return this.validateMessage(JSON.parse(text));
-  }
-
-  private validateMessage(message: unknown): RpcMessage {
+    // 한 프레임을 UTF-8·JSON으로 해석한 뒤 ID와 요청/응답 형식을 순서대로 검증한다.
+    const message: unknown = JSON.parse(text);
     if (!message || typeof message !== 'object' || Array.isArray(message)) throw new Error('Invalid JSON-RPC message');
     const rpc = message as RpcMessage;
-    this.validateIdentifier(rpc);
-    if ('method' in rpc) this.validateRequest(rpc);
-    else this.validateResponse(rpc);
-    return rpc;
-  }
-
-  private validateIdentifier(rpc: RpcMessage): void {
     const validId = typeof rpc.id === 'string' || (typeof rpc.id === 'number' && Number.isFinite(rpc.id));
     if (rpc.id !== undefined && !validId) throw new Error('Invalid JSON-RPC identifier');
-  }
-
-  private validateRequest(rpc: RpcMessage): void {
-    if (typeof rpc.method !== 'string' || !rpc.method || 'result' in rpc || 'error' in rpc) {
-      throw new Error('Invalid JSON-RPC request/notification');
+    if ('method' in rpc) {
+      if (typeof rpc.method !== 'string' || !rpc.method || 'result' in rpc || 'error' in rpc) {
+        throw new Error('Invalid JSON-RPC request/notification');
+      }
+    } else {
+      const hasResult = 'result' in rpc;
+      const hasError = 'error' in rpc;
+      if (rpc.id === undefined || hasResult === hasError) throw new Error('Invalid JSON-RPC response');
     }
-  }
-
-  private validateResponse(rpc: RpcMessage): void {
-    const hasResult = 'result' in rpc;
-    const hasError = 'error' in rpc;
-    if (rpc.id === undefined || hasResult === hasError) throw new Error('Invalid JSON-RPC response');
+    return rpc;
   }
 
   private append(chunk: Buffer): void {
     const required = this.length + chunk.length;
     if (required > this.limit) throw new Error('JSON-RPC message exceeds 1 MiB limit');
-    this.ensureCapacity(required);
+    // 필요할 때 버퍼를 두 배로 확장하되 메시지 상한을 넘지 않는다.
+    if (required > this.partial.length) {
+      const capacity = Math.min(this.limit, Math.max(required, INITIAL_MESSAGE_CAPACITY_BYTES, this.partial.length * 2));
+      const next = Buffer.allocUnsafe(capacity);
+      this.partial.copy(next, 0, 0, this.length);
+      this.partial = next;
+    }
     chunk.copy(this.partial, this.length);
     this.length = required;
-  }
-
-  private ensureCapacity(required: number): void {
-    if (required <= this.partial.length) return;
-    const capacity = Math.min(this.limit, Math.max(required, INITIAL_MESSAGE_CAPACITY_BYTES, this.partial.length * 2));
-    const next = Buffer.allocUnsafe(capacity);
-    this.partial.copy(next, 0, 0, this.length);
-    this.partial = next;
   }
 
   end(): void { if (this.length) throw new Error('EOF in JSON-RPC message'); }

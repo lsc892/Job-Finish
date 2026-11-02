@@ -1,7 +1,6 @@
 // Codex 저장 이력으로 확인된 실행과 시작 요청·충돌 결과를 대조한다.
 import type { Thread } from '../../protocol/v2/Thread';
-import type { Turn } from '../../protocol/v2/Turn';
-import type { Diagnostics, TerminalStatus } from '../../core/model';
+import type { Diagnostics } from '../../core/model';
 import { CodexAdapter, codexId, codexObject, codexStatus } from './adapter';
 import { CodexHistory } from './history';
 import type { RpcMessage, StdioRpc } from '../transport';
@@ -43,9 +42,20 @@ export class CodexReconciliation {
       }
     }
 
-    this.prepareStoredTurns(thread, turns, history, rpc);
+    history.assertCurrent();
+    this.session.setTitle(thread.name, rpc.connectionId);
+    this.session.setTitle(thread.preview, rpc.connectionId, true);
+    const hasUnobservedActiveTurn = turns.some(turn => turn.status === 'inProgress' && !this.session.turns.has(turn.id));
+    if (hasUnobservedActiveTurn
+      || thread.status?.type === 'active' && !turns.some(turn => turn.status === 'inProgress')) {
+      throw new Error('Cannot establish ownership of an unobserved active execution');
+    }
     for (const turn of turns) {
-      if (this.retainUnconfirmedTurn(thread, turn)) continue;
+      // 저장된 진행 상태를 현재 런타임이 확인하지 못하면 unknown을 유지한다.
+      if (turn.status === 'inProgress' && thread.status?.type !== 'active') {
+        this.session.disconnected('Stored turn is incomplete but the resumed runtime does not confirm an active execution');
+        continue;
+      }
       if (this.session.turns.has(turn.id) && codexStatus(turn.status)) {
         const text = await history.finalText(turn.id);
         history.assertCurrent();
@@ -54,31 +64,10 @@ export class CodexReconciliation {
       this.adapter.reconcileTurn(turn, rpc.connectionId);
     }
     history.assertCurrent();
-    this.session.baseline([...turns].reverse().flatMap(terminalHistoryEntry));
-  }
-
-  private prepareStoredTurns(thread: Thread, turns: Turn[], history: CodexHistory, rpc: StdioRpc): void {
-    history.assertCurrent();
-    this.session.setTitle(thread.name, rpc.connectionId);
-    this.session.setTitle(thread.preview, rpc.connectionId, true);
-    this.assertObservedActiveTurns(thread, turns);
-  }
-
-  private assertObservedActiveTurns(thread: Thread, turns: Turn[]): void {
-    const hasUnobservedActiveTurn = turns.some(turn => turn.status === 'inProgress' && !this.session.turns.has(turn.id));
-    if (hasUnobservedActiveTurn) {
-      throw new Error('Cannot establish ownership of an unobserved active execution');
-    }
-    if (thread.status?.type === 'active' && !turns.some(turn => turn.status === 'inProgress')) {
-      throw new Error('Cannot establish ownership of an unobserved active execution');
-    }
-  }
-
-  // 저장된 진행 상태를 현재 런타임이 확인하지 못하면 unknown을 유지한다.
-  private retainUnconfirmedTurn(thread: Thread, turn: Turn): boolean {
-    if (turn.status !== 'inProgress' || thread.status?.type === 'active') return false;
-    this.session.disconnected('Stored turn is incomplete but the resumed runtime does not confirm an active execution');
-    return true;
+    this.session.baseline([...turns].reverse().flatMap(turn => {
+      const status = codexStatus(turn.status);
+      return status ? [{ id: turn.id, status }] : [];
+    }));
   }
 
   reconcileConflictingResult(message: RpcMessage, rpc: StdioRpc): void {
@@ -88,18 +77,12 @@ export class CodexReconciliation {
     if (params.threadId !== this.session.binding.sessionId || !previous) return;
     if (codexStatus(String(turn.status)) === previous || this.reconcilingConflict) return;
     this.reconcilingConflict = true;
-    const reconciliation = this;
-    function reconcileReadThread(result: { thread: Thread }): Promise<void> {
-      return reconciliation.reconcile(result.thread, rpc);
-    }
     // Read-only reconciliation does not create a turn or redeliver a conflicting result.
     void rpc.request<{ thread: Thread }>('thread/read', { threadId: params.threadId, includeTurns: false })
-      .then(reconcileReadThread)
+      .then(result => this.reconcile(result.thread, rpc))
       .catch(this.diagnostics.add.bind(this.diagnostics))
-      .finally(this.finishConflictReconciliation.bind(this));
+      .finally(() => { this.reconcilingConflict = false; });
   }
-
-  private finishConflictReconciliation(): void { this.reconcilingConflict = false; }
 
   async readResult(turnId: string, rpc: StdioRpc): Promise<string | undefined> {
     const history = this.history(rpc);
@@ -107,9 +90,4 @@ export class CodexReconciliation {
     history.assertCurrent();
     return text;
   }
-}
-
-function terminalHistoryEntry(turn: Turn): { id: string; status: TerminalStatus }[] {
-  const status = codexStatus(turn.status);
-  return status ? [{ id: turn.id, status }] : [];
 }

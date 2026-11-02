@@ -59,12 +59,21 @@ export class CodexAdapter {
       case 'thread/name/updated':
         this.session.setTitle(params.threadName, connectionId);
         return;
-      case 'turn/started':
-        this.acceptStartedTurn(params.turn, connectionId, admitStarted);
+      case 'turn/started': {
+        const turn = codexObject(params.turn);
+        const turnId = codexId(turn.id);
+        if (admitStarted) this.session.start(turnId, connectionId);
+        else this.session.running(turnId, connectionId);
         return;
-      case 'item/completed':
-        this.acceptCompletedItem(params, connectionId);
+      }
+      case 'item/completed': {
+        // 본문만 보관하고 턴 종료는 turn/completed에서 확정한다.
+        const item = codexObject(params.item);
+        if (item.type !== 'agentMessage' || item.phase === 'commentary') return;
+        if (typeof item.text !== 'string') throw new Error('Malformed agent message');
+        this.session.body(codexId(params.turnId), item.text, connectionId);
         return;
+      }
       case 'turn/completed':
         this.reconcileTurn(params.turn as Turn, connectionId);
         return;
@@ -75,40 +84,21 @@ export class CodexAdapter {
         this.session.diagnostics.add(`Codex non-terminal error: ${JSON.stringify(params.error)}`);
         return;
       default:
-        this.requestInput(message, params, connectionId);
+        // 승인·질문 요청을 요청 ID와 턴 ID에 연결해 입력 대기로 전환한다.
+        if (message.id === undefined) return;
+        const turnId = codexId(params.turnId);
+        const isQuestion = message.method === 'item/tool/requestUserInput';
+        this.session.waiting({
+          id: JSON.stringify(message.id),
+          turnId,
+          connectionId,
+          kind: isQuestion ? 'question' : 'approval',
+          payload: message,
+          title: isQuestion
+            ? JSON.stringify(params.questions)
+            : String(params.command ?? params.reason ?? 'File change approval'),
+        });
     }
-  }
-
-  private acceptStartedTurn(value: unknown, connectionId: string, admitStarted: boolean): void {
-    const turn = codexObject(value);
-    const turnId = codexId(turn.id);
-    if (admitStarted) this.session.start(turnId, connectionId);
-    else this.session.running(turnId, connectionId);
-  }
-
-  private acceptCompletedItem(params: Record<string, unknown>, connectionId: string): void {
-    // 본문만 보관하고 턴 종료는 turn/completed에서 확정한다.
-    const item = codexObject(params.item);
-    if (item.type !== 'agentMessage' || item.phase === 'commentary') return;
-    if (typeof item.text !== 'string') throw new Error('Malformed agent message');
-    this.session.body(codexId(params.turnId), item.text, connectionId);
-  }
-
-  // 승인·질문 요청을 요청 ID와 턴 ID에 연결해 입력 대기로 전환한다.
-  private requestInput(message: RpcMessage, params: Record<string, unknown>, connectionId: string): void {
-    if (message.id === undefined) return;
-    const turnId = codexId(params.turnId);
-    const isQuestion = message.method === 'item/tool/requestUserInput';
-    this.session.waiting({
-      id: JSON.stringify(message.id),
-      turnId,
-      connectionId,
-      kind: isQuestion ? 'question' : 'approval',
-      payload: message,
-      title: isQuestion
-        ? JSON.stringify(params.questions)
-        : String(params.command ?? params.reason ?? 'File change approval'),
-    });
   }
 
   // 명시적 턴 상태를 확인하고 최종 본문·오류 설명을 반영한 뒤 종료한다.
@@ -121,25 +111,20 @@ export class CodexAdapter {
       this.session.running(turnId, connectionId);
       return;
     }
-    this.recordTurnMessages(turn.items, turnId, connectionId);
-    const detail = this.turnErrorDetail(turn.error);
-    this.session.finish(turnId, status, connectionId, detail);
-  }
-
-  private recordTurnMessages(items: unknown, turnId: string, connectionId: string): void {
-    if (!Array.isArray(items)) return;
-    for (const item of items) {
-      const entry = codexObject(item);
-      if (entry.type !== 'agentMessage' || entry.phase === 'commentary' || typeof entry.text !== 'string') continue;
-      this.session.body(turnId, entry.text, connectionId);
+    if (Array.isArray(turn.items)) {
+      for (const item of turn.items) {
+        const entry = codexObject(item);
+        if (entry.type !== 'agentMessage' || entry.phase === 'commentary' || typeof entry.text !== 'string') continue;
+        this.session.body(turnId, entry.text, connectionId);
+      }
     }
-  }
-
-  private turnErrorDetail(value: unknown): string | undefined {
-    if (!value) return;
-    const error = codexObject(value);
-    const code = typeof error.codexErrorInfo === 'string' ? error.codexErrorInfo : JSON.stringify(error.codexErrorInfo);
-    const message = typeof error.message === 'string' ? error.message : 'No error message received';
-    return `${code || 'Codex error'}: ${message}`;
+    let detail: string | undefined;
+    if (turn.error) {
+      const error = codexObject(turn.error);
+      const code = typeof error.codexErrorInfo === 'string' ? error.codexErrorInfo : JSON.stringify(error.codexErrorInfo);
+      const message = typeof error.message === 'string' ? error.message : 'No error message received';
+      detail = `${code || 'Codex error'}: ${message}`;
+    }
+    this.session.finish(turnId, status, connectionId, detail);
   }
 }

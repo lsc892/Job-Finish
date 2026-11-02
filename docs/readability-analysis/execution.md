@@ -2,6 +2,14 @@
 
 2026-10-27 기준. Codex의 프로토콜·연결·이력 분리에 이어 두 런타임을 `runtime/codex/`와 `runtime/claude/` 아래로 모았다. 공개 디렉터리 import와 프로토콜·상한은 유지한다. 전체 배치와 새 런타임 추가 절차는 [Provider 확장](../agent-providers.md)을 따른다.
 
+<a id="consolidation-2026-11-02"></a>
+
+## 2026-11-02 — 사용자: 실행·전송 단계 통합
+
+- **의사결정**: Codex의 명령 인자·시작 응답/실패·연결 초기화·캐시 상한·이력 검증과 Claude의 턴 준비·query 인자·정리·권한 등록을 각 주 메소드에서 이어 읽도록 통합한다. 전송의 프레임 검증·버퍼 확장·요청 등록/만료/전송·응답 완료도 같은 기준을 적용한다.
+- **근거**: 한 번만 호출되는 작은 함수들이 검증 순서와 `try/finally`의 범위를 가렸다. 연결 세대·이력 페이지 예산·SDK 권한 대기·stdio 프로세스는 별도 상태와 수명이 있으므로 기존 모듈 경계를 유지한다. 큐·캐시·이력·메시지 상한과 오류·취소 경합의 순서는 바꾸지 않는다.
+- **결과**: 핵심 알고리즘에 한 줄 설명을 두고 SDK·RPC 계약·비동기 대기 위치와 자원 해제 순서를 유지했다. 타입 검사·전체 193개 테스트·확장/C# 빌드·격리 Extension Host가 통과했다. 실제 모델 호출은 수행하지 않았다.
+
 ## 공통 추상화와 Claude 책임 경계
 
 [공통 실행 계층](../../src/runtime/execution.ts)은 구조적 `AgentExecution` 계약, 이벤트 타입별 `RuntimeOptions<TEvent>`, 소유권 검사를 공유하는 `AgentRuntime` 추상 클래스를 제공한다. [CodexExecution](../../src/runtime/codex/execution.ts)과 [ClaudeExecution](../../src/runtime/claude/execution.ts)이 이를 상속한다. Provider의 생성·관찰·입력 계약은 기존 `AgentProvider`로 공유하고 [providers.ts](../../src/runtime/providers.ts)에서 등록한다. 각 런타임은 상대 폴더를 import하지 않는다.
