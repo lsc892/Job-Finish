@@ -8,36 +8,100 @@ import { join } from 'node:path';
 import { CodexExecution } from '../../src/runtime/codex';
 import { Session } from '../../src/core/session';
 import { Diagnostics, Signal } from '../../src/core/model';
-import { Ownership } from '../../src/core/ownership';
+import { Lease, Ownership } from '../../src/core/ownership';
 import { runtimeId } from '../../src/runtime/providers';
 
-async function main(): Promise<void> {
-  const root = mkdtempSync(join(tmpdir(), 'job-finish-history-')); const owner = new Ownership(root);
-  const sources = readdirSync('test-artifacts').filter(f => /^codex-input-\d+\.json$/.test(f)).flatMap(f => {
-    const data = JSON.parse(readFileSync(join('test-artifacts', f), 'utf8'));
-    return data.reports.filter((r: { passed: boolean }) => r.passed).map((report: unknown) => ({ cwd: data.tempWorkspace, report }));
+interface CapturedReport { scenario: string; passed: boolean; signals: Signal[] }
+interface CapturedSource { cwd: string; report: CapturedReport }
+
+function loadSources(): CapturedSource[] {
+  const files = readdirSync('test-artifacts').filter(file => /^codex-input-\d+\.json$/.test(file));
+  return files.flatMap(file => {
+    const data = JSON.parse(readFileSync(join('test-artifacts', file), 'utf8')) as { tempWorkspace: string; reports: CapturedReport[] };
+    return data.reports.filter(report => report.passed).map(report => ({ cwd: data.tempWorkspace, report }));
   });
-  const results: unknown[] = [];
-  for (const scenario of ['question', 'approval', 'cancel']) {
-    const source = sources.find(s => s.report.scenario === scenario);
-    assert.ok(source, `A completed actual ${scenario} probe is required`);
-    const terminal = source.report.signals.at(-1) as Signal;
-    const diagnostics = new Diagnostics(); const signals: Signal[] = []; let release = () => {};
-    const runtime = new CodexExecution({ cwd: source.cwd, executable: process.env.JOB_FINISH_LIVE_CODEX_EXECUTABLE, diagnostic: diagnostics,
-      createSession: (sessionId, connectionId) => {
-        const binding = { provider: 'codex' as const, runtimeId: runtimeId('codex'), sessionId, connectionId, windowInstanceId: randomUUID(), source: 'ownedExecution' as const };
-        const lease = owner.claim(binding); release = () => lease.release();
-        return new Session(binding, () => lease.valid(), s => lease.save(s), s => signals.push(s), diagnostics);
-      } });
-    try {
-      await runtime.open(terminal.sessionId);
-      assert.equal(runtime.session!.completed.get(terminal.turnId), terminal.status);
-      if (scenario !== 'cancel') assert.equal(await runtime.readResult(terminal.turnId), terminal.text);
-      await runtime.reconnect(); assert.equal(signals.length, 0);
-      const result = { scenario, passed: true, status: terminal.status, pagedHistory: true, modelCalls: 0 };
-      results.push(result); console.log(JSON.stringify(result));
-    } finally { runtime.dispose(); release(); }
+}
+
+function findSource(sources: CapturedSource[], scenario: string): CapturedSource {
+  const source = sources.find(candidate => candidate.report.scenario === scenario);
+  assert.ok(source, `A completed actual ${scenario} probe is required`);
+  return source;
+}
+
+class CodexHistoryProbe {
+  private readonly diagnostics = new Diagnostics();
+  private readonly signals: Signal[] = [];
+  private readonly runtime: CodexExecution;
+  private lease?: Lease;
+
+  constructor(private readonly source: CapturedSource, private readonly owner: Ownership) {
+    this.runtime = new CodexExecution({
+      cwd: source.cwd, executable: process.env.JOB_FINISH_LIVE_CODEX_EXECUTABLE, diagnostic: this.diagnostics,
+      createSession: (sessionId, connectionId) => this.createSession(sessionId, connectionId),
+    });
   }
+
+  private get terminal(): Signal { return this.source.report.signals.at(-1)!; }
+
+  async run(): Promise<unknown> {
+    try {
+      await this.runtime.open(this.terminal.sessionId);
+      this.verifyCheckpoint();
+      if (this.source.report.scenario !== 'cancel') await this.verifyStoredResult();
+      await this.verifyReconnect();
+      return this.successReport();
+    } finally {
+      this.dispose();
+    }
+  }
+
+  private createSession(sessionId: string, connectionId: string): Session {
+    const binding = { provider: 'codex', runtimeId: runtimeId('codex'), sessionId, connectionId,
+      windowInstanceId: randomUUID(), source: 'ownedExecution' as const };
+    const lease = this.owner.claim(binding);
+    this.lease = lease;
+    return new Session(binding, () => lease.valid(), state => lease.save(state), signal => this.signals.push(signal), this.diagnostics);
+  }
+
+  private verifyCheckpoint(): void {
+    assert.equal(this.runtime.session!.completed.get(this.terminal.turnId), this.terminal.status);
+  }
+
+  private async verifyStoredResult(): Promise<void> {
+    assert.equal(await this.runtime.readResult(this.terminal.turnId), this.terminal.text);
+  }
+
+  private async verifyReconnect(): Promise<void> {
+    await this.runtime.reconnect();
+    assert.equal(this.signals.length, 0);
+  }
+
+  private successReport(): unknown {
+    const result = { scenario: this.source.report.scenario, passed: true, status: this.terminal.status, pagedHistory: true, modelCalls: 0 };
+    console.log(JSON.stringify(result));
+    return result;
+  }
+
+  private dispose(): void {
+    this.runtime.dispose();
+    this.lease?.release();
+  }
+}
+
+function saveResults(results: unknown[]): void {
   writeFileSync('test-artifacts/codex-history.json', JSON.stringify({ at: new Date().toISOString(), results }, null, 2));
 }
+
+async function main(): Promise<void> {
+  const root = mkdtempSync(join(tmpdir(), 'job-finish-history-'));
+  const owner = new Ownership(root);
+  const sources = loadSources();
+  const results: unknown[] = [];
+  for (const scenario of ['question', 'approval', 'cancel']) {
+    const source = findSource(sources, scenario);
+    results.push(await new CodexHistoryProbe(source, owner).run());
+  }
+  saveResults(results);
+}
+
 void main().catch(error => { console.error(error); process.exitCode = 1; });
