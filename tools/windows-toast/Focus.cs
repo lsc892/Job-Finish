@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 /** 창과 프로세스의 결합을 확인하고 승인된 대상 창의 전면 활성화를 수행한다. */
 internal static class Focus
 {
+    // HWND·PID·실행 파일과 제공된 프로세스 시작 시각으로 원래 창인지 검증한다.
     internal static bool Valid(Target target)
     {
         if (!long.TryParse(target.Hwnd, out var value) || value <= 0) return false;
@@ -21,6 +22,7 @@ internal static class Focus
         catch { return false; }
     }
 
+    // 검증된 창의 최소화만 복원하고 전면 전환 결과를 실제 HWND로 확인한다.
     internal static bool Activate(Target? target, out string reason)
     {
         reason = "missing-binding";

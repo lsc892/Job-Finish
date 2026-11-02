@@ -78,6 +78,7 @@ export class WindowNotifications {
     this.ports.changed();
   }
 
+  // 깜박임은 설정된 만료 시간(기본 300초)을 적용해 시작한다.
   private flashNotification(signal: Signal): void {
     if (this.ports.config('flash', true)) {
       this.window.startFlash(signal.notificationId, this.ports.config('flashMode', 'manual'), this.ports.config('flashTimeoutSeconds', 300) * 1000);

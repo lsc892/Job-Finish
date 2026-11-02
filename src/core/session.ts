@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { boundedText, Checkpoint, Diagnostics, InputRequest, isTerminal, LIMITS, SessionBinding, sessionTitleText, Signal, TerminalStatus, TurnState } from './model';
 
-/** 소유한 세션의 허용된 실행·입력 요청·완료 기록을 관리하고 중복 없는 신호를 생성한다. */
+/** 세션별 실행 상태를 전환하고 턴·요청 ID로 중복 알림을 걸러낸다. */
 export class Session {
   readonly turns = new Map<string, TurnState>();
   readonly completed = new Map<string, TerminalStatus>();
@@ -22,6 +22,7 @@ export class Session {
       if (!isTerminal(turn.status)) this.turns.set(turn.id, { ...turn, ...boundedText(turn.text), status: 'unknown' });
     }
   }
+  // 현재 연결 ID와 소유권이 모두 유효한 이벤트만 처리한다.
   valid(connectionId: string): boolean { return connectionId === this.binding.connectionId && this.owns(); }
   get sessionTitle(): string | undefined { return this.title ?? this.promptTitle; }
   setTitle(value: unknown, connectionId: string, fallback = false): void {
@@ -51,6 +52,7 @@ export class Session {
     const turn = this.turns.get(id);
     if (turn && turn.status === 'unknown') { turn.status = 'running'; this.persist(); }
   }
+  // 최근 512개 종료 턴의 중복을 걸러내고 상태 저장 뒤 알림을 보낸다.
   finish(id: string, status: TerminalStatus, connectionId: string, detail?: string, resultId?: string): void {
     if (!this.valid(connectionId)) return;
     const previous = this.completed.get(id);
@@ -67,6 +69,7 @@ export class Session {
     this.persist(); // Durable before delivery: crash may lose delivery, never promise exactly-once.
     this.signal(turn, detail);
   }
+  // 같은 연결·요청 ID는 한 번만 알리고 턴을 입력 대기로 전환한다.
   waiting(request: InputRequest): void {
     if (!this.valid(request.connectionId) || !this.turns.has(request.turnId)) return;
     const key = JSON.stringify([request.connectionId, request.id]);
@@ -80,6 +83,7 @@ export class Session {
     const turn = this.turns.get(request.turnId)!; turn.status = 'waitingForInput'; this.persist();
     this.signal({ ...turn, ...boundedText(request.title) }, undefined, request.id);
   }
+  // 해당 턴의 입력 요청이 모두 해소되면 실행 중 상태로 되돌린다.
   resolve(id: string, connectionId: string): void {
     if (!this.valid(connectionId)) return;
     const request = this.requests.get(id); if (!request) return;
@@ -88,6 +92,7 @@ export class Session {
     if (turn && ![...this.requests.values()].some(r => r.turnId === turn.id)) turn.status = 'running';
     this.persist();
   }
+  // 연결이 끊긴 실행은 종료를 추정하지 않고 unknown으로 보존한다.
   disconnected(reason: unknown): void {
     this.diagnostics.add(reason); this.requests.clear(); this.seenRequests.clear();
     for (const turn of this.turns.values()) turn.status = 'unknown';

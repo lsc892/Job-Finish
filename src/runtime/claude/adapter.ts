@@ -8,7 +8,7 @@ interface ClaudeResult {
   detail?: string;
 }
 
-/** An assistant message is not a result. A bound query has exactly one foreground turn. */
+/** 같은 세션·요청의 result로 한 번의 사용자 실행을 종료하며 assistant 메시지는 제외한다. */
 export function acceptClaudeResult(session: Session, requestId: string, message: SDKResultMessage, connectionId: string): void {
   assertResultIdentity(session, requestId, message);
   const { body, status, detail } = toClaudeResult(message);
@@ -25,6 +25,7 @@ function assertResultIdentity(session: Session, requestId: string, message: SDKR
   }
 }
 
+// result의 subtype과 is_error를 함께 확인해 성공·오류를 구분한다.
 function toClaudeResult(message: SDKResultMessage): ClaudeResult {
   if (message.subtype === 'success') {
     if (message.is_error === false) {

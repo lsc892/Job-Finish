@@ -60,11 +60,11 @@ export class WindowIdentity {
   private epoch = 0;
   constructor(readonly windowInstanceId: string, private native: NativeApi, private focused: () => boolean, private codeExecutable: string, private diagnostics?: Diagnostics) {}
   changed(): void { this.epoch++; }
+  // 포커스 안정화 뒤 같은 HWND·PID·실행 파일이 유지되는 창을 현재 창에 연결한다.
   async observe(settleMs = 400): Promise<boolean> {
     const epoch = ++this.epoch;
     if (!this.focused()) return false;
-    // VS Code can publish focused=true before Windows changes its foreground HWND.
-    // Settle that event first, then verify one stable native handle; never activate here.
+    // VS Code 포커스 통지가 실제 전경 HWND보다 먼저 올 수 있어 안정화를 기다린다.
     await new Promise(resolve => setTimeout(resolve, settleMs));
     if (epoch !== this.epoch || !this.focused()) return false;
     const hwnd = this.native.foreground(); const before = this.native.inspect(hwnd);
