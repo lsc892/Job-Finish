@@ -61,3 +61,15 @@ src/application/sessions.ts     실행·Session·lease·저장 세션 수명
 
 - `npm run check`: 기존 테스트와 Codex 경계 테스트를 합한 143개, 타입 검사·확장/C# 빌드가 통과했다.
 - Extension Host 검사는 제품 API와 명령 등록, fixture 완료·취소·해제, 자동 관찰 설정 끄기·켜기를 확인한다. 모든 공개 명령 등록과 `stopFlash`·`diagnostics` 실행도 확인하도록 보강했다. 최종 단일·이중 창 결과와 미확인 범위는 [통합 기록](../readability-refactor.md)에 기록한다.
+
+## 변경 일지
+
+### 2026-11-02 — 사용자
+
+<a id="sessions-readability-2026-11-02"></a>
+
+#### 세션 연결·저장·해제 흐름의 가독성 개선
+
+- **의사결정**: `ApplicationSessions`의 공개 API와 자원 소유권을 유지하며 내부 단계를 구분한다. Codex는 `assertCanOpen()`에 기존 연결 조건을, `createExecution()`에 제공자 실행 문맥 구성을, `saveSession()`에 저장 목록 갱신을, `finishDetach()`에 lease 해제와 등록 제거·종료 통지를 모았다. 공개 조회·연결·해제·종료 메소드를 앞에 두고 타입·snapshot·Session 생성 인자와 정리 코드를 풀어 썼다.
+- **근거**: `open()`에서 연결의 진행 순서와 옵션·목록 구성이 섞여 있었고, 중첩된 한 줄 `try/finally`는 해제 중 오류가 발생해도 반드시 수행할 정리를 숨겼다. 실패한 open은 실행 정리 → 등록 제거 → lease 해제를 수행하며 정리 오류를 기록하고 최초 오류를 보존한다. 명시적 detach는 실행 정리 → lease 해제 → 등록 제거·종료 통지 순서로 오류를 전파하므로 두 경로를 공통 정리 함수로 합치지 않는다.
+- **결과**: 신뢰·용량·중복 검증 순서, 비동기 open의 초기 소유권 등록과 Entry 재사용, 저장 목록의 sessionId 중복 제거·최신 32개 상한, 연결/저장 뒤 활성 재검사와 기존 await 위치를 유지했다. 분리한 저장 메소드는 저장소의 PromiseLike를 그대로 반환하며 추가 비동기 대기를 만들지 않는다. 변경 전 기존 세션 테스트 17개가 통과했고, 실행 정리·lease 해제의 이중 실패에서 최초 연결 오류·진단 순서 보존과 detach의 오류 우선순위·자원 초기화·등록 제거·종료 통지·중복 정리 방지를 검사하는 회귀 테스트 2개를 추가해 변경 전후 세션 테스트 19개도 통과했다. 최종 `npm run typecheck`, `npm exec -- tsx --test tests/application-sessions.test.ts tests/integration.test.ts tests/ownership.test.ts tests/providers.test.ts`의 46개 테스트, `git diff --check`가 통과했다. 통합 검사는 기존 stdio fixture와 테스트용 자식 프로세스를 사용했으며, 확장 빌드·Extension Host UI·실제 모델 호출·설치는 수행하지 않았다.

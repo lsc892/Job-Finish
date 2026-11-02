@@ -215,6 +215,35 @@ test('An execution disposal failure during failed open cannot skip lease release
   assert.match(JSON.stringify(h.diagnostics.entries), /dispose failed/);
 });
 
+test('Failed open reports both cleanup failures while preserving the connection failure', async () => {
+  const original = new Error('connection failed');
+  const h = harness(context => {
+    const owned = { ...execution(() => { h.events.push('dispose'); throw new Error('dispose failed'); }), open: async () => {
+      owned.session = context.createSession('thread', 'connection');
+      throw original;
+    } };
+    return owned;
+  }, {
+    claim: () => ({
+      valid: () => true,
+      load: () => undefined,
+      save: () => {},
+      release: () => {
+        assert.equal(h.sessions.get('thread'), undefined, 'failed open removes registration before releasing the lease');
+        h.events.push('release');
+        throw new Error('release failed');
+      },
+    }),
+  });
+
+  await assert.rejects(h.sessions.open('sample', 'workspace'), error => error === original);
+  assert.deepEqual(h.events.slice(-2), ['dispose', 'release']);
+  assert.equal(h.events.includes('released'), false);
+  assert.deepEqual(h.diagnostics.entries.map(entry => entry.message), ['Error: dispose failed', 'Error: release failed']);
+  h.sessions.dispose();
+  assert.deepEqual(h.events.slice(-2), ['dispose', 'release'], 'cleanup does not retry consumed resources');
+});
+
 for (const stage of ['before-session', 'after-session', 'saving'] as const) {
   test(`Dispose owns in-flight resources ${stage} and prevents late registration or successful open`, async () => {
     const gate = deferred();
@@ -253,6 +282,35 @@ test('Detach still releases the lease and invokes the release callback when exec
   assert.deepEqual(h.sessions.snapshot(), []);
   assert.equal(h.events.at(-1), 'released');
   h.sessions.dispose();
+});
+
+test('Detach removes registration and notifies release even when both resource cleanup steps fail', async () => {
+  const releaseFailure = new Error('release failed');
+  const h = harness(context => execution(() => {
+    assert.equal(h.sessions.owns('thread'), false, 'resources are cleared before calling external cleanup');
+    h.events.push('dispose');
+    throw new Error('dispose failed');
+  }, context.createSession('thread', 'connection')), {
+    claim: () => ({
+      valid: () => true,
+      load: () => undefined,
+      save: () => {},
+      release: () => {
+        assert.ok(h.sessions.get('thread'), 'detach releases the lease before removing registration');
+        h.events.push('release');
+        throw releaseFailure;
+      },
+    }),
+  });
+  const entry = await h.sessions.open('sample', 'workspace');
+
+  assert.throws(() => h.sessions.detach(entry), error => error === releaseFailure);
+  assert.deepEqual(h.events.slice(-3), ['dispose', 'release', 'released']);
+  assert.deepEqual(h.sessions.snapshot(), []);
+  assert.deepEqual(h.diagnostics.entries, [], 'explicit detach propagates cleanup failure to its caller');
+  h.sessions.detach(entry);
+  h.sessions.dispose();
+  assert.deepEqual(h.events.slice(-3), ['dispose', 'release', 'released']);
 });
 
 test('An entry retained by an old picker cannot detach a replacement connection with the same session ID', async () => {
