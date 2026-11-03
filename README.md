@@ -51,11 +51,28 @@ The command removes Job-Finish hooks from user and selected project settings, ba
 ## Release notes
 
 <details>
-<summary>v2.2.0 (since v2.1.2)</summary>
+<summary>v2.3.0 (since v2.2.0)</summary>
 
 ### Automatic notifications only
 
 Removed direct agent execution, session management commands, execution settings, and the bundled Claude SDK.
+
+### Simpler commands and settings
+
+Kept four commands and seven settings under General and Notifications. Answer questions and manage conversations in the original Codex or Claude UI. Results show when a saved response was truncated.
+
+### Duplicate completion notification suppression
+
+Asynchronous questions alert immediately. A successful completion within five seconds of a question in the same turn keeps both results and merges the additional toast and flash. Errors and cancellations keep their own alerts.
+
+### Native toast diagnostics
+
+Added a controlled-stream diagnostic script to check repeated question events, completion timing, native toast submission, and click callbacks.
+
+</details>
+
+<details>
+<summary>v2.2.0 (since v2.1.2)</summary>
 
 ### Internal refactoring
 
@@ -67,15 +84,11 @@ Added session titles to toasts and restored the VS Code icon and default image.
 
 ### Settings categories
 
-Grouped automatic detection and notification options under General and Notifications.
+Grouped options under General, Notifications, Codex, and Claude.
 
 ### Codex asynchronous question notifications
 
 Detect asynchronous Codex question events and show a toast when user input is needed.
-
-### Duplicate completion notification suppression
-
-Reduced duplicate notifications caused by completion events immediately after Codex questions.
 
 ### Update paths for existing installations
 

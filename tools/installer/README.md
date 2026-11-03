@@ -59,7 +59,16 @@ npm run build:installer
 npm pack ./tools/installer
 ```
 
-기존 npm 패키지 `job-finish`를 사용하며 `npx job-finish@latest install` 또는 `npx job-finish@latest update`로 실행합니다. 기본 VSIX는 패키지에 포함된 파일이고, 기존 Marketplace 확장 `JobFinish.JobFinish`를 설치·업데이트합니다. v2.2.0 릴리스는 CLI와 확장 버전을 2.2.0으로 맞추며, 설치 판단에는 VSIX의 실제 확장 버전을 사용합니다. 배포할 VSIX는 `build:installer`로 함께 갱신해야 합니다. `install`, `update`를 생략하면 `install`을 실행합니다.
+기존 npm 패키지 `job-finish`를 사용하며 `npx job-finish@latest install` 또는 `npx job-finish@latest update`로 실행합니다. 기본 VSIX는 패키지에 포함된 파일이고, 배포자 `JobFinish`의 기존 Marketplace 확장 `JobFinish.JobFinish`를 설치·업데이트합니다. v2.3.0 릴리스는 CLI와 확장 버전을 2.3.0으로 맞추며, 설치 판단에는 VSIX의 실제 확장 버전을 사용합니다. 배포할 VSIX는 `build:installer`로 함께 갱신해야 합니다. `install`, `update`를 생략하면 `install`을 실행합니다.
+
+## v2.3.0 변경 사항
+
+- 동봉 확장에서 직접 실행·세션 관리·Claude SDK를 제거하고 기존 Codex·Claude 확장의 자동 알림에 집중했습니다. 명령은 4개, 설정은 7개입니다.
+- 비동기 질문은 즉시 알리며 같은 턴의 5초 이내 정상 완료는 추가 토스트·깜박임을 합칩니다. 질문·완료 결과는 모두 보관합니다.
+- 동일 질문 재전송과 완료 시점에 따른 네이티브 토스트 동작을 확인하는 저장소 진단 도구를 추가했습니다.
+- npm 설치 도구에 Marketplace 수동 배포용과 동일한 `JobFinish.JobFinish` 2.3.0 VSIX를 포함합니다.
+
+자세한 변경 내역은 [프로젝트 README](https://github.com/lsc892/Job-Finish#release-notes)를 참고하세요.
 
 ## 코드 책임
 

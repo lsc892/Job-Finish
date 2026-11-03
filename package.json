@@ -4,7 +4,7 @@
   "displayName": "Job-Finish",
   "icon": "resources/icon/JobFinish_Icon.png",
   "description": "Window-scoped Codex and Claude execution notifications for Windows.",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "publisher": "JobFinish",
   "license": "MIT",
   "repository": {

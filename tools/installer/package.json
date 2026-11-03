@@ -1,6 +1,6 @@
 {
   "name": "job-finish",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Install or update Job-Finish in VS Code and migrate legacy PowerShell/C# installations.",
   "license": "MIT",
   "engines": { "node": ">=22" },
