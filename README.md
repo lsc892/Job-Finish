@@ -48,6 +48,41 @@ The root command forwards arguments to the standalone package. You can also run 
 
 The command removes Job-Finish hooks from user and selected project settings, backs up changed settings beside their originals, and removes verified legacy installation folders, the focus protocol and its Start Menu shortcut. It also checks `CLAUDE_CONFIG_DIR` and `CODEX_HOME` when set. `--dry-run` only previews changes; `--keep-files` removes hooks while retaining files and Windows registrations. Changed Codex TOML is reformatted without comments; its original text remains in the backup. Run with `--project` for each additional project installation. C# source projects and the current VS Code extension are preserved. If the old npm package was installed globally, remove it separately with `npm rm -g job-finish`.
 
+## Release notes
+
+<details>
+<summary>v2.2.0 (since v2.1.2)</summary>
+
+### Automatic notifications only
+
+Removed direct agent execution, session management commands, execution settings, and the bundled Claude SDK.
+
+### Internal refactoring
+
+Separated agent execution, session management, transport, and Windows notifications by responsibility and simplified shared processing flows.
+
+### Toast titles and icons
+
+Added session titles to toasts and restored the VS Code icon and default image.
+
+### Settings categories
+
+Grouped automatic detection and notification options under General and Notifications.
+
+### Codex asynchronous question notifications
+
+Detect asynchronous Codex question events and show a toast when user input is needed.
+
+### Duplicate completion notification suppression
+
+Reduced duplicate notifications caused by completion events immediately after Codex questions.
+
+### Update paths for existing installations
+
+Restored updates to the new version for existing npm and Marketplace installations.
+
+</details>
+
 ## Code guide
 
 Source code lives in `src/`, tests and verification in `tests/`, and build tools in `build/`.
