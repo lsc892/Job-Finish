@@ -1,4 +1,18 @@
-# 구현 및 검증 기록
+# Job-Finish 검증 보고서
+
+## 2026-11-03 — 자동 알림 전용 정리
+
+직접 실행·재개·취소·승인 응답·세션 저장과 소유권 잠금, 별도 RPC·이력 복구·생성 프로토콜·Claude SDK를 제거했다. 현재 기능과 알고리즘은 [명세](requirements-and-verification.md)를 따른다.
+
+- `npm run check`: 제품·테스트 타입 검사, 자동 감지·알림 회귀 테스트 100개, 확장/C# 빌드 통과.
+- 실제 VS Code 단일 창: 남은 4개 명령과 7개 설정, 제거된 명령의 부재, Codex·Claude 스트림, 감지 켜기/끄기와 기존 프로세스 재연결, 질문·완료·오류·취소·원본 바이트 보존 통과 (`test-artifacts/extension-host.json`).
+- 실제 VS Code 이중 창: 같은 프로젝트·세션·턴 ID의 결과가 각 창에만 전달됨을 확인 (`test-artifacts/dual-host.json`).
+- 합성 스트림 8개·측정 10만 턴: 각 연결의 세션 1개·활성 턴 0개, 제품이 생성한 에이전트 프로세스 0개 확인 (`test-artifacts/router-load.json`).
+- C# 등록·바로가기·아이콘·COM/pipe 승인·거부·종료 계약 통과. 병렬 첫 실행은 COM 서버 프로세스 탐색에서 실패했고, 확장 호스트 검사 종료 후 독립 재실행이 통과했다. 실제 배너 시각·마우스 클릭과 새 모델 응답은 검증하지 않았다.
+
+## 이전 구현의 검증 기록
+
+아래는 직접 실행·소유권·복구가 포함되어 있던 당시의 코드·경로·검증 기록이다. 현재 지원 범위나 남아 있는 파일 목록으로 해석하지 않는다.
 
 2026-10-09 추가 검증에서는 protocol helper의 실제 `SetForegroundWindow` 거부와 정식 COM toast callback의 전경 전환 성공을 비교했다. 새 알림은 `CustomActivator`·`LocalServer32`와 STA callback으로 처리하며 Alt 합성·입력 스레드 연결·재시도는 사용하지 않는다. 95개 테스트·타입 검사·빌드와 실제 COM/pipe 승인·거부·helper 종료 검사가 통과했다. 제품 helper로 일반·최소화·최대화 창의 실제 callback을 확인했고, 명시적 진단 HWND를 사용한 Job-Finish VS Code 창에서도 브라우저에서 대상 HWND로 전환됐다. 자동 바인딩과 완료 감지 전체의 새 검증으로 확대하지 않는다. 상세 원자료와 한계는 [추가 조사](ToastActivationInvestigation.md)를 따른다. 아래 기록은 당시 검증 범위로 보존한다.
 

@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { Diagnostics, Provider, Signal } from '../core/model';
 import { Session } from '../core/session';
-import type { AgentEvents, AgentProviderRegistry } from './agent-provider';
+import type { AgentEvents } from './agent-provider';
 import { agentProviders } from './providers';
 import { record } from './message';
 
@@ -15,10 +15,8 @@ export class AgentEventRouter {
   private readonly events: AgentEvents;
   private disposed = false;
   constructor(readonly provider: Provider, private windowInstanceId: string, private runtimeId: string,
-    private emit: (signal: Signal) => void, private diagnostics: Diagnostics,
-    private isOwned: (provider: Provider, sessionId: string) => boolean = () => false,
-    providers: AgentProviderRegistry = agentProviders) {
-    this.events = providers.get(provider).createEvents({ connectionId: this.connectionId,
+    private emit: (signal: Signal) => void, private diagnostics: Diagnostics) {
+    this.events = agentProviders[provider].createEvents({ connectionId: this.connectionId,
       session: id => this.session(id), existingSession: id => this.sessions.get(id) });
   }
   outgoing(value: unknown): void {
@@ -30,7 +28,7 @@ export class AgentEventRouter {
     this.events.incoming(message);
   }
   private session(id: string): Session | undefined {
-    if (this.disposed || this.isOwned(this.provider, id)) return;
+    if (this.disposed) return;
     const existing = this.sessions.get(id);
     if (existing) return existing;
     // 상한에 도달하면 입력 대기와 실행이 모두 없는 첫 세션만 제거한다.
@@ -40,8 +38,7 @@ export class AgentEventRouter {
       this.sessions.delete(idle[0]);
     }
     const session = new Session({ windowInstanceId: this.windowInstanceId, provider: this.provider, runtimeId: this.runtimeId,
-      connectionId: this.connectionId, sessionId: id, source: 'verifiedIntegration' },
-    () => !this.disposed && !this.isOwned(this.provider, id), () => {}, this.emit, this.diagnostics);
+      connectionId: this.connectionId, sessionId: id }, this.emit, this.diagnostics);
     this.sessions.set(id, session);
     return session;
   }

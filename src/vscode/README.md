@@ -1,10 +1,8 @@
 # vscode
 
-세션·알림 기능을 VS Code 창의 설정·명령·입력·표시에 연결한다.
+- [application.ts](application.ts) — 창 UUID와 관찰·알림 서비스를 구성하고 설정·상태 표시줄·결과/창 연결/flash 정지/진단 명령을 연결한다. 공개 API는 읽기 전용이며 테스트 모드에만 native 바인딩 도우미를 노출한다.
+- [notifications.ts](notifications.ts) — 설치된 두 확장의 경로로 관찰 범위를 정하고 신호를 Windows 알림에 전달한다.
+- [results.ts](results.ts) — 최근 응답을 표시하고 16 KiB 상한으로 잘린 본문을 안내한다.
+- [window.ts](window.ts) — HWND 관측·유효성 검사·포커스 구독·flash 수명.
 
-- [application.ts](application.ts) — `Application`: 창별 서비스를 구성하고 확장 API·진단·상태바와 활성화·해제를 관리한다.
-- [commands.ts](commands.ts) — `SessionCommands`: 세션 명령을 등록하고 사용자 입력 중 같은 세션의 명령 중복을 막는다.
-- [interaction.ts](interaction.ts) — `AgentInput`: 작업·폴더·승인·질문을 VS Code 대화상자로 제공한다.
-- [notifications.ts](notifications.ts) — `WindowNotifications`: 자동 관찰·결과 알림·토스트를 현재 창의 설정과 소유권에 연결한다.
-- [results.ts](results.ts) — 최근 결과를 표시하고 잘린 미리보기의 전체 본문을 실행 제공자에서 조회한다.
-- [window.ts](window.ts) — `CodeWindow`: 네이티브 창 식별·포커스 관찰·깜박임 수명을 관리한다.
+질문 답변·승인·취소와 대화 관리는 기존 Codex·Claude UI가 담당한다.

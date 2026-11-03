@@ -3,7 +3,6 @@ import { ChildProcess } from 'node:child_process';
 import { isAbsolute, resolve } from 'node:path';
 import { Diagnostics, LIMITS, Provider, Signal } from '../core/model';
 import { ObservedConnection } from './observed-connection';
-import type { AgentProviderRegistry } from './agent-provider';
 import { agentProviders } from './providers';
 
 export interface AgentRoot { provider: Provider; path: string }
@@ -18,8 +17,7 @@ export class AgentStreamObserver {
   private readonly delivered = new Map<string, string>();
   private enabled = false;
   constructor(private windowInstanceId: string, private roots: () => AgentRoot[], private emit: (signal: Signal) => void,
-    private diagnostics: Diagnostics, private isOwned: (provider: Provider, sessionId: string) => boolean = () => false,
-    private providers: AgentProviderRegistry = agentProviders) {}
+    private diagnostics: Diagnostics) {}
 
   start(): void {
     if (this.enabled) return;
@@ -32,8 +30,7 @@ export class AgentStreamObserver {
     function spawn(this: ChildProcess, ...args: unknown[]): unknown {
       const result = Reflect.apply(original, this, args);
       try {
-        const options = args[0] as { envPairs?: string[] } | undefined;
-        if (!options?.envPairs?.includes('JOB_FINISH_OWNED_EXECUTION=1')) observer.consider(this, false, () => new Error().stack ?? '');
+        observer.consider(this, false, () => new Error().stack ?? '');
       } catch (error) { observer.diagnostics.add(`Automatic observation: ${error}`); }
       return result;
     }
@@ -51,7 +48,7 @@ export class AgentStreamObserver {
   private consider(child: ChildProcess, existing: boolean, stack: () => string = () => ''): void {
     if (!this.enabled || this.connections.has(child) || !child.pid || child.exitCode !== null || child.signalCode !== null || !child.stdout || !child.stdin) return;
     const args = child.spawnargs ?? [];
-    const implementation = this.providers.match(args);
+    const implementation = Object.values(agentProviders).find(provider => provider.matchesProcess(args));
     if (!implementation) return;
     const provider = implementation.id;
     const roots = this.roots().filter(root => root.provider === provider).map(root => canonical(resolve(root.path)) + '/');
@@ -63,9 +60,7 @@ export class AgentStreamObserver {
       windowInstanceId: this.windowInstanceId,
       existing,
       diagnostics: this.diagnostics,
-      providers: this.providers,
       emit: this.deliverSignal.bind(this),
-      isOwned: this.isOwned,
       closed: () => { this.connections.delete(child); },
     });
     this.connections.set(child, connection);
@@ -80,7 +75,7 @@ export class AgentStreamObserver {
   }
 
   owns(signal: Signal): boolean {
-    return this.enabled && signal.windowInstanceId === this.windowInstanceId && signal.source === 'verifiedIntegration'
+    return this.enabled && signal.windowInstanceId === this.windowInstanceId
       && this.delivered.get(signal.notificationId) === signal.connectionId;
   }
   snapshot() { return { enabled: this.enabled, connections: [...this.connections.values()].map(c => ({ ...c.router.snapshot(), bufferBytes: c.bufferBytes })),

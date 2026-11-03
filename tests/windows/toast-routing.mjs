@@ -14,7 +14,7 @@ const harness = resolve('.generated/toast-harness'); mkdirSync(harness, { recurs
 const manifest = JSON.parse(readFileSync('package.json', 'utf8'));
 writeFileSync(join(harness, 'package.json'), JSON.stringify({ ...manifest, main: './extension.cjs' }));
 await build({ entryPoints: ['tests/windows/toast-host.ts'], outfile: join(harness, 'extension.cjs'), platform: 'node', target: 'node22', format: 'cjs', bundle: true,
-  external: ['vscode', 'koffi', '@anthropic-ai/claude-agent-sdk'] });
+  external: ['vscode', 'koffi'] });
 if (!existsSync(join(harness, 'node_modules'))) symlinkSync(resolve('node_modules'), join(harness, 'node_modules'), 'junction');
 if (!existsSync(join(harness, 'dist'))) symlinkSync(resolve('dist'), join(harness, 'dist'), 'junction');
 const profile = join(root, 'profile'); const extensions = join(root, 'extensions');

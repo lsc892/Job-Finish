@@ -1,10 +1,8 @@
 // 관찰한 Claude 입출력에서 사용자 실행·도구 입력·결과·중단을 세션에 반영한다.
 import { randomUUID } from 'node:crypto';
-import type { SDKResultMessage } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
 import { LIMITS, sessionTitleText } from '../../core/model';
 import type { Session } from '../../core/session';
 import type { AgentEvents, EventContext } from '../agent-provider';
-import { acceptClaudeResult } from './adapter';
 import { bound, identifier, record } from '../message';
 
 /** 관찰한 Claude 연결의 요청·입력 대기·결과·중단 확인을 세션 상태로 변환한다. */
@@ -113,7 +111,11 @@ export class ClaudeEvents implements AgentEvents {
     const previousId = queuedInput?.id ?? (session.turns.size === 1 ? session.turns.keys().next().value : undefined);
     this.transferTurn(session, previousId, turnId);
     session.start(turnId, this.context.connectionId);
-    acceptClaudeResult(session, turnId, message as unknown as SDKResultMessage, this.context.connectionId);
+    if (message.user_message_uuid && message.user_message_uuid !== turnId) throw new Error('Claude result is not bound to this execution');
+    const success = message.subtype === 'success';
+    session.body(turnId, success ? message.result as string : (message.errors as string[]).join('\n'), this.context.connectionId);
+    const status = success && !message.is_error ? 'completed' : 'error';
+    session.finish(turnId, status, this.context.connectionId, status === 'error' ? message.subtype as string : undefined);
     this.receivedResults.add(resultId);
     bound(this.receivedResults);
     if (queuedInput) this.queuedInputs.shift();
@@ -124,8 +126,8 @@ export class ClaudeEvents implements AgentEvents {
     // Some extension versions add the UUID after writing the user input. Transfer the observed state.
     const previous = session.turns.get(previousId);
     if (!previous) return;
-    for (const request of [...session.requests.values()]) {
-      if (request.turnId === previousId) session.resolve(request.id, this.context.connectionId);
+    for (const [id, request] of session.requests) {
+      if (request.turnId === previousId) session.resolve(id, this.context.connectionId);
     }
     session.turns.delete(previousId);
     session.start(turnId, this.context.connectionId);
@@ -150,11 +152,9 @@ export class ClaudeEvents implements AgentEvents {
       id,
       turnId,
       connectionId: this.context.connectionId,
-      kind: question ? 'question' : 'approval',
       title: question
         ? questionText || 'Claude needs an answer'
         : `Claude: ${String(request.tool_name ?? 'tool')} approval`,
-      payload: null,
     });
   }
 

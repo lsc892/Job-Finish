@@ -29,9 +29,8 @@ npm.cmd run test:package
 
 - `check`는 타입 검사·기존 테스트·번들 빌드를 수행한다. 루트와 설치 도구의 검증은 독립적으로 실행할 수 있지만 패키징은 루트 빌드 성공 후 진행한다.
 - 결과는 `dist/extension.cjs`와 `job-finish-win32-x64.vsix`다. 버전은 저장소의 `package.json`을 따른다.
-- `test:package`는 임시 VS Code 프로필에 VSIX를 설치하고 native 모듈, SDK와 포함 파일을 검사한다. 사용자 프로필에 적용했다는 증거는 아니다.
+- `test:package`는 임시 VS Code 프로필에 VSIX를 설치하고 native 모듈과 포함 파일을 검사한다. 사용자 프로필에 적용했다는 증거는 아니다.
 - VS Code 실행 파일이 표준 경로에 없으면 `JOB_FINISH_CODE_EXECUTABLE`을 실제 `Code.exe` 경로로 지정해 패키지 검증을 실행한다.
-- 실제 계정으로 모델을 호출하는 `test:live*`는 이 빌드 절차에 포함하지 않는다. 이미 성공한 검증은 관련 변경이나 오류가 없는 한 반복하지 않는다.
 
 ## 로컬 적용
 

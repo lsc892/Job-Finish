@@ -6,17 +6,34 @@ import { AgentEventRouter } from '../src/runtime/event-router';
 import { Diagnostics, Provider, Signal } from '../src/core/model';
 
 const fixture = (name: string): { events: unknown[] } => JSON.parse(readFileSync(`tests/fixtures/${name}.json`, 'utf8'));
-function setup(provider: Provider, window = 'window', owned = () => false) {
-  const signals: Signal[] = []; const router = new AgentEventRouter(provider, window, 'runtime', signal => signals.push(signal), new Diagnostics(), owned);
+function setup(provider: Provider, window = 'window') {
+  const signals: Signal[] = []; const router = new AgentEventRouter(provider, window, 'runtime', signal => signals.push(signal), new Diagnostics());
   return { signals, router };
 }
 const result = (uuid: string, user = 'request') => ({ type: 'result', subtype: 'success', is_error: false, uuid, user_message_uuid: user, session_id: 'session', result: '한국어😀' });
+
+test('Unknown Codex terminal states and oversized question IDs cannot become notifications', () => {
+  for (const status of ['toString', 'constructor', 'unknown', '']) {
+    const f = setup('codex');
+    assert.throws(() => f.router.incoming({ method: 'turn/completed', params: {
+      threadId: 'thread', turn: { id: 'turn', status, items: [] },
+    } }), /Unknown Codex turn status/);
+    assert.equal(f.signals.length, 0);
+    f.router.dispose();
+  }
+  const f = setup('codex');
+  assert.throws(() => f.router.incoming({ method: 'item/started', params: { threadId: 'thread', turnId: 'turn',
+    item: { type: 'agentMessage', id: 'x'.repeat(257), questions: [{ title: 'Question?' }] },
+  } }), /oversized Codex identifier/);
+  assert.equal(f.signals.length, 0);
+  f.router.dispose();
+});
 
 test('Captured Codex and Claude events use the common notification model', () => {
   for (const provider of ['codex', 'claude'] as const) {
     const f = setup(provider); for (const event of fixture(`${provider}-success`).events) f.router.incoming(event);
     assert.equal(f.signals.length, 1); assert.equal(f.signals[0]!.status, 'completed');
-    assert.equal(f.signals[0]!.source, 'verifiedIntegration'); assert.equal(f.signals[0]!.windowInstanceId, 'window');
+    assert.equal(f.signals[0]!.windowInstanceId, 'window');
     assert.equal(f.signals[0]!.connectionId, f.router.connectionId);
   }
 });
@@ -89,7 +106,7 @@ test('Starting ordinary Codex items does not create observed turns or replace th
   f.router.dispose();
 });
 
-test('Codex async questions exclude ordinary commentary, malformed titles, subagents and owned sessions', () => {
+test('Codex async questions exclude ordinary commentary, malformed titles, subagents', () => {
   const f = setup('codex');
   for (const questions of [undefined, null, [], [null, { title: 42 }, { title: ' ' }]]) {
     f.router.incoming({ method: 'item/completed', params: { threadId: 'thread', turnId: 'turn',
@@ -97,23 +114,21 @@ test('Codex async questions exclude ordinary commentary, malformed titles, subag
   }
   assert.equal(f.signals.length, 0);
   f.router.incoming({ method: 'thread/started', params: { thread: { id: 'subagent', parentThreadId: 'parent' } } });
-  const owned = setup('codex', 'owned-window', () => true);
   for (const method of ['item/started', 'item/completed']) {
     f.router.incoming({ method, params: { threadId: 'subagent', turnId: 'turn',
       item: { type: 'agentMessage', id: 'excluded', phase: 'commentary', text: '', questions: [{ title: 'Excluded?' }] } } });
-    owned.router.incoming({ method, params: { threadId: 'owned', turnId: 'turn',
-      item: { type: 'agentMessage', id: 'owned-question', phase: 'commentary', text: '', questions: [{ title: 'Owned?' }] } } });
+
   }
-  assert.equal(f.signals.length, 0); assert.equal(owned.signals.length, 0);
-  f.router.dispose(); owned.router.dispose();
+  assert.equal(f.signals.length, 0);
+  f.router.dispose();
 });
 
-test('Ephemeral and subagent Codex threads are excluded; windows and owned sessions stay separate', () => {
-  const a = setup('codex', 'A'), b = setup('codex', 'B'), own = setup('codex', 'own', () => true);
+test('Ephemeral and subagent Codex threads are excluded; windows stay separate', () => {
+  const a = setup('codex', 'A'), b = setup('codex', 'B');
   a.router.outgoing({ id: 'start', method: 'thread/start', params: { ephemeral: true } });
   a.router.incoming({ id: 'start', result: { thread: { id: 'captured-session' } } });
-  for (const event of fixture('codex-success').events) { a.router.incoming(event); b.router.incoming(event); own.router.incoming(event); }
-  assert.equal(a.signals.length, 0); assert.equal(own.signals.length, 0); assert.equal(b.signals.length, 1); assert.equal(b.signals[0]!.windowInstanceId, 'B');
+  for (const event of fixture('codex-success').events) { a.router.incoming(event); b.router.incoming(event); }
+  assert.equal(a.signals.length, 0); assert.equal(b.signals.length, 1); assert.equal(b.signals[0]!.windowInstanceId, 'B');
   const sub = setup('codex'); sub.router.incoming({ method: 'thread/started', params: { thread: { id: 'captured-session', parentThreadId: 'parent' } } });
   for (const event of fixture('codex-success').events) sub.router.incoming(event); assert.equal(sub.signals.length, 0);
 });

@@ -5,7 +5,6 @@ import { join, resolve, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
 const root = mkdtempSync(join(tmpdir(), 'job-finish-package-'));
 const manifest = JSON.parse(readFileSync('package.json', 'utf8'));
 const extensionId = `${manifest.publisher}.${manifest.name}`.toLowerCase();
@@ -28,9 +27,9 @@ for (const file of ['dist/extension.cjs', 'dist/native/JobFinish.Native.exe', ma
 }
 const requireFromExtension = createRequire(join(extension, 'package.json'));
 const koffi = requireFromExtension('koffi'); koffi.load('user32.dll');
-const sdkEntry = requireFromExtension.resolve('@anthropic-ai/claude-agent-sdk');
-const sdk = await import(pathToFileURL(sdkEntry).href); if (typeof sdk.query !== 'function') throw new Error('SDK unavailable');
-for (const file of ['dist/native/JobFinish.Native.exe', 'node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe', 'docs/verification.md']) {
+if (packagedManifest.dependencies['@anthropic-ai/claude-agent-sdk']) throw new Error('Removed SDK remains in the package');
+if (existsSync(join(extension, 'node_modules/@anthropic-ai/claude-agent-sdk'))) throw new Error('Removed SDK files remain in the VSIX');
+for (const file of ['dist/native/JobFinish.Native.exe', 'docs/verification.md']) {
   if (!existsSync(join(extension, file))) throw new Error(`VSIX missing ${file}`);
 }
 const helper = join(extension, 'dist/native/JobFinish.Native.exe');
@@ -39,5 +38,5 @@ let helperStarted = false;
 try { await promisify(execFile)(helper, [], { windowsHide: true, timeout: 15_000 }); }
 catch (error) { if (error.code !== 2) throw error; helperStarted = true; }
 if (!helperStarted) throw new Error('Native helper did not return its no-arguments exit code');
-const result = { installed: true, nativeLoaded: true, sdkLoaded: true, nativeToastHelperIncluded: true, extension, totalScope: 'isolated profile; user extensions unchanged' };
+const result = { installed: true, nativeLoaded: true, executionSdkRemoved: true, nativeToastHelperIncluded: true, extension, totalScope: 'isolated profile; user extensions unchanged' };
 mkdirSync('test-artifacts', { recursive: true }); writeFileSync('test-artifacts/package.json', JSON.stringify(result, null, 2)); console.log(JSON.stringify(result));

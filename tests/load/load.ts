@@ -1,14 +1,12 @@
-// 대량 세션 이벤트와 JSONL 디코딩 후 보관 상태와 힙 증가가 제한되는지 검증한다.
+// 대량 관찰 이벤트 처리 후 보관 상태와 힙 증가가 제한되는지 검증한다.
 import { Session } from '../../src/core/session';
 import { Diagnostics, LIMITS } from '../../src/core/model';
-import { JsonLines } from '../../src/runtime/transport';
 const diagnostics = new Diagnostics();
-const sessions = Array.from({ length: 8 }, (_, i) => new Session({ provider: 'codex', runtimeId: 'load', connectionId: 'c', sessionId: `${i}`, windowInstanceId: 'w', source: 'ownedExecution' }, () => true, () => {}, () => {}, diagnostics));
+const sessions = Array.from({ length: 8 }, (_, i) => new Session({ provider: 'codex', runtimeId: 'load', connectionId: 'c', sessionId: `${i}`, windowInstanceId: 'w' }, () => {}, diagnostics));
 global.gc?.(); const before = process.memoryUsage();
 for (let i = 0; i < 100_000; i++) {
   const session = sessions[i % sessions.length]!; const id = `${i}`;
   session.start(id, 'c'); session.body(id, 'result'.repeat(3000), 'c'); session.finish(id, 'completed', 'c'); diagnostics.add('diagnostic');
-  const decoder = new JsonLines(() => {}); decoder.push(Buffer.from('{"id":1,"result":true}\n')); decoder.clear();
 }
 global.gc?.(); const after = process.memoryUsage();
 if (sessions.some(s => s.completed.size > LIMITS.dedup || s.turns.size || s.requests.size)) throw new Error('Unbounded retained state');

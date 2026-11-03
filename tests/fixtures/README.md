@@ -1,25 +1,8 @@
 # fixtures
 
-합성 보조 프로세스와 실제 런타임에서 보존한 이벤트 입력을 제공한다.
+- [observed-agent.cjs](observed-agent.cjs) — 기존 Codex·Claude 프로세스를 대신해 제어된 JSONL을 송수신한다. 제품은 이 프로세스를 실행하지 않는다.
+- `codex-*.json` — 실제 기록의 완료·오류·질문·승인·권한·취소·사용량 한도 이벤트.
+- `claude-*.json` — 실제 기록의 정상·인증 오류·턴 제한 결과. 외부 Claude에서 발생한 제한도 오류로 분류한다.
+- [capture-codex-input.mjs](capture-codex-input.mjs) — 보존된 실제 기록에서 Codex 입력 이벤트의 식별자와 임시 경로를 치환한다.
 
-- [app-server.cjs](app-server.cjs) — Codex 초기화·실행·입력·취소·페이지 이력을 합성 stdio App Server로 제공한다.
-- [claude-auth-error.json](claude-auth-error.json) — 실제 Claude 인증 실패 결과를 상태 변환 검증에 제공한다.
-- [claude-input-contracts.json](claude-input-contracts.json) — 실제 Claude 질문·승인·취소·턴 제한 검증에서 보존한 입력 계약을 제공한다.
-- [claude-success.json](claude-success.json) — 실제 Claude 완료 결과를 상태 변환 검증에 제공한다.
-- [claude-turn-limit.json](claude-turn-limit.json) — 실제 Claude 최대 턴 제한 오류 결과를 상태 변환 검증에 제공한다.
-- [codex-api-error.json](codex-api-error.json) — 실제 Codex API 오류 이벤트를 상태 변환 검증에 제공한다.
-- [codex-approval.json](codex-approval.json) — 실제 Codex 명령 승인 요청과 종료 이벤트를 제공한다.
-- [codex-cancel.json](codex-cancel.json) — 실제 Codex 질문 대기와 취소 종료 이벤트를 제공한다.
-- [codex-permissions.json](codex-permissions.json) — 실제 Codex 권한 승인 요청과 종료 이벤트를 제공한다.
-- [codex-question.json](codex-question.json) — 실제 Codex 질문 요청·해소·완료 이벤트를 제공한다.
-- [codex-success.json](codex-success.json) — 실제 Codex 실행 시작·최종 응답·완료 이벤트를 제공한다.
-- [codex-usage-limit.json](codex-usage-limit.json) — 실제 Codex 사용량 한도 초과 종료 이벤트를 제공한다.
-- [hold-gate.ts](hold-gate.ts) — 별도 프로세스에서 Windows 파일 잠금을 유지해 배제와 강제 종료 복구 검증을 지원한다.
-- [observed-agent.cjs](observed-agent.cjs) — 입력한 이벤트·원시 프레임을 stdout에 전달해 비파괴 관찰 검증을 지원한다.
-
-## 실제 기록에서 fixture 추출
-
-- [capture-fixtures.mjs](capture-fixtures.mjs) — `test-artifacts`의 실제 검증 기록에서 Codex·Claude 종료 이벤트와 Claude 입력 계약을 추출한다.
-- [capture-codex-input.mjs](capture-codex-input.mjs) — Codex 질문·승인·권한·취소·한도 이벤트에서 식별자와 임시 경로를 치환한다.
-
-저장소 루트에서 `node tests/fixtures/capture-fixtures.mjs` 또는 `node tests/fixtures/capture-codex-input.mjs`로 실행한다. 해당 실제 검증 기록이 먼저 준비되어 있어야 하며, 모델을 새로 호출하지 않는다.
+이벤트 fixture는 현재 자동 관찰 경로로 검사하며 별도 App Server나 Claude SDK를 띄우지 않는다.

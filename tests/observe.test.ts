@@ -154,11 +154,10 @@ test('Malformed and oversized observations detach without killing, consuming, or
   assert.match(diagnostics.entries.at(-1)!.message, /exceeds/);
 });
 
-test('Other processes and owned execution are excluded; split UTF-8 frames are preserved', async t => {
+test('Other processes are excluded; split UTF-8 frames are preserved', async t => {
   const signals: Signal[] = []; const observer = new AgentStreamObserver('window', () => [{ provider: 'codex', path: resolve('tests/fixtures') }], signal => signals.push(signal), new Diagnostics());
   t.after(() => observer.dispose()); observer.start();
   const other = spawn(process.execPath, [agent], { stdio: 'pipe', windowsHide: true }); cleanup(t, other);
-  const owned = spawn(process.execPath, [agent, 'app-server'], { stdio: 'pipe', windowsHide: true, env: { ...process.env, JOB_FINISH_OWNED_EXECUTION: '1' } }); cleanup(t, owned);
   assert.equal(observer.snapshot().connections.length, 0);
   const child = spawn(process.execPath, [agent, 'app-server'], { stdio: 'pipe', windowsHide: true }); cleanup(t, child); child.stdout.resume();
   const bytes = Buffer.from(packet('split')); const split = bytes.indexOf(Buffer.from('한')) + 1;

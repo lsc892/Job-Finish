@@ -1,17 +1,12 @@
 // 세션 제목의 관찰·이름 변경·대체·복구와 토스트 표시를 검증한다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Diagnostics, sessionTitleText, Signal } from '../src/core/model';
+import { Diagnostics, Provider, sessionTitleText, Signal } from '../src/core/model';
 import { notificationTitle } from '../src/core/notifications';
-import { Session } from '../src/core/session';
 import { AgentEventRouter } from '../src/runtime/event-router';
-import { CodexAdapter } from '../src/runtime/codex/adapter';
-import { CodexReconciliation } from '../src/runtime/codex/reconciliation';
-import type { StdioRpc } from '../src/runtime/transport';
-import type { Thread } from '../src/protocol/v2/Thread';
 import { binding, fixture } from './helpers';
 
-function observed(provider = 'codex') {
+function observed(provider: Provider = 'codex') {
   const signals: Signal[] = [];
   const router = new AgentEventRouter(provider, '18e97d8f-window', 'runtime', signal => signals.push(signal), new Diagnostics());
   return { router, signals };
@@ -31,44 +26,12 @@ test('Toast titles use a normalized session title and never substitute a window 
   assert.equal(sessionTitleText({ name: 'invalid' }), undefined);
 });
 
-test('Session titles prefer runtime names, keep the first prompt, and survive checkpoints and reconnects', () => {
-  const f = fixture();
-  f.session.setTitle('첫 요청', 'connection-1', true);
-  f.session.setTitle('후속 요청', 'connection-1', true);
+test('Session titles keep the first prompt, prefer runtime names and reject stale connections', () => {
+  const f = fixture(); f.session.setTitle('첫 요청', 'connection-1', true); f.session.setTitle('후속 요청', 'connection-1', true);
   assert.equal(f.session.sessionTitle, '첫 요청');
-  f.session.setTitle('저장된 제목', 'connection-1');
-  const restored = new Session(binding({ connectionId: 'connection-2' }), () => true, () => {}, s => f.signals.push(s), new Diagnostics(), f.session.checkpoint());
-  restored.setTitle('오래된 연결', 'connection-1');
-  restored.setTitle('새 후속 요청', 'connection-2', true);
-  restored.start('restored', 'connection-2'); restored.finish('restored', 'completed', 'connection-2');
+  f.session.setTitle('저장된 제목', 'connection-1'); f.session.setTitle('오래된 연결', 'stale');
+  f.session.start('turn', 'connection-1'); f.session.finish('turn', 'completed', 'connection-1');
   assert.equal(f.signals[0]!.sessionTitle, '저장된 제목');
-  assert.equal(restored.checkpoint().promptTitle, '첫 요청');
-  f.revoke(); f.session.setTitle('소유권 없음', 'connection-1');
-  assert.equal(f.session.sessionTitle, '저장된 제목');
-});
-
-test('Owned Codex title updates reach waiting, terminal and rejected-start signals with identity checks', () => {
-  const f = fixture(); const adapter = new CodexAdapter(f.session);
-  const rename = (threadId: string, threadName: string, connection = 'connection-1') =>
-    adapter.handle({ method: 'thread/name/updated', params: { threadId, threadName } }, connection);
-  rename('thread-A', '세션 제목'); rename('other-thread', '다른 세션'); rename('thread-A', '오래된 연결', 'stale');
-  f.session.start('turn', 'connection-1');
-  f.session.waiting({ id: 'request', turnId: 'turn', connectionId: 'connection-1', kind: 'approval', title: '승인 질문', payload: null });
-  f.session.finish('turn', 'cancelled', 'connection-1');
-  f.session.beginStart('rejected', 'connection-1'); f.session.startRejected('rejected', '거절', 'connection-1');
-  assert.deepEqual(f.signals.map(signal => signal.sessionTitle), ['세션 제목', '세션 제목', '세션 제목']);
-});
-
-test('Owned Codex resume reads the saved name before delivering a recovered result', async () => {
-  const f = fixture(); f.session.setTitle('이전 요청', 'connection-1', true); f.session.start('tracked', 'connection-1');
-  const rpc = { connectionId: 'connection-1', connected: true, request: async (method: string) => ({
-    data: method === 'thread/turns/list' ? [{ id: 'tracked', status: 'completed', items: [] }] : [], nextCursor: null,
-  }) } as unknown as StdioRpc;
-  await new CodexReconciliation(new CodexAdapter(f.session), f.diagnostics, () => true).reconcile({
-    id: 'thread-A', name: '저장된 세션 이름', preview: '첫 요청', status: { type: 'idle' },
-  } as Thread, rpc);
-  assert.equal(f.signals.length, 1);
-  assert.equal(f.signals[0]!.sessionTitle, '저장된 세션 이름');
 });
 
 for (const source of ['started', 'response', 'list']) test(`Observed Codex ${source} metadata supplies titles without replaying history`, () => {

@@ -1,11 +1,11 @@
 # src
 
-VS Code 확장의 실제 작동 코드다. 에이전트 실행·자동 관찰·세션 상태를 해당 창의 Windows 알림에 연결한다. 테스트·검증 시나리오와 실행기는 [tests/](../tests/README.md), 빌드·프로토콜 생성은 [build/](../build/README.md)에 두며 이 폴더의 코드가 테스트 구현을 가져오지 않는다. 루트 `tsconfig.json`은 제품 코드만 대상으로 하고 테스트는 별도 설정에서 검사한다.
+기존 Codex·Claude Code 확장의 이벤트를 관찰해 같은 VS Code 창의 Windows 알림으로 연결하는 제품 코드다.
 
-- [extension.ts](extension.ts) — 로컬 Windows 환경을 확인하고 애플리케이션을 활성화·해제한다.
-- [application](application/README.md) — 실행 제공자와 소유권을 조율하며 연결된 세션 자원을 관리한다.
-- [core](core/README.md) — 세션 상태·소유권·알림 전달의 공통 규칙을 제공한다.
-- [protocol](protocol/README.md) — 외부 Codex App Server에서 생성한 프로토콜 타입 계약을 보관한다.
-- [runtime](runtime/README.md) — 제공자별 실행과 기존 프로세스 관찰을 공통 세션에 연결한다.
-- [vscode](vscode/README.md) — VS Code 명령·입력·결과·창별 서비스와 설정을 연결한다.
-- [windows](windows/README.md) — Windows 창 식별·깜박임·네이티브 토스트를 처리한다.
+- [extension.ts](extension.ts) — 로컬 Windows 환경 확인과 활성화·해제.
+- [core](core/README.md) — 관찰 세션 상태·중복 제거·알림 정책.
+- [runtime](runtime/README.md) — 기존 프로세스 관찰과 Codex·Claude 이벤트 해석.
+- [vscode](vscode/README.md) — 설정·4개 명령·결과 표시·창별 서비스.
+- [windows](windows/README.md) — HWND 검증·작업 표시줄 깜박임·네이티브 토스트.
+
+제품 코드는 [tests](../tests/README.md)와 [build](../build/README.md)를 가져오지 않는다. 타입 검사는 제품과 테스트를 구분한다.

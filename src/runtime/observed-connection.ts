@@ -2,7 +2,6 @@
 import { ChildProcess } from 'node:child_process';
 import type { Readable, Writable } from 'node:stream';
 import { Diagnostics, LIMITS, Provider, Signal } from '../core/model';
-import type { AgentProviderRegistry } from './agent-provider';
 import { AgentEventRouter } from './event-router';
 
 interface ObservationOptions {
@@ -10,9 +9,7 @@ interface ObservationOptions {
   windowInstanceId: string;
   existing: boolean;
   diagnostics: Diagnostics;
-  providers: AgentProviderRegistry;
   emit(signal: Signal): void;
-  isOwned(provider: Provider, sessionId: string): boolean;
   closed(): void;
 }
 
@@ -81,7 +78,7 @@ export class ObservedConnection {
     this.output = child.stdout!;
     this.router = new AgentEventRouter(options.provider, options.windowInstanceId,
       `${options.provider}:extension-host:${process.pid}:${child.pid}`,
-      options.emit, options.diagnostics, options.isOwned, options.providers);
+      options.emit, options.diagnostics);
     this.incoming = new Frames(this.router.incoming.bind(this.router), options.existing);
     this.outgoing = new Frames(this.router.outgoing.bind(this.router), options.existing);
     this.originalWrite = this.input.write;

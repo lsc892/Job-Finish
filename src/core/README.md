@@ -1,8 +1,5 @@
 # core
 
-제공자와 UI에 공통인 세션 상태·소유권·알림 전달 규칙을 제공한다.
-
-- [model.ts](model.ts) — 공통 타입·용량 상한·텍스트 제한을 정의하며 `Diagnostics`는 진단 메시지·이벤트를 기록한다.
-- [notifications.ts](notifications.ts) — `Notifications`: 실행 결과를 보관하고 포커스·설정에 맞춰 깜박임과 토스트를 전달한다.
-- [ownership.ts](ownership.ts) — `Ownership`은 창 사이 세션 소유권을 조율하고 `Lease`는 토큰 검증·체크포인트·해제를 관리한다.
-- [session.ts](session.ts) — `Session`: 소유한 실행의 상태·입력 요청·체크포인트와 완료·비동기 질문 알림의 중복을 관리한다.
+- [model.ts](model.ts) — Codex·Claude 식별자, 신호·턴·입력 요청 타입, 보관 상한과 진단.
+- [session.ts](session.ts) — 연결 안의 턴·요청 ID 추적, 제목·본문·입력 대기·종료 반영과 중복 제거. 입력 요청은 턴 ID만 보관하며 디스크에 저장하지 않는다.
+- [notifications.ts](notifications.ts) — 현재 창의 신호 권한·활성화 설정·포커스를 확인해 결과를 보관하고 토스트·flash를 전달한다. 비동기 질문 뒤 5초 이내 정상 완료는 결과만 추가한다.

@@ -1,6 +1,5 @@
 # Job-Finish
 
-実行可能な Windows x64 VS Code 拡張とイベントベースのテストを実装しました。最新のインストール手順と対応範囲は [English](README.md)、検証結果は [検証レポート](docs/verification.md) を参照してください。以下の MVP の説明は過去の検証記録です。
 
 **[English](README.md) · [한국어](README.ko.md) · [中文](README.zh.md) · 日本語**
 
@@ -12,17 +11,11 @@ Job-Finishはエージェントの通知を対応するVS Codeウィンドウに
 ![Status](https://img.shields.io/badge/status-verified%20MVP-orange)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-## 開発中の機能
+## 自動通知
 
-- VS CodeでClaude CodeとCodexの通知を確認。
-- 同じプロジェクトを複数のウィンドウで開いても、結果をウィンドウごとに区別。
-- 応答完了の通知と、エージェントの結果を確認する画面。
+同じ VS Code ウィンドウ内の Codex・Claude Code の実行イベントを検出し、完了・エラー・キャンセル・入力要求を Windows 通知とタスクバーの点滅で知らせます。通知をクリックすると対応するウィンドウに戻り、質問への回答と承認は元の拡張で行います。
 
-## 現在の状態
-
-TypeScriptによるVS Code拡張MVPで、実際のエージェント呼び出し、セッションログの通知、ウィンドウIDの区別を検証しました。現在のリポジトリには紹介README、開発文書、意思決定・検証の記録を残し、実行用MVPとテストファイルは削除しました。
-
-[開発文書](docs/requirements-and-verification.md)には機能・実装アルゴリズム・完了条件を、[記録](docs/일지.md)には選択の根拠・過去の実装・実測結果をまとめています。
+Windows x64 のローカルデスクトップ版 VS Code に対応し、インストール後に自動で有効になります。最新のインストール手順は [English](README.md)、検証範囲は[検証レポート](docs/verification.md)を参照してください。
 
 ## ライセンス
 

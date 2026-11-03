@@ -1,30 +1,22 @@
 // 세션·알림의 공통 타입과 용량 상한·텍스트 제한·진단 기록을 정의한다.
-/** Stable provider ID, resolved and validated by AgentProviderRegistry. */
-export type Provider = string;
-export type Status = 'idle' | 'running' | 'completed' | 'error' | 'cancelled' | 'waitingForInput' | 'unknown';
+export type Provider = 'codex' | 'claude';
+export type Status = 'running' | 'completed' | 'error' | 'cancelled' | 'waitingForInput';
 export type TerminalStatus = 'completed' | 'error' | 'cancelled';
 export interface SessionBinding {
   windowInstanceId: string; provider: Provider; runtimeId: string;
-  connectionId: string; sessionId: string; source: 'ownedExecution' | 'verifiedIntegration';
+  connectionId: string; sessionId: string;
 }
 export interface InputRequest {
   id: string; turnId: string; connectionId: string; title: string;
-  kind: 'approval' | 'question'; payload: unknown;
 }
-export interface TurnState { id: string; status: Status; text: string; truncated: boolean; resultId?: string }
+export interface TurnState { id: string; status: Status; text: string; truncated: boolean }
 export interface Signal extends SessionBinding {
   notificationId: string; turnId: string; status: Status; text: string; truncated: boolean;
   sessionTitle?: string;
   requestId?: string; detail?: string; at: string;
-  scope?: 'turn' | 'startRequest';
   kind?: 'asyncQuestion';
 }
-export interface Checkpoint {
-  version: 1; completed: [string, TerminalStatus][]; turns: TurnState[];
-  pendingStart?: string;
-  sessionTitle?: string; promptTitle?: string;
-}
-export const LIMITS = { messageBytes: 1024 * 1024, queueCount: 512, queueBytes: 4 * 1024 * 1024,
+export const LIMITS = { messageBytes: 1024 * 1024,
   results: 20, textBytes: 16 * 1024, diagnostics: 100, dedup: 512, turns: 32, requests: 128 } as const;
 export function boundedText(text: string, limit = LIMITS.textBytes): { text: string; truncated: boolean } {
   const bytes = Buffer.from(text);
@@ -41,7 +33,6 @@ export function sessionTitleText(value: unknown): string | undefined {
   const chars = Array.from(text);
   return chars.length > 100 ? chars.slice(0, 99).join('') + '…' : text;
 }
-export const sessionKey = (b: Pick<SessionBinding, 'provider' | 'runtimeId' | 'sessionId'>): string => JSON.stringify([b.provider, b.runtimeId, b.sessionId]);
 export const isTerminal = (s: Status): s is TerminalStatus => s === 'completed' || s === 'error' || s === 'cancelled';
 
 /** 용량을 제한한 진단 메시지·구조화 이벤트를 보관하고 기록 콜백에 전달한다. */

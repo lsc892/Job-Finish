@@ -1,6 +1,5 @@
 // 자동 실행 관찰과 알림 전달을 현재 VS Code 창·설정·소유권에 연결한다.
 import * as vscode from 'vscode';
-import type { ApplicationSessions } from '../application/sessions';
 import { Diagnostics, Signal } from '../core/model';
 import { notificationTitle, Notifications } from '../core/notifications';
 import { AgentStreamObserver, AgentRoot } from '../runtime/observe';
@@ -11,7 +10,6 @@ import { CodeWindow } from './window';
 
 interface NotificationPorts {
   config<T>(key: string, fallback: T): T;
-  changed(): void;
 }
 
 /** 자동 관찰·결과 알림·Windows 토스트를 현재 창의 설정과 소유권에 연결한다. */
@@ -23,11 +21,11 @@ export class WindowNotifications {
   private disposed = false;
 
   constructor(private readonly context: vscode.ExtensionContext, windowInstanceId: string,
-    private readonly sessions: Pick<ApplicationSessions, 'has' | 'owns'>, private readonly diagnostics: Diagnostics,
+    private readonly diagnostics: Diagnostics,
     private readonly ports: NotificationPorts) {
     this.toast = new WindowsToast(WindowsToast.binary(context.extensionPath), diagnostics, undefined, process.execPath);
     this.observer = new AgentStreamObserver(windowInstanceId, () => this.agentRoots(), signal => this.receive(signal),
-      diagnostics, (provider, id) => sessions.has(provider, id));
+      diagnostics);
     this.window = new CodeWindow(windowInstanceId, diagnostics);
     this.notifications = new Notifications({
       enabled: () => ports.config('enabled', true),
@@ -48,14 +46,14 @@ export class WindowNotifications {
   automatic() { return this.observer.snapshot(); }
 
   private owns(signal: Signal): boolean {
-    return signal.source === 'verifiedIntegration' ? this.observer.owns(signal) : this.sessions.owns(signal.sessionId);
+    return this.observer.owns(signal);
   }
 
   private agentRoots(): AgentRoot[] {
     if (this.context.extensionMode === vscode.ExtensionMode.Test && process.env.JOB_FINISH_TEST_AGENT_ROOT) {
-      return agentProviders.all().map(provider => ({ provider: provider.id, path: process.env.JOB_FINISH_TEST_AGENT_ROOT! }));
+      return Object.values(agentProviders).map(provider => ({ provider: provider.id, path: process.env.JOB_FINISH_TEST_AGENT_ROOT! }));
     }
-    return agentProviders.all().flatMap(provider => {
+    return Object.values(agentProviders).flatMap(provider => {
       const extension = vscode.extensions.getExtension(provider.extensionId);
       return extension ? [{ provider: provider.id, path: extension.extensionPath }] : [];
     });
@@ -72,14 +70,12 @@ export class WindowNotifications {
     }
     if (!config('toast', true)) this.toast.stop();
     if (!config('flash', true)) this.window.stopFlash();
-    this.ports.changed();
   }
 
   receive(signal: Signal): void {
     this.diagnostics.trace('signal.received', { windowInstanceId: signal.windowInstanceId, notificationId: signal.notificationId,
       provider: signal.provider, status: signal.status, owned: this.owns(signal), focused: vscode.window.state.focused });
     void this.notifications.deliver(signal).catch(error => this.diagnostics.add(error));
-    this.ports.changed();
   }
 
   private async showToast(signal: Signal, message: string, click: () => void, allowed: () => boolean): Promise<void> {

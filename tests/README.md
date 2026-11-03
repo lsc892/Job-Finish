@@ -1,46 +1,15 @@
 # tests
 
-제품 코드의 회귀 테스트와 실제 런타임·VS Code·Windows 검증을 한곳에서 관리한다. 실제 확장 작동 코드는 [src/](../src/README.md), 빌드·프로토콜 생성 도구는 [build/](../build/README.md)에 있다.
+자동 감지와 Windows 알림의 검증 코드다. 명령은 저장소 루트에서 실행한다.
 
-| 위치 | 역할 | 실행 명령 |
+| 위치 | 검증 | 명령 |
 | --- | --- | --- |
-| 루트의 `*.test.ts` | 세션·제공자·통신·알림 회귀 검증 | `npm test` |
-| [live/](live/README.md) | 실제 Codex·Claude의 실행·입력·이력 검증 | `npm run test:live`, `npm run test:live:codex-input` |
-| [load/](load/README.md) | 합성 이벤트 부하·메모리 검증 | `npm run test:load`, `npm run test:router-load` |
-| [vscode/](vscode/README.md) | 격리 확장 호스트·창별 소유권·복구 검증 | `npm run test:extension`, `npm run test:windows`, `npm run test:profile` |
-| [windows/](windows/README.md) | 알림·클릭·창 활성화와 C# 프로세스 계약 검증 | `npm run test:toast`, `npm run test:native` |
-| [native-toast/](native-toast/README.md) | C# 등록·COM 계약 테스트 프로젝트 | `test:native`에서 실행 |
-| [package/](package/README.md) | VSIX 설치·포함 파일 검증 | `npm run test:package` |
-| [fixtures/](fixtures/README.md) | 합성 프로세스·보존 이벤트·fixture 추출 도구 | 각 테스트에서 사용 |
+| `*.test.ts` | 이벤트 해석·세션 격리·중복 제거·포커스·토스트·클릭 계약 | `npm test` |
+| [load](load/README.md) | 합성 이벤트와 8개 스트림의 10만 턴·메모리 상한 | `npm run test:load`, `npm run test:router-load` |
+| [vscode](vscode/README.md) | 실제 확장 호스트의 자동 감지·명령·설정 전환·창별 격리 | `npm run test:extension`, `npm run test:windows` |
+| [windows](windows/README.md) | 네이티브 등록·클릭·창 활성화·프로세스 계약 | `npm run test:toast`, `npm run test:native` |
+| [native-toast](native-toast/README.md) | C# 등록·COM 계약 | `test:native`에서 사용 |
+| [package](package/README.md) | 격리 VSIX 설치·의존성·이미지·도우미 | `npm run test:package` |
+| [fixtures](fixtures/README.md) | 관찰 대상 합성 프로세스와 실제 기록 이벤트 | 각 검증에서 사용 |
 
-명령은 저장소 루트에서 실행한다. `npm test`는 루트의 `*.test.ts`만 실행하며 실계정 호출·UI 검증·부하 측정은 해당 npm 명령으로 선택 실행한다. 테스트용 TypeScript 설정은 [tsconfig.json](tsconfig.json)이며 `npm run typecheck`는 제품과 테스트를 각각 검사한다.
-
-## 기본 회귀 테스트와 공용 도우미
-
-- [application-sessions.test.ts](application-sessions.test.ts) — 세션 열기·용량 제한·소유권 등록·실패 정리와 종료 경쟁의 일관성을 검증한다.
-- [captured.test.ts](captured.test.ts) — 실제 런타임에서 보존한 Codex·Claude 이벤트가 기대한 세션 상태로 해석되는지 검증한다.
-- [claude-execution.test.ts](claude-execution.test.ts) — 제어된 SDK Query로 Claude 실행의 입력·취소·종료·소유권 경계를 검증한다.
-- [claude-permissions.test.ts](claude-permissions.test.ts) — Claude 승인 콜백의 응답·철회·상한·체크포인트 실패와 리스너 정리를 검증한다.
-- [codex-connection.test.ts](codex-connection.test.ts) — Codex 연결의 초기 이벤트 버퍼·응답 재전송·복구 병합·재시도·종료를 검증한다.
-- [codex-history.test.ts](codex-history.test.ts) — Codex 이력의 페이지 상한·커서 검증·최종 응답 선택과 연결 유효성 확인을 검증한다.
-- [codex-reconciliation.test.ts](codex-reconciliation.test.ts) — Codex 이력 대조 중 소유권·연결 상실과 충돌 결과·미관찰 실행 처리를 검증한다.
-- [event-router.test.ts](event-router.test.ts) — 관찰한 Codex·Claude 이벤트의 알림 변환·격리·중복 제거·입력 수명을 검증한다.
-- [helpers.ts](helpers.ts) — 세션 테스트용 바인딩·진단·알림 수집과 소유권 철회 도우미를 제공한다.
-- [integration.test.ts](integration.test.ts) — 실제 stdio 전송과 합성 App Server로 Codex 실행·입력·취소·이력 복원을 통합 검증한다.
-- [observe.test.ts](observe.test.ts) — 기존·신규 에이전트 스트림의 비파괴 관찰과 프레임 경계·종료·설정 전환을 검증한다.
-- [ownership.test.ts](ownership.test.ts) — 창·연결·런타임별 독점 소유권과 소유자 복구·Windows 파일 잠금을 검증한다.
-- [providers.test.ts](providers.test.ts) — 제3 제공자의 등록·관찰·실행·입력 변환 경계를 검증한다.
-  - `SampleProvider` — 독립 합성 프로토콜로 제공자 확장 지점을 검증한다.
-  - 익명 등록 검증 제공자 — 별도 ID와 중복 명령의 등록 거부를 검증한다.
-  - 익명 경로 검증 제공자 — 런타임 홈 변경으로 경로 정규화와 식별자 분리를 검증한다.
-  - 익명 식별자 검증 제공자 — 제공자 ID 변경으로 런타임 식별자 분리를 검증한다.
-- [state.test.ts](state.test.ts) — 세션의 종료·중복·체크포인트·입력·소유권·보관 상한과 제공자 상태 변환을 검증한다.
-- [session-title.test.ts](session-title.test.ts) — 세션 제목·이름 변경·첫 요청 대체·이력 메타데이터·복구·세션 격리와 토스트 제목의 Unicode 상한을 검증한다.
-- [toast-activation.test.ts](toast-activation.test.ts) — 알림 활성화 채널의 연결 상한·유휴 종료·만료와 현재 소유권 확인을 검증한다.
-- [toast-process.test.ts](toast-process.test.ts) — 네이티브 도우미의 진단 프레임·종료·시간 제한·취소·정리 계약을 검증한다.
-- [toast.test.ts](toast.test.ts) — 실제 Windows 파이프와 제어된 도우미로 알림 전송·등록·클릭 승인·취소를 검증한다.
-- [toast-image.test.ts](toast-image.test.ts) — 기본 이미지·사용자 지정 경로·이미지 끄기와 잘못된 경로의 대체 동작을 검증한다.
-- [transport.test.ts](transport.test.ts) — UTF-8 JSONL 프레임·RPC 봉투·초기 이벤트 큐·응답 순서/오류·요청 만료·대기 요청 상한과 종료 시 정리를 검증한다.
-- [windows.test.ts](windows.test.ts) — 창 식별·포커스·점멸·알림 정책을 검증하고 `FakeNative`로 창 상태와 점멸 호출을 모사한다.
-- [fixtures](fixtures/README.md) — 합성 보조 프로세스와 실제 런타임에서 보존한 이벤트 입력을 제공한다.
-- [native-toast](native-toast/README.md) — 네이티브 알림 바로가기 등록과 COM 활성화 계약을 검증한다.
+`npm run typecheck`는 제품과 테스트를 별도로 검사한다. 실제 모델을 호출하는 실행기와 직접 실행·세션 복구 테스트는 제거했다. Windows 배너의 시각 확인은 자동화된 계약 검사와 구분한다.
