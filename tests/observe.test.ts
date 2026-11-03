@@ -61,6 +61,32 @@ test('Observed async questions reach toast delivery once, obey focus, and preser
   assert.deepEqual(diagnostics.entries, []);
 });
 
+test('An observed question followed immediately by completion produces one toast and retains both results', async t => {
+  const diagnostics = new Diagnostics(); const toasts: string[] = []; const deliveries: Promise<void>[] = [];
+  let flashes = 0;
+  const notifications = new Notifications({ focused: () => false, owns: signal => observer.owns(signal),
+    stopFlash: () => {}, flash: () => { flashes++; }, activate: () => {},
+    toast: async (_signal, message, _click, allowed) => { if (allowed()) toasts.push(message); } });
+  const observer = new AgentStreamObserver('window', () => [{ provider: 'codex', path: resolve('tests/fixtures') }],
+    signal => deliveries.push(notifications.deliver(signal)), diagnostics);
+  t.after(() => observer.dispose()); observer.start();
+  const child = spawn(process.execPath, [agent, 'app-server'], { stdio: 'pipe', windowsHide: true }); cleanup(t, child);
+  const output: Buffer[] = []; child.stdout.on('data', chunk => output.push(chunk));
+  const params = { threadId: 'thread', turnId: 'turn', item: { type: 'agentMessage', id: 'question',
+    phase: 'commentary', delivery: 'async', text: '', questions: [{ title: '어느 환경인가요?' }] } };
+  const stream = [{ method: 'item/started', params }, { method: 'item/completed', params },
+    ...events('turn', '답변을 기다리겠습니다.').slice(1)];
+  child.stdin.write(JSON.stringify({ events: stream }) + '\n');
+  await until(() => notifications.results.length === 2); await Promise.all(deliveries);
+  assert.deepEqual(toasts, ['어느 환경인가요?']); assert.equal(flashes, 1);
+  assert.equal(notifications.results[0]!.kind, 'asyncQuestion');
+  assert.deepEqual(notifications.results.map(signal => [signal.status, signal.text]),
+    [['waitingForInput', '어느 환경인가요?'], ['completed', '답변을 기다리겠습니다.']]);
+  assert.equal(observer.snapshot().connections[0]!.activeTurns, 0);
+  assert.equal(Buffer.concat(output).toString('utf8'), stream.map(event => JSON.stringify(event) + '\n').join(''));
+  assert.deepEqual(diagnostics.entries, []);
+});
+
 test('Automatic observation attaches existing and future processes, leaves bytes unchanged, and toggles cleanly', async t => {
   const signals: Signal[] = []; const diagnostics = new Diagnostics();
   const roots = () => [{ provider: 'codex' as const, path: resolve('tests/fixtures') }];

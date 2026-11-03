@@ -17,6 +17,7 @@ export interface Signal extends SessionBinding {
   sessionTitle?: string;
   requestId?: string; detail?: string; at: string;
   scope?: 'turn' | 'startRequest';
+  kind?: 'asyncQuestion';
 }
 export interface Checkpoint {
   version: 1; completed: [string, TerminalStatus][]; turns: TurnState[];

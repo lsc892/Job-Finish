@@ -96,7 +96,7 @@ export class Session {
     if (this.seenQuestions.has(key)) return;
     this.seenQuestions.add(key);
     while (this.seenQuestions.size > LIMITS.dedup) this.seenQuestions.delete(this.seenQuestions.values().next().value!);
-    this.signal({ ...turn, ...boundedText(text), status: 'waitingForInput' });
+    this.signal({ ...turn, ...boundedText(text), status: 'waitingForInput' }, undefined, undefined, 'asyncQuestion');
   }
   // 해당 턴의 입력 요청이 모두 해소되면 실행 중 상태로 되돌린다.
   resolve(id: string, connectionId: string): void {
@@ -128,9 +128,10 @@ export class Session {
   checkpoint(): Checkpoint { return { version: 1, completed: [...this.completed], turns: [...this.turns.values()], ...(this.pendingStart ? { pendingStart: this.pendingStart } : {}),
     ...(this.title ? { sessionTitle: this.title } : {}), ...(this.promptTitle ? { promptTitle: this.promptTitle } : {}) }; }
   private persist(): void { this.save(this.checkpoint()); this.changed(); }
-  private signal(turn: TurnState, detail?: string, requestId?: string): void {
+  private signal(turn: TurnState, detail?: string, requestId?: string, kind?: Signal['kind']): void {
     if (!this.owns()) return;
     this.emit({ ...this.binding, sessionTitle: this.sessionTitle, notificationId: randomUUID(), turnId: turn.id, status: turn.status,
-      text: turn.text, truncated: turn.truncated, detail: detail && boundedText(detail, 2048).text, requestId, at: new Date().toISOString() });
+      text: turn.text, truncated: turn.truncated, detail: detail && boundedText(detail, 2048).text, requestId,
+      ...(kind ? { kind } : {}), at: new Date().toISOString() });
   }
 }

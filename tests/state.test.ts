@@ -76,6 +76,7 @@ test('Async questions notify once per item without changing execution, body or p
   f.session.notifyQuestion('t', 'question', 'duplicate', 'connection-1');
   assert.equal(f.signals.length, 2);
   assert.equal(f.signals[1]!.status, 'waitingForInput');
+  assert.equal(f.signals[1]!.kind, 'asyncQuestion');
   assert.equal(f.signals[1]!.text, '첫 질문\n두 번째 질문');
   assert.equal(f.signals[1]!.requestId, undefined, 'an async question has no pending RPC response');
   assert.deepEqual(f.session.checkpoint(), before);
@@ -106,6 +107,7 @@ test('Owned Codex questions notify at item start without pausing the turn or ove
     phase: 'final_answer', delivery: 'async', text: '', questions: [{ title: '계속 진행할까요?' }] } };
   adapter.handle({ method: 'item/started', params }, 'connection-1');
   assert.equal(f.signals[0]!.text, '계속 진행할까요?');
+  assert.equal(f.signals[0]!.kind, 'asyncQuestion');
   assert.equal(f.signals[0]!.requestId, undefined);
   assert.deepEqual(f.session.checkpoint(), before);
   assert.equal(f.session.requests.size, 0);
