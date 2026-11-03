@@ -7,7 +7,7 @@ When **Claude Code or Codex finishes, needs input, or encounters an error**, Job
 
 | Windows toast notification | Taskbar flashing |
 | :---: | :---: |
-| <img src="resources/Toast.gif" alt="Demo of a Windows toast notification and returning to VS Code" width="380"> | <img src="resources/Flash.gif" alt="Demo of the VS Code taskbar button flashing" width="380"> |
+| <img src="https://raw.githubusercontent.com/lsc892/Job-Finish/877024beb5f86c390c1beec4992cf64c862dbc67/resources/Toast.gif" alt="Demo of a Windows toast notification and returning to VS Code" width="380"> | <img src="https://raw.githubusercontent.com/lsc892/Job-Finish/877024beb5f86c390c1beec4992cf64c862dbc67/resources/Flash.gif" alt="Demo of the VS Code taskbar button flashing" width="380"> |
 | Click the toast to return to the task's VS Code window | Spot the waiting window even if you miss the toast |
 
 *These GIFs show the earlier version's notification behavior; the current extension's toast appearance may differ.*
@@ -149,6 +149,19 @@ npm uninstall -g job-finish
 For implementation details and verification, see the [development document](docs/requirements-and-verification.md) and [verification report](docs/verification.md).
 
 ## Release notes
+
+<details>
+<summary>v2.3.1 (since v2.3.0)</summary>
+
+### Shared npm and Marketplace introduction
+
+Both package pages use this README, including the animated toast and taskbar demos and version-by-version release notes. GIFs use public HTTPS URLs, and npm document links are converted to absolute URLs.
+
+### Matching release versions
+
+The npm installer and the Windows x64 VSIX are both version 2.3.1. The Marketplace publisher remains `JobFinish`, with extension ID `JobFinish.JobFinish`.
+
+</details>
 
 <details>
 <summary>v2.3.0 (since v2.2.0)</summary>

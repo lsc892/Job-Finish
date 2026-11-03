@@ -7,7 +7,7 @@
 
 | Windows 通知 | 任务栏闪烁 |
 | :---: | :---: |
-| <img src="resources/Toast.gif" alt="Windows 通知及返回 VS Code 的演示" width="380"> | <img src="resources/Flash.gif" alt="VS Code 任务栏按钮闪烁的演示" width="380"> |
+| <img src="https://raw.githubusercontent.com/lsc892/Job-Finish/877024beb5f86c390c1beec4992cf64c862dbc67/resources/Toast.gif" alt="Windows 通知及返回 VS Code 的演示" width="380"> | <img src="https://raw.githubusercontent.com/lsc892/Job-Finish/877024beb5f86c390c1beec4992cf64c862dbc67/resources/Flash.gif" alt="VS Code 任务栏按钮闪烁的演示" width="380"> |
 | 点击通知，回到该任务所在的 VS Code 窗口 | 即使错过通知，也能看到等待你处理的窗口 |
 
 *这些 GIF 展示的是早期版本的通知行为；当前扩展的通知外观可能有所不同。*
@@ -149,6 +149,19 @@ npm uninstall -g job-finish
 实现细节与验证信息见[开发文档](docs/requirements-and-verification.md)和[验证报告](docs/verification.md)。
 
 ## 更新记录
+
+<details>
+<summary>v2.3.1（自 v2.3.0 起）</summary>
+
+### 统一 npm 与 Marketplace 的介绍
+
+两个包页面共同使用这份 README，包括通知与任务栏 GIF 演示以及各版本更新记录。GIF 使用公开的 HTTPS 地址，npm 中的文档链接会转换为绝对地址。
+
+### 统一发布版本
+
+npm 安装程序与 Windows x64 VSIX 均更新为 2.3.1。Marketplace 发布者保持为 `JobFinish`，扩展 ID 为 `JobFinish.JobFinish`。
+
+</details>
 
 <details>
 <summary>v2.3.0（自 v2.2.0 起）</summary>

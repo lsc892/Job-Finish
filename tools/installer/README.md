@@ -55,11 +55,20 @@ npm 배포용 패키지는 빌드한 JavaScript CLI와 VSIX를 포함합니다. 
 
 ```powershell
 npm run package
-npm run build:installer
-npm pack ./tools/installer
+npm run package:npm
 ```
 
-기존 npm 패키지 `job-finish`를 사용하며 `npx job-finish@latest install` 또는 `npx job-finish@latest update`로 실행합니다. 기본 VSIX는 패키지에 포함된 파일이고, 배포자 `JobFinish`의 기존 Marketplace 확장 `JobFinish.JobFinish`를 설치·업데이트합니다. v2.3.0 릴리스는 CLI와 확장 버전을 2.3.0으로 맞추며, 설치 판단에는 VSIX의 실제 확장 버전을 사용합니다. 배포할 VSIX는 `build:installer`로 함께 갱신해야 합니다. `install`, `update`를 생략하면 `install`을 실행합니다.
+npm 게시에는 `package:npm`이 생성한 `job-finish-<버전>.tgz`를 사용합니다. 설치 도구 폴더의 README는 상세 안내이므로 해당 폴더를 직접 게시하면 공통 소개가 적용되지 않습니다.
+
+기존 npm 패키지 `job-finish`를 사용하며 `npx job-finish@latest install` 또는 `npx job-finish@latest update`로 실행합니다. 기본 VSIX는 패키지에 포함된 파일이고, 배포자 `JobFinish`의 기존 Marketplace 확장 `JobFinish.JobFinish`를 설치·업데이트합니다. v2.3.1 릴리스는 CLI와 확장 버전을 2.3.1로 맞추며, 설치 판단에는 VSIX의 실제 확장 버전을 사용합니다. `package:npm`이 현재 VSIX와 CLI를 함께 준비합니다. `install`, `update`를 생략하면 `install`을 실행합니다.
+
+npm 페이지에는 저장소 루트의 [프로젝트 README](../../README.md)를 표시합니다. `package:npm`은 해당 README의 링크를 절대주소로 바꿔 임시 배포 폴더에 넣습니다. 이 파일은 저장소의 설치 도구 상세 안내로 유지합니다. Marketplace 기본 소개도 같은 루트 README를 사용합니다.
+
+## v2.3.1 변경 사항
+
+- npm과 Marketplace의 기본 소개를 GIF 데모와 버전별 변경 내역이 있는 공통 README로 맞췄습니다.
+- GIF를 공개된 원본의 절대주소로 연결해 패키지 페이지에서도 표시하며, npm README의 문서 링크도 절대주소로 변환합니다.
+- npm 설치 도구와 수동 업로드용 `JobFinish.JobFinish` VSIX 버전을 2.3.1로 맞췄습니다.
 
 ## v2.3.0 변경 사항
 

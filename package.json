@@ -4,7 +4,7 @@
   "displayName": "Job-Finish",
   "icon": "resources/icon/JobFinish_Icon.png",
   "description": "Window-scoped Codex and Claude execution notifications for Windows.",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "publisher": "JobFinish",
   "license": "MIT",
   "repository": {
@@ -37,7 +37,7 @@
     "update:extension": "npm --prefix tools/installer run update:extension --",
     "uninstall:legacy": "npm --prefix tools/installer run uninstall:legacy --",
     "build:installer": "npm --prefix tools/installer run build -- --vsix ../../job-finish-win32-x64.vsix",
-    "package:npm": "npm run build:installer && npm pack ./tools/installer",
+    "package:npm": "node tools/installer/scripts/package.mjs",
     "typecheck": "tsc --noEmit && tsc -p tests/tsconfig.json",
     "test": "tsx --test tests/*.test.ts",
     "check": "npm run typecheck && npm test && npm run build",

@@ -7,7 +7,7 @@ AI エージェントの作業が終わったか、チャットを見続ける�
 
 | Windows のトースト通知 | タスクバーの点滅 |
 | :---: | :---: |
-| <img src="resources/Toast.gif" alt="Windows のトースト通知から VS Code に戻るデモ" width="380"> | <img src="resources/Flash.gif" alt="VS Code のタスクバーボタンが点滅するデモ" width="380"> |
+| <img src="https://raw.githubusercontent.com/lsc892/Job-Finish/877024beb5f86c390c1beec4992cf64c862dbc67/resources/Toast.gif" alt="Windows のトースト通知から VS Code に戻るデモ" width="380"> | <img src="https://raw.githubusercontent.com/lsc892/Job-Finish/877024beb5f86c390c1beec4992cf64c862dbc67/resources/Flash.gif" alt="VS Code のタスクバーボタンが点滅するデモ" width="380"> |
 | 通知をクリックして、作業中の VS Code ウィンドウへ | 通知を見逃しても、応答を待つウィンドウがわかる |
 
 *この GIF は旧バージョンの通知動作を示しています。現在の拡張機能ではトーストの外観が異なる場合があります。*
@@ -149,6 +149,19 @@ npm uninstall -g job-finish
 実装と検証の詳細は[開発ドキュメント](docs/requirements-and-verification.md)と[検証レポート](docs/verification.md)を参照してください。
 
 ## 変更履歴
+
+<details>
+<summary>v2.3.1（v2.3.0 以降）</summary>
+
+### npm と Marketplace の紹介を統一
+
+通知とタスクバーの GIF デモ、バージョン別の変更履歴を含むこの README を、両方のパッケージページで使用します。GIF は公開 HTTPS URL を使い、npm のドキュメントリンクは絶対 URL に変換します。
+
+### リリースバージョンの統一
+
+npm インストーラーと Windows x64 VSIX を 2.3.1 に統一しました。Marketplace の発行元は `JobFinish`、拡張機能 ID は `JobFinish.JobFinish` を維持します。
+
+</details>
 
 <details>
 <summary>v2.3.0（v2.2.0 以降）</summary>

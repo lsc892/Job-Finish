@@ -7,7 +7,7 @@ AI 에이전트가 끝났는지 확인하려고 채팅창을 계속 보고 있�
 
 | Windows 토스트 알림 | 작업 표시줄 깜빡임 |
 | :---: | :---: |
-| <img src="resources/Toast.gif" alt="Windows 토스트 알림을 클릭해 VS Code로 돌아오는 동작 예시" width="380"> | <img src="resources/Flash.gif" alt="VS Code 작업 표시줄 버튼이 깜빡이는 동작 예시" width="380"> |
+| <img src="https://raw.githubusercontent.com/lsc892/Job-Finish/877024beb5f86c390c1beec4992cf64c862dbc67/resources/Toast.gif" alt="Windows 토스트 알림을 클릭해 VS Code로 돌아오는 동작 예시" width="380"> | <img src="https://raw.githubusercontent.com/lsc892/Job-Finish/877024beb5f86c390c1beec4992cf64c862dbc67/resources/Flash.gif" alt="VS Code 작업 표시줄 버튼이 깜빡이는 동작 예시" width="380"> |
 | 알림을 클릭하면 작업하던 VS Code 창으로 복귀 | 토스트를 놓쳐도 입력·완료를 기다리는 창을 확인 |
 
 *GIF는 이전 버전의 알림 동작 예시입니다. 현재 확장의 토스트 모양은 다를 수 있습니다.*
@@ -149,6 +149,19 @@ npm uninstall -g job-finish
 내부 동작과 검증 결과는 [개발 문서](docs/requirements-and-verification.md)와 [검증 보고서](docs/verification.md)에서 확인할 수 있습니다.
 
 ## 변경 사항
+
+<details>
+<summary>v2.3.1 (v2.3.0 이후)</summary>
+
+### npm·Marketplace 기본 소개 통일
+
+토스트·작업 표시줄 GIF 데모와 버전별 변경 내역이 있는 이 README를 두 패키지 페이지에 함께 사용합니다. GIF는 공개 HTTPS 주소를 사용하고 npm의 문서 링크는 절대주소로 변환합니다.
+
+### 배포 버전 일치
+
+npm 설치 도구와 Windows x64 VSIX 버전을 모두 2.3.1로 맞췄습니다. Marketplace 배포자는 `JobFinish`, 확장 ID는 `JobFinish.JobFinish`를 유지합니다.
+
+</details>
 
 <details>
 <summary>v2.3.0 (v2.2.0 이후)</summary>
