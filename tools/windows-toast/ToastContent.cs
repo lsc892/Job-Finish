@@ -12,6 +12,7 @@ internal static class ToastContent
             var source = SecurityElement.Escape(new Uri(Path.GetFullPath(imagePath)).AbsoluteUri);
             image = $"<image placement=\"appLogoOverride\" hint-crop=\"none\" src=\"{source}\" alt=\"Notification icon\"/>";
         }
-        return $"<toast activationType=\"foreground\" launch=\"{SecurityElement.Escape(launch)}\"><visual><binding template=\"ToastGeneric\"><text>{SecurityElement.Escape(title)}</text><text>{SecurityElement.Escape(message)}</text>{image}</binding></visual><audio silent=\"true\"/></toast>";
+        // Shell이 실제 글꼴·배율과 아이콘 유무에 맞춰 줄바꿈·말줄임을 적용한다.
+        return $"<toast activationType=\"foreground\" launch=\"{SecurityElement.Escape(launch)}\"><visual><binding template=\"ToastGeneric\"><text hint-maxLines=\"2\">{SecurityElement.Escape(title)}</text><text hint-maxLines=\"4\">{SecurityElement.Escape(message)}</text>{image}</binding></visual><audio silent=\"true\"/></toast>";
     }
 }

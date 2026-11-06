@@ -109,6 +109,8 @@ npm run install:extension -- --vsix ./job-finish-win32-x64.vsix
 
 토스트가 누락되면 **Show Diagnostics**에서 누적 로그와 현재 상태를 확인하세요. 재현 방법·로그 파일 위치·생략 사유는 [토스트 누락 로그 안내](docs/notification-debugging.md)를 참고하세요.
 
+긴 응답은 토스트 본문의 최대 4줄 안에서 말줄임됩니다. 빈 줄을 정리해 표시 공간을 활용하며, **Toast Icon**을 끄면 이미지 없이 본문 너비를 넓게 사용합니다. 더 긴 내용은 **Show Results**에서 확인할 수 있습니다.
+
 ## 기본 설정 한눈에 보기
 
 VS Code 설정(`Ctrl+,`)에서 **Job-Finish**를 검색합니다.

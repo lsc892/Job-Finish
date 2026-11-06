@@ -25,7 +25,12 @@ export function boundedText(text: string, limit = LIMITS.textBytes): { text: str
   while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end--;
   return { text: bytes.subarray(0, end).toString('utf8'), truncated: true };
 }
-export function toastText(text: string): string { const chars = Array.from(text); return chars.length > 180 ? chars.slice(0, 179).join('') + '…' : text; }
+// 표시 줄 수·아이콘·배율에 따른 실제 잘림은 Windows가 결정한다. 전송용 미리보기만 제한한다.
+export function toastText(text: string): string {
+  const preview = text.replace(/[\u0000-\u001f\u007f-\u009f\s]+/g, ' ').trim();
+  const chars = Array.from(preview);
+  return chars.length > 1024 ? chars.slice(0, 1023).join('') + '…' : preview;
+}
 export function sessionTitleText(value: unknown): string | undefined {
   if (typeof value !== 'string') return;
   const text = value.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').replace(/\s+/g, ' ').trim();

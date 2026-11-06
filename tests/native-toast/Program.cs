@@ -68,12 +68,18 @@ internal static class RegistrationTests
             var content = XDocument.Parse(ToastContent.Build(title, message, launch, customImage));
             var binding = content.Descendants("binding").Single(); var text = binding.Elements("text").ToArray();
             Check(text.Length == 2 && text[0].Value == title && text[1].Value == message, "Toast text must preserve Unicode, markup characters and response line breaks");
+            Check((string?)text[0].Attribute("hint-maxLines") == "2" && (string?)text[1].Attribute("hint-maxLines") == "4",
+                "Use the native title/body line limits so Shell can fit the actual icon width and text scale");
             Check((string?)content.Root?.Attribute("launch") == launch, "XML escaping must preserve the activation payload");
             var logo = binding.Elements("image").Single();
             Check((string?)logo.Attribute("placement") == "appLogoOverride" && (string?)logo.Attribute("hint-crop") == "none", "Optional icon belongs left of the visual text without circle cropping");
             Check(new Uri((string)logo.Attribute("src")!).LocalPath == customImage, "Custom image paths must be emitted as correctly escaped local file URIs");
             foreach (var disabled in new string?[] { null, "", "relative.png", Path.Combine(root, "missing.png") })
-                Check(!XDocument.Parse(ToastContent.Build(title, message, launch, disabled)).Descendants("image").Any(), "Disabled or unavailable icons must preserve text-only delivery");
+            {
+                var noIcon = XDocument.Parse(ToastContent.Build(title, message, launch, disabled));
+                Check(!noIcon.Descendants("image").Any(), "Disabled or unavailable icons must preserve text-only delivery");
+                Check((string?)noIcon.Descendants("text").Last().Attribute("hint-maxLines") == "4", "Text-only toasts keep all four body lines");
+            }
             Console.WriteLine("Native toast content passed: optional icons, escaped paths/text and preserved response line breaks");
 
             // Identical filenames are insufficient evidence of ownership.

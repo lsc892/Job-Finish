@@ -76,7 +76,7 @@ test('Native toast preserves UTF-8 and exact HWND, bounds displayed text, and se
   const f = setup(); t.after(() => f.toast.dispose()); await f.toast.show(f.request('native'));
   const sent = f.launched[0]!;
   assert.deepEqual(sent.args, ['--show']); assert.deepEqual(sent.payload.target, f.request('native').target);
-  assert.ok(String(sent.payload.message).startsWith('한글😀')); assert.equal(Array.from(String(sent.payload.message)).length, 180);
+  assert.equal(sent.payload.message, f.request('native').message);
   assert.equal(f.clicks(), 0); assert.equal(f.diagnostics.entries.length, 0);
   const socket = await client(sent.payload.pipe); t.after(() => socket.destroy());
   assert.equal(await authorize(socket, 'native'), true, 'protocol pipe remains available after sender exit');
@@ -95,6 +95,18 @@ test('Native requests register the actual Code icon source and preserve optional
   await f.toast.show(f.request('without-image'));
   assert.equal('imagePath' in f.launched[1]!.payload, false);
   assert.equal(f.registrations(), 1);
+});
+
+test('Native previews stay bounded with and without an icon and remove wasted blank lines', { skip: process.platform !== 'win32' }, async t => {
+  const f = setup(); t.after(() => f.toast.dispose());
+  for (const imagePath of [undefined, 'C:\\icon.png']) {
+    await f.toast.show({ ...f.request('preview'), imagePath, message: '\n\n' + '한글😀\n\n'.repeat(10000) });
+    const payload = f.launched.at(-1)!.payload;
+    assert.equal(Array.from(String(payload.message)).length, 1024);
+    assert.ok(String(payload.message).startsWith('한글😀 한글😀'));
+    assert.ok(!String(payload.message).includes('\n'));
+    assert.equal(payload.imagePath, imagePath);
+  }
 });
 
 test('An observed session name reaches the native toast payload while window routing keeps its ID', { skip: process.platform !== 'win32' }, async t => {

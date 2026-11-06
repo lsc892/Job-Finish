@@ -24,3 +24,9 @@
 Windows 제출이나 알림 센터 기록 확인만으로 화면 배너 표시를 보장하지는 않는다. 이 단계까지 성공했다면 Windows 알림 설정·방해 금지 상태도 함께 확인한다. 연결 스냅샷의 incomingMessages/outgoingMessages/lastIncomingEvent는 연결은 있지만 완료 신호가 없는 경우를 조사하는 데 쓴다.
 
 추가한 자동 추적은 응답 본문 대신 식별자·상태·길이를 기록한다. 진단 명령이 덧붙이는 최근 결과 스냅샷에는 기존과 같이 응답 본문이 들어가므로 외부에 공유할 때 내용을 확인한다.
+
+## 긴 본문·한글 표시 검증
+
+빌드된 helper와 기존 `JobFinish.VSCode` 등록이 있는 환경에서 `node --import tsx tests/windows/toast-layout.ts`를 실행한다. 아이콘 켬·끔 토스트의 한글·이모지와 줄 수 제한을 Windows 알림 센터 XML에서 대조하고 자신이 만든 테스트 알림만 제거한다. 이 검사는 배너의 실제 시각 표시나 클릭을 보장하지 않는다.
+
+한글이 포함된 JavaScript를 Windows PowerShell의 here-string 파이프로 `node`에 넘기지 않는다. 기본 `$OutputEncoding`이 US-ASCII이면 실행 전부터 한글이 `?`로 바뀔 수 있다. UTF-8 소스 파일을 직접 실행하는 위 검증 명령을 사용한다.

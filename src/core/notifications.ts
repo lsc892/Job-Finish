@@ -1,5 +1,5 @@
 // 소유권·포커스에 따라 최근 결과 저장과 토스트·깜박임 전달을 결정한다.
-import { isTerminal, LIMITS, sessionTitleText, Signal, toastText } from './model';
+import { isTerminal, LIMITS, sessionTitleText, Signal } from './model';
 
 const QUESTION_COMPLETION_MERGE_MS = 5000;
 export function notificationTitle(signal: Signal): string {
@@ -44,7 +44,7 @@ export class Notifications {
     this.trace(signal, 'notification.dispatching');
     this.ports.flash(signal);
     let allowed = true;
-    const delivery = this.ports.toast(signal, toastText(signal.text || signal.detail || signal.status),
+    const delivery = this.ports.toast(signal, signal.text || signal.detail || signal.status,
       () => {
         this.ports.stopFlash(signal.notificationId);
         if (this.ports.enabled?.() !== false && this.ports.owns(signal)) this.ports.activate(signal);

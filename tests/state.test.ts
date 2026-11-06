@@ -83,5 +83,13 @@ test('Bounded completed IDs, active turns, requests, diagnostics and UTF-8 resul
   for (let i = 0; i < LIMITS.requests; i++) f.session.waiting({ id: `${i}`, turnId: 'pending-0', title: 'Allow?', connectionId: 'connection-1' });
   assert.throws(() => f.session.waiting({ id: 'overflow', turnId: 'pending-0', title: 'Allow?', connectionId: 'connection-1' }), /limit/);
   const text = boundedText('😀한글'.repeat(10000)); assert.ok(text.truncated); assert.ok(Buffer.byteLength(text.text) <= LIMITS.textBytes); assert.ok(!text.text.includes('�'));
-  assert.equal(Array.from(toastText('😀'.repeat(181))).length, 180);
+  assert.equal(Array.from(toastText('😀'.repeat(2000))).length, 1024);
+});
+
+test('Toast previews reclaim blank lines and retain enough text for the native layout', () => {
+  assert.equal(toastText('  완료\r\n\r\n\t 다음 내용\u0000  '), '완료 다음 내용');
+  const text = '가나다😀'.repeat(100);
+  assert.equal(toastText(text), text, 'do not discard usable text at the former 180-character limit');
+  const long = toastText('😀'.repeat(2000));
+  assert.ok(long.endsWith('…')); assert.ok(!long.includes('�'));
 });
