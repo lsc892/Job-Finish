@@ -50,6 +50,7 @@ export class WindowsToast {
     if (this.registration) return this.registration;
     let ready = false;
     const args = this.codeExecutable ? ['--register', this.codeExecutable] : ['--register'];
+    this.diagnostics.trace('toast.registration.started', { appId: WindowsToast.appId });
     const run = this.processes.run(args, undefined, event => {
       if (event.event !== 'toast.registration.ready' || event.appId !== WindowsToast.appId) {
         throw new Error('Invalid native registration response');
@@ -76,7 +77,7 @@ export class WindowsToast {
   }
 
   async show(request: ToastRequest, stillAllowed: () => boolean = () => true): Promise<void> {
-    if (this.disposed) return;
+    if (this.disposed) { this.traceSkipped(request, 'disposed', 'requested'); return; }
     if (request.appId !== WindowsToast.appId) {
       throw new Error('Toast app ID does not match registered application');
     }
@@ -85,11 +86,11 @@ export class WindowsToast {
     }
 
     const generation = ++this.generation;
-    this.cancelActiveToast();
-    if (!stillAllowed()) return;
+    this.cancelActiveToast('replaced');
+    if (!stillAllowed()) { this.traceSkipped(request, 'policy', 'before-registration'); return; }
 
     await this.initialize();
-    if (!this.isDeliveryAllowed(generation, stillAllowed)) return;
+    if (!this.isDeliveryAllowed(generation, stillAllowed, request, 'after-registration')) return;
     // 등록과 채널 준비를 각각 기다린 뒤 현재 세대와 허용 정책을 다시 확인한다.
     const activation = new ToastActivation(
       request,
@@ -106,7 +107,7 @@ export class WindowsToast {
         reject(error);
       };
       const handleChannelReady = (): void => {
-        if (!this.isDeliveryAllowed(generation, stillAllowed)) {
+        if (!this.isDeliveryAllowed(generation, stillAllowed, request, 'channel-ready')) {
           this.clear(request.notificationId);
           resolve();
           return;
@@ -121,7 +122,7 @@ export class WindowsToast {
 
   stop(): void {
     this.generation++;
-    this.cancelActiveToast();
+    this.cancelActiveToast(this.disposed ? 'disposed' : 'stopped');
   }
 
   dispose(): void {
@@ -130,8 +131,14 @@ export class WindowsToast {
     this.processes.dispose();
   }
 
-  private isDeliveryAllowed(generation: number, stillAllowed: () => boolean): boolean {
-    return !this.disposed && generation === this.generation && stillAllowed();
+  private isDeliveryAllowed(generation: number, stillAllowed: () => boolean, request: ToastRequest, stage: string): boolean {
+    const reason = this.disposed ? 'disposed' : generation !== this.generation ? 'superseded' : !stillAllowed() ? 'policy' : undefined;
+    if (reason) this.traceSkipped(request, reason, stage);
+    return !reason;
+  }
+
+  private traceSkipped(request: ToastRequest, reason: string, stage: string): void {
+    this.diagnostics.trace('toast.skipped', { notificationId: request.notificationId, windowInstanceId: request.windowInstanceId, reason, stage });
   }
 
   private launchToast(request: ToastRequest, pipe: string, delivered: () => void, failed: (error: unknown) => void): void {
@@ -191,7 +198,8 @@ export class WindowsToast {
     });
   }
 
-  private cancelActiveToast(): void {
+  private cancelActiveToast(reason: string): void {
+    if (this.active) this.diagnostics.trace('toast.cancelled', { notificationId: this.active.id, reason, delivering: !!this.active.process });
     // 교체·중지 시 show() 대기를 먼저 해소하고 클릭 채널과 helper를 정리한다.
     this.active?.finishDelivery?.();
     this.clear();

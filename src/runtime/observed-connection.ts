@@ -110,6 +110,8 @@ export class ObservedConnection {
     // exit 이후에도 마지막 stdout이 남을 수 있으므로 스트림 종료까지 관찰한다.
     this.output.once('end', this.dispose);
     this.child.once('close', this.dispose);
+    this.options.diagnostics.trace('observer.connection.attached', { windowInstanceId: this.options.windowInstanceId,
+      provider: this.options.provider, connectionId: this.router.connectionId, pid: this.child.pid, existing: this.options.existing });
   }
 
   // 비동기로 도착한 출력 바이트를 수신 콜백 안에서 동기적으로 파싱한다.
@@ -123,7 +125,8 @@ export class ObservedConnection {
   }
 
   private handleObservationFailure(error: unknown): void {
-    this.options.diagnostics.add(`Observed ${this.options.provider} connection stopped: ${error}`);
+    this.options.diagnostics.add(`Observed ${this.options.provider} connection stopped: ${error}`, { stage: 'stream-observation', provider: this.options.provider,
+      connectionId: this.router.connectionId, windowInstanceId: this.options.windowInstanceId });
     this.dispose();
   }
 
@@ -132,6 +135,9 @@ export class ObservedConnection {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.options.diagnostics.trace('observer.connection.detached', { windowInstanceId: this.options.windowInstanceId,
+      pid: this.child.pid,
+      exitCode: this.child.exitCode, signalCode: this.child.signalCode, ...this.router.snapshot() });
     this.output.removeListener('data', this.handleStdoutData);
     this.output.removeListener('end', this.dispose);
     this.child.removeListener('close', this.dispose);

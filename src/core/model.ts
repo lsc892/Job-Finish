@@ -46,8 +46,11 @@ export class Diagnostics {
     if (this.events.length > LIMITS.diagnostics) this.events.shift();
     this.log?.(entry);
   }
-  add(message: unknown): void {
-    this.entries.push({ at: new Date().toISOString(), message: boundedText(String(message), 2048).text });
+  add(message: unknown, fields: Record<string, unknown> = {}): void {
+    const text = boundedText(String(message), 2048).text;
+    this.entries.push({ at: new Date().toISOString(), message: text });
     if (this.entries.length > LIMITS.diagnostics) this.entries.shift();
+    this.trace('diagnostic.error', { ...fields, message: text,
+      stack: message instanceof Error ? boundedText(message.stack ?? '', 4096).text : undefined });
   }
 }

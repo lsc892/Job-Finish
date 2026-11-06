@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Notifications, NotificationPorts } from '../src/core/notifications';
-import { LIMITS, Signal } from '../src/core/model';
+import { Diagnostics, LIMITS, Signal } from '../src/core/model';
 import { binding } from './helpers';
 
 function setup(ports: Partial<NotificationPorts> = {}) {
@@ -118,4 +118,21 @@ test('The latest question starts a fresh merge window and old entries remain bou
   const count = f.toasts.length;
   await f.notifications.deliver(completion({ turnId: `turn-${LIMITS.dedup}` }));
   assert.equal(f.toasts.length, count, 'a retained recent question still merges');
+});
+
+test('Notification traces explain suppression and correlate delivery without recording response text', async () => {
+  const diagnostics = new Diagnostics();
+  const f = setup({ trace: (event, fields) => diagnostics.trace(event, fields) });
+  f.state.owns = false; await f.notifications.deliver(completion()); f.state.owns = true;
+  f.state.enabled = false; await f.notifications.deliver(completion()); f.state.enabled = true;
+  f.state.focused = true; await f.notifications.deliver(completion()); f.state.focused = false;
+  await f.notifications.deliver(question()); await f.notifications.deliver(completion());
+  assert.deepEqual(diagnostics.events.filter(entry => entry.event === 'notification.skipped').map(entry => entry.reason),
+    ['not-owner', 'disabled', 'focused', 'recent-question']);
+  assert.equal(f.toasts.length, 1);
+  const dispatched = diagnostics.events.find(entry => entry.event === 'notification.dispatching')!;
+  assert.equal(dispatched.notificationId, 'question'); assert.equal(dispatched.turnId, 'turn');
+  assert.equal(dispatched.connectionId, binding().connectionId);
+  assert.equal(JSON.stringify(diagnostics.events).includes(question().text), false);
+  assert.equal(JSON.stringify(diagnostics.events).includes(completion().text), false);
 });

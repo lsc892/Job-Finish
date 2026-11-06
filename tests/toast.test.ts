@@ -115,6 +115,8 @@ test('An observed session name reaches the native toast payload while window rou
 test('Native toast suppresses unfocused-policy failures and disposed requests before launching', { skip: process.platform !== 'win32' }, async () => {
   const f = setup(); await f.toast.show(f.request('focused'), () => false); assert.equal(f.launched.length, 0);
   f.toast.dispose(); await f.toast.show(f.request('disposed')); assert.equal(f.launched.length, 0);
+  assert.deepEqual(f.diagnostics.events.filter(entry => entry.event === 'toast.skipped').map(entry => [entry.notificationId, entry.reason]),
+    [['focused', 'policy'], ['disposed', 'disposed']]);
 });
 
 test('Invalid requests and native sender errors fail without inferring activation', { skip: process.platform !== 'win32' }, async t => {

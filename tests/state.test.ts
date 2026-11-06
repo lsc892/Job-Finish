@@ -1,8 +1,21 @@
 // 관찰 세션의 격리·중복 제거·입력 상태·보관 상한을 검증한다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { boundedText, LIMITS, toastText } from '../src/core/model';
+import { boundedText, Diagnostics, LIMITS, toastText } from '../src/core/model';
 import { fixture } from './helpers';
+
+test('Diagnostic errors reach the log sink with correlation, bounded messages and stack traces', () => {
+  const logged: Record<string, unknown>[] = [];
+  const diagnostics = new Diagnostics(entry => logged.push(entry));
+  diagnostics.add(new Error('helper failed'), { notificationId: 'notification', stage: 'notification-delivery' });
+  assert.equal(logged[0]!.event, 'diagnostic.error'); assert.equal(logged[0]!.notificationId, 'notification');
+  assert.match(String(logged[0]!.stack), /helper failed/);
+  assert.equal(diagnostics.entries[0]!.message, 'Error: helper failed');
+  for (let i = 0; i < LIMITS.diagnostics + 1; i++) diagnostics.add('한'.repeat(2000));
+  assert.equal(diagnostics.entries.length, LIMITS.diagnostics); assert.equal(diagnostics.events.length, LIMITS.diagnostics);
+  assert.ok(Buffer.byteLength(String(logged.at(-1)!.message)) <= 2048);
+  assert.equal(logged.length, LIMITS.diagnostics + 2, 'the file/output sink retains errors beyond the in-memory ring');
+});
 
 test('Interleaved turns and windows never mix response bodies', () => {
   const a = fixture(); const b = fixture({ sessionId: 'thread-B', windowInstanceId: 'window-B' });

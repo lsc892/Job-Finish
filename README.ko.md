@@ -107,6 +107,8 @@ npm run install:extension -- --vsix ./job-finish-win32-x64.vsix
 
 자동 감지는 같은 VS Code Extension Host에서 실행되는 로컬 에이전트를 지원합니다. WSL·원격 작업 폴더·외부 터미널·데스크톱 에이전트 앱은 대상에 포함되지 않습니다. 에이전트 확장 업데이트 후 감지가 안 되면 **Show Diagnostics**에서 상태를 확인하세요.
 
+토스트가 누락되면 **Show Diagnostics**에서 누적 로그와 현재 상태를 확인하세요. 재현 방법·로그 파일 위치·생략 사유는 [토스트 누락 로그 안내](docs/notification-debugging.md)를 참고하세요.
+
 ## 기본 설정 한눈에 보기
 
 VS Code 설정(`Ctrl+,`)에서 **Job-Finish**를 검색합니다.

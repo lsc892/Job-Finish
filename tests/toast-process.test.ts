@@ -41,6 +41,7 @@ test('Helper completion waits for stream close and receives split diagnostics af
   await run.completion;
   assert.equal(completed, true);
   assert.equal(f.diagnostics.events[0]?.notificationId, 'drained');
+  assert.equal(f.diagnostics.events.find(entry => entry.event === 'toast.helper.exit')?.diagnosticBytes, 28);
   f.runner.dispose();
   assert.equal(child.kills, 0, 'a closed helper is no longer owned by the runner');
 });

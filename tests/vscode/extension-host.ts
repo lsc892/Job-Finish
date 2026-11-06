@@ -1,7 +1,7 @@
 // 실제 VS Code 확장 호스트에서 자동 감지·명령·설정 전환·창별 결과 격리를 검증한다.
 import * as vscode from 'vscode';
 import assert from 'node:assert/strict';
-import { writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { spawn, ChildProcessWithoutNullStreams } from 'node:child_process';
 
@@ -76,6 +76,16 @@ export async function run(): Promise<void> {
     }
     assert.equal(Buffer.concat(output).toString('utf8'), sent.map(event => JSON.stringify(event) + '\n').join(''));
     assert.deepEqual(api.snapshot().diagnostics, []);
+    await vscode.commands.executeCommand('jobFinish.diagnostics');
+    const logRoot = join(root, role === 'B' ? 'profile-B' : 'profile', 'logs');
+    await until(() => readdirSync(logRoot, { recursive: true }).some(file => {
+      if (typeof file !== 'string' || !file.endsWith('Job-Finish.log')) return false;
+      const log = readFileSync(join(logRoot, file), 'utf8');
+      return log.includes('application.started') && log.includes('observer.connection.attached')
+        && log.includes('runtime.lifecycle') && log.includes('signal.received')
+        && (log.includes('notification.skipped') || log.includes('toast-disabled'))
+        && log.split('diagnostics.snapshot').length >= 3;
+    }));
     writeFileSync(resultFile, JSON.stringify({ passed: true, role, version: vscode.version, identity, snapshot: api.snapshot() }, (_key, value: unknown) => typeof value === 'bigint' ? value.toString() : value, 2));
   } catch (error) {
     writeFileSync(resultFile, JSON.stringify({ passed: false, error: String(error), stack: (error as Error).stack }, null, 2)); throw error;

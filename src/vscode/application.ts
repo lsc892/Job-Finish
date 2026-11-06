@@ -22,6 +22,10 @@ export class Application {
   }
 
   async activate(): Promise<void> {
+    this.diagnostics.trace('application.started', { windowInstanceId: this.windowInstanceId,
+      version: this.context.extension.packageJSON.version, extensionPath: this.context.extensionPath,
+      extensionHostPid: process.pid, executable: process.execPath, nodeVersion: process.versions.node,
+      vscodeVersion: vscode.version, focused: vscode.window.state.focused });
     this.notifications.configure();
     this.updateStatus();
     this.status.show();
@@ -30,7 +34,7 @@ export class Application {
       bindWindow: () => this.notifications.window.bind(),
       stopFlash: () => this.notifications.window.stopFlash(),
       diagnostics: () => {
-        this.output.clear();
+        this.diagnostics.trace('diagnostics.snapshot', { windowInstanceId: this.windowInstanceId });
         this.output.appendLine(JSON.stringify(this.api.snapshot(), (_key, value: unknown) => typeof value === 'bigint' ? value.toString() : value, 2));
         this.output.show();
       },
@@ -56,7 +60,10 @@ export class Application {
 
   get api() { return {
     identity: () => ({ windowInstanceId: this.windowInstanceId, vscodeSessionId: vscode.env.sessionId, extensionHostPid: process.pid, workspaceUris: vscode.workspace.workspaceFolders?.map(folder => folder.uri.toString()) ?? [] }),
-    snapshot: () => ({ enabled: this.config('enabled', true), automatic: this.notifications.automatic(), results: this.notifications.results, diagnostics: this.diagnostics.entries, events: this.diagnostics.events, native: this.notifications.window.binding }),
+    snapshot: () => ({ windowInstanceId: this.windowInstanceId, version: this.context.extension.packageJSON.version,
+      enabled: this.config('enabled', true), focused: vscode.window.state.focused,
+      toastEnabled: this.config('toast', true), flashEnabled: this.config('flash', true),
+      automatic: this.notifications.automatic(), results: this.notifications.results, diagnostics: this.diagnostics.entries, events: this.diagnostics.events, native: this.notifications.window.binding }),
     ...(this.context.extensionMode === vscode.ExtensionMode.Test ? {
       test: {
         bind: () => this.notifications.window.observe(),

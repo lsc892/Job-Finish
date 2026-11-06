@@ -22,6 +22,7 @@ export class AgentStreamObserver {
   start(): void {
     if (this.enabled) return;
     this.enabled = true;
+    this.diagnostics.trace('observer.started', { windowInstanceId: this.windowInstanceId, extensionHostPid: process.pid, roots: this.roots() });
     // 신규 spawn을 먼저 관찰한 뒤 기존 핸들을 탐색해 그 사이 생성된 프로세스도 놓치지 않는다.
     const prototype = ChildProcess.prototype as unknown as Spawnable;
     const original = prototype.spawn;
@@ -42,6 +43,8 @@ export class AgentStreamObserver {
     try {
       for (const handle of handles?.call(process) ?? []) if (handle instanceof ChildProcess) this.consider(handle, true);
     } catch (error) { this.diagnostics.add(`Existing process discovery failed: ${error}`); }
+    this.diagnostics.trace('observer.discovery.complete', { windowInstanceId: this.windowInstanceId,
+      connections: this.connections.size, existingProcessDiscovery: !!handles });
   }
 
   // 제공자 실행 인자와 설치 확장 경로가 확인된 프로세스만 관찰한다.
@@ -53,7 +56,11 @@ export class AgentStreamObserver {
     const provider = implementation.id;
     const roots = this.roots().filter(root => root.provider === provider).map(root => canonical(resolve(root.path)) + '/');
     const pathMatches = args.some(arg => isAbsolute(arg) && roots.some(root => canonical(resolve(arg)).startsWith(root)));
-    if (!pathMatches && !roots.some(root => canonical(stack()).includes(root))) return;
+    if (!pathMatches && !roots.some(root => canonical(stack()).includes(root))) {
+      this.diagnostics.trace('observer.candidate.rejected', { windowInstanceId: this.windowInstanceId, provider,
+        pid: child.pid, existing, reason: 'extension-path-mismatch', roots });
+      return;
+    }
     if (this.connections.size >= 16) { this.diagnostics.add('Automatic observation connection limit reached'); return; }
     const connection = new ObservedConnection(child, {
       provider,
@@ -79,8 +86,9 @@ export class AgentStreamObserver {
       && this.delivered.get(signal.notificationId) === signal.connectionId;
   }
   snapshot() { return { enabled: this.enabled, connections: [...this.connections.values()].map(c => ({ ...c.router.snapshot(), bufferBytes: c.bufferBytes })),
-    discovery: 'extension-host-stdio', pollingTimers: 0 }; }
+    roots: this.roots(), discovery: 'extension-host-stdio', pollingTimers: 0 }; }
   stop(): void {
+    if (this.enabled) this.diagnostics.trace('observer.stopped', { windowInstanceId: this.windowInstanceId, connections: this.connections.size });
     this.enabled = false; this.restoreSpawn?.(); this.restoreSpawn = undefined;
     for (const connection of [...this.connections.values()]) connection.dispose();
     this.delivered.clear();

@@ -4,7 +4,7 @@ import { Diagnostics, Provider, Signal } from '../core/model';
 import { Session } from '../core/session';
 import type { AgentEvents } from './agent-provider';
 import { agentProviders } from './providers';
-import { record } from './message';
+import { identifier, record } from './message';
 
 const MAX_OBSERVED_SESSIONS = 32;
 
@@ -14,6 +14,9 @@ export class AgentEventRouter {
   private readonly sessions = new Map<string, Session>();
   private readonly events: AgentEvents;
   private disposed = false;
+  private incomingMessages = 0;
+  private outgoingMessages = 0;
+  private lastIncomingEvent?: string;
   constructor(readonly provider: Provider, private windowInstanceId: string, private runtimeId: string,
     private emit: (signal: Signal) => void, private diagnostics: Diagnostics) {
     this.events = agentProviders[provider].createEvents({ connectionId: this.connectionId,
@@ -21,10 +24,25 @@ export class AgentEventRouter {
   }
   outgoing(value: unknown): void {
     const message = record(value); if (!message || this.disposed) return;
+    this.outgoingMessages++;
     this.events.outgoing(message);
   }
   incoming(value: unknown): void {
     const message = record(value); if (!message || this.disposed) return;
+    this.incomingMessages++;
+    this.lastIncomingEvent = typeof message.method === 'string' ? message.method.slice(0, 128)
+      : typeof message.type === 'string' ? message.type.slice(0, 128) : 'rpc-response';
+    if (message.method === 'turn/started' || message.method === 'turn/completed' || message.method === 'error' || message.type === 'result') {
+      const params = record(message.params); const turn = record(params?.turn);
+      this.diagnostics.trace('runtime.lifecycle', { windowInstanceId: this.windowInstanceId, provider: this.provider,
+        runtimeId: this.runtimeId, connectionId: this.connectionId,
+        method: typeof message.method === 'string' ? message.method.slice(0, 128) : undefined,
+        type: typeof message.type === 'string' ? message.type.slice(0, 128) : undefined,
+        sessionId: identifier(params?.threadId ?? message.session_id), turnId: identifier(turn?.id ?? params?.turnId),
+        status: typeof turn?.status === 'string' ? turn.status.slice(0, 128) : undefined,
+        subtype: typeof message.subtype === 'string' ? message.subtype.slice(0, 128) : undefined,
+        isError: typeof message.is_error === 'boolean' ? message.is_error : undefined });
+    }
     this.events.incoming(message);
   }
   private session(id: string): Session | undefined {
@@ -43,6 +61,7 @@ export class AgentEventRouter {
     return session;
   }
   snapshot() { return { provider: this.provider, connectionId: this.connectionId, sessions: this.sessions.size,
+    incomingMessages: this.incomingMessages, outgoingMessages: this.outgoingMessages, lastIncomingEvent: this.lastIncomingEvent,
     activeTurns: [...this.sessions.values()].reduce((count, s) => count + s.turns.size, 0) }; }
   dispose(): void { this.disposed = true; this.sessions.clear(); this.events.dispose(); }
 }
