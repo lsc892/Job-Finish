@@ -8,6 +8,7 @@ import { PassThrough, Writable } from 'node:stream';
 import { AgentStreamObserver } from '../src/runtime/observe';
 import { Diagnostics, Signal } from '../src/core/model';
 import { Notifications } from '../src/core/notifications';
+import { ObservedConnection } from '../src/runtime/observed-connection';
 
 const agent = resolve('tests/fixtures/observed-agent.cjs');
 const pause = (ms = 10) => new Promise(resolve => setTimeout(resolve, ms));
@@ -138,7 +139,7 @@ test('Observation preserves the stdin write receiver, overload arguments and ret
   assert.deepEqual([child.stdout.listenerCount('data'), child.stdout.listenerCount('end'), child.listenerCount('close')], listenersBefore);
 });
 
-test('Malformed and oversized observations detach without killing, consuming, or changing the original child', async t => {
+test('Malformed observations detach without killing, consuming, or changing the original child', async t => {
   const diagnostics = new Diagnostics(); const signals: Signal[] = [];
   const observer = new AgentStreamObserver('window', () => [{ provider: 'codex', path: resolve('tests/fixtures') }], signal => signals.push(signal), diagnostics);
   t.after(() => observer.dispose()); observer.start();
@@ -147,11 +148,41 @@ test('Malformed and oversized observations detach without killing, consuming, or
   child.stdin.write(JSON.stringify({ raw: '{bad}\n' }) + '\n'); await until(() => observer.snapshot().connections.length === 0);
   assert.equal(child.killed, false); child.stdin.write(packet('after-error')); await until(() => Buffer.concat(output).includes(Buffer.from('after-error')));
   assert.equal(signals.length, 0); assert.match(diagnostics.entries[0]!.message, /stopped/);
-  const large = spawn(process.execPath, [agent, 'app-server'], { stdio: 'pipe', windowsHide: true }); cleanup(t, large); large.stdout.resume();
-  large.stdin.on('error', () => {});
-  await new Promise<void>(resolve => large.stdin.write('x'.repeat(1024 * 1024 + 1), () => resolve()));
-  assert.equal(large.killed, false); assert.equal(observer.snapshot().connections.length, 0);
-  assert.match(diagnostics.entries.at(-1)!.message, /exceeds/);
+});
+
+test('Large Codex and Claude bodies still deliver completion and preserve both original streams', t => {
+  for (const provider of ['codex', 'claude'] as const) {
+    const child = new ChildProcess();
+    Object.assign(child, { pid: 12345, stdin: new PassThrough(), stdout: new PassThrough() });
+    const input: Buffer[] = []; const output: Buffer[] = [];
+    child.stdin!.on('data', chunk => input.push(chunk)); child.stdout!.on('data', chunk => output.push(chunk));
+    const signals: Signal[] = []; const diagnostics = new Diagnostics(); let detached = false;
+    const connection = new ObservedConnection(child, { provider, windowInstanceId: 'window', existing: false,
+      diagnostics, emit: signal => signals.push(signal), closed: () => { detached = true; } });
+    t.after(() => connection.dispose()); connection.start();
+    const text = '긴 응답😀 '.repeat(160000);
+    const sent = JSON.stringify(provider === 'codex'
+      ? { method: 'turn/start', params: { threadId: 'thread', input: [{ type: 'text', text }] } }
+      : { type: 'user', uuid: 'request', message: { content: text } }) + '\n';
+    child.stdin!.write(sent);
+    const received = (provider === 'codex'
+      ? [{ method: 'item/commandExecution/outputDelta', params: { threadId: 'thread', turnId: 'turn', delta: text } },
+        { method: 'turn/completed', params: { threadId: 'thread', turn: {
+          items: [{ type: 'agentMessage', phase: 'final_answer', text }], id: 'turn', status: 'completed' } } },
+        ...events('next')]
+      : [{ type: 'result', result: text, session_id: 'session', uuid: 'result', user_message_uuid: 'request', subtype: 'success', is_error: false },
+        { type: 'result', result: 'next', session_id: 'session', uuid: 'next', subtype: 'success', is_error: false }])
+      .map(event => JSON.stringify(event) + '\n').join('');
+    const bytes = Buffer.from(received);
+    for (let at = 0; at < bytes.length; at += 8191) (child.stdout as PassThrough).write(bytes.subarray(at, at + 8191));
+    assert.equal(detached, false); assert.equal(signals.length, 2);
+    assert.equal(signals[0]!.status, 'completed'); assert.equal(signals[0]!.truncated, true);
+    assert.ok(signals[0]!.text.startsWith('긴 응답😀'));
+    assert.equal(Buffer.concat(input).toString(), sent); assert.equal(Buffer.concat(output).toString(), received);
+    assert.equal(diagnostics.entries.length, 0);
+    assert.ok(diagnostics.events.some(event => event.event === 'observer.frame.truncated' && event.direction === 'incoming'));
+    assert.ok(diagnostics.events.some(event => event.event === 'observer.frame.truncated' && event.direction === 'outgoing'));
+  }
 });
 
 test('Other processes are excluded; split UTF-8 frames are preserved', async t => {

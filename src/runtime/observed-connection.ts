@@ -1,8 +1,9 @@
 // 관찰 연결 하나의 스트림 구독·JSONL 해석·원래 write 복원과 정리를 관리한다.
 import { ChildProcess } from 'node:child_process';
 import type { Readable, Writable } from 'node:stream';
-import { Diagnostics, LIMITS, Provider, Signal } from '../core/model';
+import { Diagnostics, Provider, Signal } from '../core/model';
 import { AgentEventRouter } from './event-router';
+import { Frames, FrameReduction } from './frames';
 
 interface ObservationOptions {
   provider: Provider;
@@ -11,55 +12,6 @@ interface ObservationOptions {
   diagnostics: Diagnostics;
   emit(signal: Signal): void;
   closed(): void;
-}
-
-/** 줄바꿈까지 수신 바이트를 모아 UTF-8 JSON 메시지로 전달한다. */
-class Frames {
-  private buffer = Buffer.alloc(0);
-  private length = 0;
-  private first = true;
-  constructor(private receive: (value: unknown) => void, private allowPartialStart: boolean) {}
-
-  // 청크에 나뉜 메시지를 버퍼에 모아 줄바꿈마다 완성된 프레임을 처리한다.
-  push(chunk: Buffer): void {
-    let start = 0;
-    for (let at = 0; at < chunk.length; at++) {
-      if (chunk[at] !== 10) continue;
-      this.append(chunk.subarray(start, at));
-      start = at + 1;
-      if (!this.length) continue;
-      let value: unknown;
-      try {
-        const text = new TextDecoder('utf-8', { fatal: true }).decode(this.buffer.subarray(0, this.length));
-        value = JSON.parse(text);
-      } catch (error) {
-        if (!this.first || !this.allowPartialStart) throw error;
-      }
-      this.first = false;
-      this.length = 0;
-      if (value !== undefined) this.receive(value);
-    }
-    this.append(chunk.subarray(start));
-  }
-
-  // 버퍼는 두 배 확장을 기준으로 늘리되 프레임 하나는 1 MiB로 제한한다.
-  private append(chunk: Buffer): void {
-    const length = this.length + chunk.length;
-    if (length > LIMITS.messageBytes) throw new Error('Observed stream frame exceeds 1 MiB');
-    if (length > this.buffer.length) {
-      const next = Buffer.allocUnsafe(Math.min(LIMITS.messageBytes, Math.max(4096, length, this.buffer.length * 2)));
-      this.buffer.copy(next, 0, 0, this.length);
-      this.buffer = next;
-    }
-    chunk.copy(this.buffer, this.length);
-    this.length = length;
-  }
-
-  clear(): void {
-    this.buffer = Buffer.alloc(0);
-    this.length = 0;
-  }
-  get capacity(): number { return this.buffer.length; }
 }
 
 /** 한 자식 프로세스의 수신·송신 관찰과 구독 해제를 소유한다. */
@@ -79,8 +31,8 @@ export class ObservedConnection {
     this.router = new AgentEventRouter(options.provider, options.windowInstanceId,
       `${options.provider}:extension-host:${process.pid}:${child.pid}`,
       options.emit, options.diagnostics);
-    this.incoming = new Frames(this.router.incoming.bind(this.router), options.existing);
-    this.outgoing = new Frames(this.router.outgoing.bind(this.router), options.existing);
+    this.incoming = new Frames(this.router.incoming.bind(this.router), options.existing, reduction => this.frameReduced('incoming', reduction));
+    this.outgoing = new Frames(this.router.outgoing.bind(this.router), options.existing, reduction => this.frameReduced('outgoing', reduction));
     this.originalWrite = this.input.write;
     const connection = this;
     this.observedWrite = function observeStdinWrite(this: Writable, ...args: unknown[]): boolean {
@@ -128,6 +80,12 @@ export class ObservedConnection {
     this.options.diagnostics.add(`Observed ${this.options.provider} connection stopped: ${error}`, { stage: 'stream-observation', provider: this.options.provider,
       connectionId: this.router.connectionId, windowInstanceId: this.options.windowInstanceId });
     this.dispose();
+  }
+
+  private frameReduced(direction: string, reduction: FrameReduction): void {
+    this.options.diagnostics.trace(reduction.skipped ? 'observer.frame.skipped' : 'observer.frame.truncated', {
+      windowInstanceId: this.options.windowInstanceId, provider: this.options.provider,
+      connectionId: this.router.connectionId, direction, ...reduction });
   }
 
   get bufferBytes(): number { return this.incoming.capacity + this.outgoing.capacity; }

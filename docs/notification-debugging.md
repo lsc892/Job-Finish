@@ -12,6 +12,7 @@
 | `observer.discovery.complete` | 감지된 연결 수. 0이면 roots·제공자 설치 상태와 같은 Extension Host인지 확인 |
 | `observer.candidate.rejected` | 제공자처럼 보이지만 설치 확장 경로를 확인하지 못한 프로세스 |
 | `observer.connection.attached/detached` | 관찰 연결의 생성·종료, 프로세스 ID와 연결 ID |
+| `observer.frame.truncated`, `observer.frame.skipped` | 긴 문자열 축소 또는 구조 상한 초과 프레임 생략. direction으로 송수신을 구분하며 다음 프레임 관찰은 계속됨 |
 | `runtime.lifecycle` | Codex 턴 시작·완료/오류 또는 Claude 결과가 실제 스트림에 도착했는지 확인 |
 | `signal.received` | 완료·입력 대기 신호 생성 여부. 이후 기록은 notificationId로 연결 |
 | `notification.skipped` | focused·disabled·not-owner·recent-question 중 생략 사유와 판정 단계 |
