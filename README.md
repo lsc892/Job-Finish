@@ -151,6 +151,31 @@ For implementation details and verification, see the [development document](docs
 ## Release notes
 
 <details>
+<summary>v2.3.2 (since v2.3.1)</summary>
+
+### Longer toast previews
+
+Replaced the fixed 180-character cutoff with a preview of up to 1,024 characters and cleaned up whitespace. Windows fits the title into up to two lines and the body into up to four, using the wider text area when **Toast Icon** is off.
+
+### Completion detection after large responses
+
+Large Codex and Claude responses no longer stop subsequent completion detection. Long strings are shortened only in the observer; frames that still exceed its limit are skipped so observation can continue with the next event.
+
+### More accurate Codex subagent filtering
+
+Exclude child conversations using creation events and both individual and list metadata. Messages to parents or siblings no longer incorrectly suppress the main conversation's notifications.
+
+### Notification diagnostics and separate builds
+
+Added diagnostic traces from event detection through notification filtering and Windows delivery, including Codex thread exclusion decisions. Automatic tracing is available in a separate build through `npm run build:diagnostics`; normal builds retain **Show Diagnostics** snapshots and stored errors.
+
+### Updated extension icon
+
+Replaced the extension icon image.
+
+</details>
+
+<details>
 <summary>v2.3.1 (since v2.3.0)</summary>
 
 ### Shared npm and Marketplace introduction
