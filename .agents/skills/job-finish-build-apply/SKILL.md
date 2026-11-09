@@ -5,7 +5,7 @@ description: "이 Job-Finish 저장소의 Windows VS Code 확장을 검증·빌�
 
 # Job-Finish 빌드 및 적용
 
-이 스킬이 들어 있는 Job-Finish 체크아웃의 현재 작업 내용을 검증하고 Windows x64 VSIX를 만든 뒤 요청한 로컬 VS Code 환경에 적용한다. 사용자가 빌드만 요청하면 패키지 검증까지 수행하고 설치는 생략한다.
+이 스킬이 들어 있는 Job-Finish 체크아웃의 현재 작업 내용을 컴파일·빌드하고 Windows x64 VSIX를 만든 뒤 요청한 로컬 VS Code 환경에 적용한다. 사용자가 빌드만 요청하면 패키지 내용 확인까지 수행하고 설치는 생략한다.
 
 ## 저장소와 환경 확인
 
@@ -21,16 +21,19 @@ description: "이 Job-Finish 저장소의 Windows VS Code 확장을 검증·빌�
 저장소 루트에서 아래 명령을 실행한다. PowerShell의 네이티브 명령은 실패해도 다음 줄로 진행할 수 있으므로 각 명령의 종료 코드를 확인하고, 실패하면 그 뒤의 패키징·설치를 중단한다.
 
 ```powershell
-npm.cmd run check
-npm.cmd --prefix tools/installer run check
+npm.cmd run typecheck:product
+npm.cmd --prefix tools/installer run typecheck
+npm.cmd run build
+npm.cmd --prefix tools/installer run build
 npm.cmd run package
-npm.cmd run test:package
 ```
 
-- `check`는 타입 검사·기존 테스트·번들 빌드를 수행한다. 루트와 설치 도구의 검증은 독립적으로 실행할 수 있지만 패키징은 루트 빌드 성공 후 진행한다.
+- 사용자가 현재 작업에서 테스트를 명시적으로 요청하지 않았다면 `check`, `test`, `test:*`와 테스트·재현 스크립트를 실행하거나 테스트 코드를 수정하지 않는다. 기본 확인 범위는 컴파일·코드·참조·diff와 빌드/패키지 내용 검토다.
+- 기본 `build`와 패키징의 prepublish는 일반 빌드다. `diagnostic:` 라벨의 자동 추적 로그·인수 평가와 Codex 상세 추적기 모듈을 번들에서 제거한다. 오류 보관·수동 진단 스냅샷 및 토스트 helper의 필수 전송/클릭 응답 처리는 유지한다.
 - 결과는 `dist/extension.cjs`와 `job-finish-win32-x64.vsix`다. 버전은 저장소의 `package.json`을 따른다.
-- `test:package`는 임시 VS Code 프로필에 VSIX를 설치하고 native 모듈과 포함 파일을 검사한다. 사용자 프로필에 적용했다는 증거는 아니다.
-- VS Code 실행 파일이 표준 경로에 없으면 `JOB_FINISH_CODE_EXECUTABLE`을 실제 `Code.exe` 경로로 지정해 패키지 검증을 실행한다.
+- 완성된 번들에서 `CodexThreadDiagnostics`, `codex.thread.metadata`, `codex.turn.selection`, `signal.received`, `observer.connection.attached` 같은 자동 추적 코드가 없는지 읽어 확인한다. VSIX의 파일 목록에 `tests/`, `test-artifacts/`, `dist-diagnostics/`와 소스맵이 없는지도 확인한다. 진단에서 쓰는 문자열과 동일한 `toast.submitted` 등의 helper 프로토콜은 제품의 성공 판정에도 필요하므로 제거 대상으로 보지 않는다.
+- 진단 로그가 필요한 작업을 명시적으로 요청받았을 때만 `npm.cmd run build:diagnostics`를 사용한다. 진단 번들·소스맵·helper는 `dist-diagnostics/`에 따로 출력되며 일반 `dist/`를 덮어쓰지 않는다. 진단 폴더는 일반 VSIX에서 제외되므로 일반 패키지에 섞거나 자동 설치하지 않는다. 진단 실행용 배치는 [로그 안내](../../../docs/notification-debugging.md)를 따른다.
+- 사용자가 패키지 자동 테스트도 명시적으로 요청한 경우에만 `npm.cmd run test:package`를 추가한다. 이 검사는 임시 VS Code 프로필의 설치 확인이며 사용자 프로필에 적용했다는 증거는 아니다. 표준 경로 외 VS Code는 `JOB_FINISH_CODE_EXECUTABLE`에 실제 `Code.exe`를 지정한다.
 
 ## 로컬 적용
 

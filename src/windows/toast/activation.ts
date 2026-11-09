@@ -85,8 +85,8 @@ export class ToastActivation {
     if (!allowed) { socket.end(); return false; }
     this.clicked = true;
     this.authorizedSocket = socket;
-    this.diagnostics.trace('toast.click', { notificationId: request.notificationId, windowInstanceId: request.windowInstanceId, source: 'native-toast' });
-    this.diagnostics.trace('window.activation.request', { notificationId: request.notificationId, windowInstanceId: request.windowInstanceId, hwnd: request.target?.hwnd, source: 'native-toast' });
+    diagnostic: this.diagnostics.trace('toast.click', { notificationId: request.notificationId, windowInstanceId: request.windowInstanceId, source: 'native-toast' });
+    diagnostic: this.diagnostics.trace('window.activation.request', { notificationId: request.notificationId, windowInstanceId: request.windowInstanceId, hwnd: request.target?.hwnd, source: 'native-toast' });
     return true;
   }
 
@@ -94,7 +94,7 @@ export class ToastActivation {
     if (socket !== this.authorizedSocket || this.completed) return;
     this.completed = true;
     const request = this.request;
-    this.diagnostics.trace('window.activation.result', { notificationId: request.notificationId, windowInstanceId: request.windowInstanceId,
+    diagnostic: this.diagnostics.trace('window.activation.result', { notificationId: request.notificationId, windowInstanceId: request.windowInstanceId,
       activated: event.activated === true, reason: event.reason, hwnd: event.hwnd, foreground: event.foreground, source: 'native-toast' });
     if (event.activated !== true) this.diagnostics.add(`Native toast activation failed: ${String(event.reason)}`);
     try { request.onClick?.(); } catch (error) { this.diagnostics.add(error); }

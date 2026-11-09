@@ -60,7 +60,7 @@ export class ToastProcessRunner {
 
     try {
       child = this.ports.launch(this.binary, args);
-      this.diagnostics.trace('toast.helper.started', { binary: this.binary, operation: args[0], helperPid: child.pid,
+      diagnostic: this.diagnostics.trace('toast.helper.started', { binary: this.binary, operation: args[0], helperPid: child.pid,
         notificationId: (input as { notificationId?: string } | undefined)?.notificationId });
       this.children.add(child);
       const state: HelperState = {
@@ -127,11 +127,11 @@ export class ToastProcessRunner {
   private handleHelperClose(state: HelperState, code: number | null, signal: NodeJS.Signals | null): void {
     clearTimeout(state.timer);
     this.children.delete(state.child);
-    this.diagnostics.trace('toast.helper.exit', { operation: state.args[0], helperPid: state.child.pid,
+    diagnostic: this.diagnostics.trace('toast.helper.exit', { operation: state.args[0], helperPid: state.child.pid,
       notificationId: (state.input as { notificationId?: string } | undefined)?.notificationId,
       code, signal, diagnosticBytes: state.diagnosticBytes, incompleteDiagnostics: state.stdoutBuffer.trim().length > 0,
       error: state.error?.message, stderr: code !== 0 || state.error ? state.stderr.trim() : undefined });
-    if (state.args[0] === '--show') {
+    diagnostic: if (state.args[0] === '--show') {
       this.diagnostics.trace('toast.exit', {
         code, signal, notificationId: (state.input as { notificationId: string }).notificationId
       });

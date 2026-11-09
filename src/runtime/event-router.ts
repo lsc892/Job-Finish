@@ -20,8 +20,8 @@ export class AgentEventRouter {
   constructor(readonly provider: Provider, private windowInstanceId: string, private runtimeId: string,
     private emit: (signal: Signal) => void, private diagnostics: Diagnostics) {
     this.events = agentProviders[provider].createEvents({ connectionId: this.connectionId,
-      trace: (event, fields) => this.diagnostics.trace(event, { ...fields, windowInstanceId: this.windowInstanceId,
-        provider: this.provider, runtimeId: this.runtimeId, connectionId: this.connectionId }),
+      trace: (event, fields) => { diagnostic: this.diagnostics.trace(event, { ...fields, windowInstanceId: this.windowInstanceId,
+        provider: this.provider, runtimeId: this.runtimeId, connectionId: this.connectionId }); },
       session: id => this.session(id), existingSession: id => this.sessions.get(id) });
   }
   outgoing(value: unknown): void {
@@ -34,7 +34,7 @@ export class AgentEventRouter {
     this.incomingMessages++;
     this.lastIncomingEvent = typeof message.method === 'string' ? message.method.slice(0, 128)
       : typeof message.type === 'string' ? message.type.slice(0, 128) : 'rpc-response';
-    if (message.method === 'turn/started' || message.method === 'turn/completed' || message.method === 'error' || message.type === 'result') {
+    diagnostic: if (message.method === 'turn/started' || message.method === 'turn/completed' || message.method === 'error' || message.type === 'result') {
       const params = record(message.params); const turn = record(params?.turn);
       this.diagnostics.trace('runtime.lifecycle', { windowInstanceId: this.windowInstanceId, provider: this.provider,
         runtimeId: this.runtimeId, connectionId: this.connectionId,

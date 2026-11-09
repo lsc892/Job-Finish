@@ -10,7 +10,7 @@ const INITIAL_WINDOW_OBSERVATION_DELAY_MS = 750;
 export class Application {
   readonly windowInstanceId = randomUUID();
   private readonly output = vscode.window.createOutputChannel('Job-Finish');
-  private readonly diagnostics = new Diagnostics(entry => this.output.appendLine(JSON.stringify(entry)));
+  private readonly diagnostics = new Diagnostics(entry => { diagnostic: this.output.appendLine(JSON.stringify(entry)); });
   private readonly status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
   private readonly notifications: WindowNotifications;
   private disposed = false;
@@ -22,7 +22,7 @@ export class Application {
   }
 
   async activate(): Promise<void> {
-    this.diagnostics.trace('application.started', { windowInstanceId: this.windowInstanceId,
+    diagnostic: this.diagnostics.trace('application.started', { windowInstanceId: this.windowInstanceId,
       version: this.context.extension.packageJSON.version, extensionPath: this.context.extensionPath,
       extensionHostPid: process.pid, executable: process.execPath, nodeVersion: process.versions.node,
       vscodeVersion: vscode.version, focused: vscode.window.state.focused });
@@ -34,7 +34,7 @@ export class Application {
       bindWindow: () => this.notifications.window.bind(),
       stopFlash: () => this.notifications.window.stopFlash(),
       diagnostics: () => {
-        this.diagnostics.trace('diagnostics.snapshot', { windowInstanceId: this.windowInstanceId });
+        diagnostic: this.diagnostics.trace('diagnostics.snapshot', { windowInstanceId: this.windowInstanceId });
         this.output.appendLine(JSON.stringify(this.api.snapshot(), (_key, value: unknown) => typeof value === 'bigint' ? value.toString() : value, 2));
         this.output.show();
       },

@@ -46,16 +46,18 @@ export class Diagnostics {
   readonly events: { at: string; event: string; [key: string]: unknown }[] = [];
   constructor(private log?: (entry: { at: string; event: string; [key: string]: unknown }) => void) {}
   trace(event: string, fields: Record<string, unknown> = {}): void {
-    const entry = { ...fields, at: new Date().toISOString(), event };
-    this.events.push(entry);
-    if (this.events.length > LIMITS.diagnostics) this.events.shift();
-    this.log?.(entry);
+    diagnostic: {
+      const entry = { ...fields, at: new Date().toISOString(), event };
+      this.events.push(entry);
+      if (this.events.length > LIMITS.diagnostics) this.events.shift();
+      this.log?.(entry);
+    }
   }
   add(message: unknown, fields: Record<string, unknown> = {}): void {
     const text = boundedText(String(message), 2048).text;
     this.entries.push({ at: new Date().toISOString(), message: text });
     if (this.entries.length > LIMITS.diagnostics) this.entries.shift();
-    this.trace('diagnostic.error', { ...fields, message: text,
+    diagnostic: this.trace('diagnostic.error', { ...fields, message: text,
       stack: message instanceof Error ? boundedText(message.stack ?? '', 4096).text : undefined });
   }
 }

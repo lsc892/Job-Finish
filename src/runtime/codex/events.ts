@@ -68,11 +68,11 @@ export class CodexEvents implements AgentEvents {
   private readonly titles = new Map<string, { name?: string; preview?: string }>();
   private readonly threadDiagnostics: CodexThreadDiagnostics;
   constructor(private readonly context: EventContext) {
-    this.threadDiagnostics = new CodexThreadDiagnostics(context.trace, this.excludedThreads);
+    diagnostic: this.threadDiagnostics = new CodexThreadDiagnostics(context.trace, this.excludedThreads);
   }
 
   outgoing(message: Record<string, unknown>): void {
-    this.threadDiagnostics.outgoing(message);
+    diagnostic: this.threadDiagnostics.outgoing(message);
     switch (message.method) {
       case 'thread/start': {
         if (message.id === undefined) return;
@@ -117,7 +117,7 @@ export class CodexEvents implements AgentEvents {
       const items = record(params?.turn)?.items;
       if (Array.isArray(items)) for (const item of items) this.recordSubagentItem(record(item), params);
     }
-    this.threadDiagnostics.incoming(message);
+    diagnostic: this.threadDiagnostics.incoming(message);
     if (message.method === 'thread/name/updated' && params) {
       this.recordTitle({ id: params.threadId, name: params.threadName });
       return;
@@ -126,7 +126,7 @@ export class CodexEvents implements AgentEvents {
     if (typeof message.method !== 'string' || !params) return;
     const id = identifier(params.threadId);
     if (!id) return;
-    this.threadDiagnostics.turn(message, params);
+    diagnostic: this.threadDiagnostics.turn(message, params);
     if (this.excludedThreads.has(id)) return;
     const event = codexSessionEvent(message);
     if (!event) return;
@@ -163,8 +163,8 @@ export class CodexEvents implements AgentEvents {
     if (!id || this.excludedThreads.has(id)) return;
     this.excludedThreads.add(id);
     this.titles.delete(id);
-    this.context.trace('codex.thread.excluded', { sessionId: id, reason, ...fields });
-    if (this.excludedThreads.size > LIMITS.dedup) this.context.trace('codex.thread.exclusion.evicted', {
+    diagnostic: this.context.trace('codex.thread.excluded', { sessionId: id, reason, ...fields });
+    diagnostic: if (this.excludedThreads.size > LIMITS.dedup) this.context.trace('codex.thread.exclusion.evicted', {
       sessionId: this.excludedThreads.values().next().value, reason: 'capacity' });
     bound(this.excludedThreads);
   }
@@ -271,6 +271,6 @@ export class CodexEvents implements AgentEvents {
     this.pendingThreadStarts.clear();
     this.excludedThreads.clear();
     this.titles.clear();
-    this.threadDiagnostics.clear();
+    diagnostic: this.threadDiagnostics.clear();
   }
 }

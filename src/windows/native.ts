@@ -74,7 +74,7 @@ export class WindowIdentity {
     const after = this.native.inspect(hwnd);
     if (!after || after.pid !== before.pid || !this.isCode(after)) return false;
     this.binding = { ...after, windowInstanceId: this.windowInstanceId, verifiedAt: new Date().toISOString(), method: 'focused-observation' };
-    this.diagnostics?.trace('window.bound', { windowInstanceId: this.windowInstanceId, hwnd: hwnd.toString(), pid: after.pid });
+    diagnostic: this.diagnostics?.trace('window.bound', { windowInstanceId: this.windowInstanceId, hwnd: hwnd.toString(), pid: after.pid });
     return true;
   }
   valid(): WindowBinding | undefined {

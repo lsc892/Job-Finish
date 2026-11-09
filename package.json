@@ -33,11 +33,13 @@
   },
   "scripts": {
     "build": "node build/extension.mjs",
+    "build:diagnostics": "node build/extension.mjs --diagnostics",
     "install:extension": "npm --prefix tools/installer run install:extension --",
     "update:extension": "npm --prefix tools/installer run update:extension --",
     "uninstall:legacy": "npm --prefix tools/installer run uninstall:legacy --",
     "build:installer": "npm --prefix tools/installer run build -- --vsix ../../job-finish-win32-x64.vsix",
     "package:npm": "node tools/installer/scripts/package.mjs",
+    "typecheck:product": "tsc --noEmit -p tsconfig.json",
     "typecheck": "tsc --noEmit && tsc -p tests/tsconfig.json",
     "test": "tsx --test tests/*.test.ts",
     "check": "npm run typecheck && npm test && npm run build",

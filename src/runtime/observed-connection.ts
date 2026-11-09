@@ -31,8 +31,8 @@ export class ObservedConnection {
     this.router = new AgentEventRouter(options.provider, options.windowInstanceId,
       `${options.provider}:extension-host:${process.pid}:${child.pid}`,
       options.emit, options.diagnostics);
-    this.incoming = new Frames(this.router.incoming.bind(this.router), options.existing, reduction => this.frameReduced('incoming', reduction));
-    this.outgoing = new Frames(this.router.outgoing.bind(this.router), options.existing, reduction => this.frameReduced('outgoing', reduction));
+    this.incoming = new Frames(this.router.incoming.bind(this.router), options.existing, reduction => { diagnostic: this.frameReduced('incoming', reduction); });
+    this.outgoing = new Frames(this.router.outgoing.bind(this.router), options.existing, reduction => { diagnostic: this.frameReduced('outgoing', reduction); });
     this.originalWrite = this.input.write;
     const connection = this;
     this.observedWrite = function observeStdinWrite(this: Writable, ...args: unknown[]): boolean {
@@ -62,7 +62,7 @@ export class ObservedConnection {
     // exit 이후에도 마지막 stdout이 남을 수 있으므로 스트림 종료까지 관찰한다.
     this.output.once('end', this.dispose);
     this.child.once('close', this.dispose);
-    this.options.diagnostics.trace('observer.connection.attached', { windowInstanceId: this.options.windowInstanceId,
+    diagnostic: this.options.diagnostics.trace('observer.connection.attached', { windowInstanceId: this.options.windowInstanceId,
       provider: this.options.provider, connectionId: this.router.connectionId, pid: this.child.pid, existing: this.options.existing });
   }
 
@@ -83,7 +83,7 @@ export class ObservedConnection {
   }
 
   private frameReduced(direction: string, reduction: FrameReduction): void {
-    this.options.diagnostics.trace(reduction.skipped ? 'observer.frame.skipped' : 'observer.frame.truncated', {
+    diagnostic: this.options.diagnostics.trace(reduction.skipped ? 'observer.frame.skipped' : 'observer.frame.truncated', {
       windowInstanceId: this.options.windowInstanceId, provider: this.options.provider,
       connectionId: this.router.connectionId, direction, ...reduction });
   }
@@ -93,7 +93,7 @@ export class ObservedConnection {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.options.diagnostics.trace('observer.connection.detached', { windowInstanceId: this.options.windowInstanceId,
+    diagnostic: this.options.diagnostics.trace('observer.connection.detached', { windowInstanceId: this.options.windowInstanceId,
       pid: this.child.pid,
       exitCode: this.child.exitCode, signalCode: this.child.signalCode, ...this.router.snapshot() });
     this.output.removeListener('data', this.handleStdoutData);

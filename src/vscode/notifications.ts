@@ -28,12 +28,12 @@ export class WindowNotifications {
       diagnostics);
     this.window = new CodeWindow(windowInstanceId, diagnostics);
     this.notifications = new Notifications({
-      trace: (event, fields) => diagnostics.trace(event, fields),
+      trace: (event, fields) => { diagnostic: diagnostics.trace(event, fields); },
       enabled: () => ports.config('enabled', true),
       focused: () => vscode.window.state.focused,
       owns: signal => this.owns(signal),
       stopFlash: id => this.window.stopFlash(id),
-      activate: signal => { diagnostics.trace('notification.click.handled', { notificationId: signal.notificationId, windowInstanceId }); },
+      activate: signal => { diagnostic: diagnostics.trace('notification.click.handled', { notificationId: signal.notificationId, windowInstanceId }); },
       flash: signal => {
         if (ports.config('flash', true)) {
           this.window.startFlash(signal.notificationId, ports.config('flashMode', 'manual'), ports.config('flashTimeoutSeconds', 300) * 1000);
@@ -62,7 +62,7 @@ export class WindowNotifications {
 
   configure(): void {
     const config = this.ports.config;
-    this.diagnostics.trace('notifications.configured', { windowInstanceId: this.window.windowInstanceId,
+    diagnostic: this.diagnostics.trace('notifications.configured', { windowInstanceId: this.window.windowInstanceId,
       enabled: config('enabled', true), toast: config('toast', true), flash: config('flash', true),
       focused: vscode.window.state.focused,
       providers: Object.values(agentProviders).map(provider => ({ provider: provider.id, extensionId: provider.extensionId,
@@ -79,7 +79,7 @@ export class WindowNotifications {
   }
 
   receive(signal: Signal): void {
-    this.diagnostics.trace('signal.received', { windowInstanceId: signal.windowInstanceId, notificationId: signal.notificationId,
+    diagnostic: this.diagnostics.trace('signal.received', { windowInstanceId: signal.windowInstanceId, notificationId: signal.notificationId,
       provider: signal.provider, runtimeId: signal.runtimeId, connectionId: signal.connectionId,
       sessionId: signal.sessionId, turnId: signal.turnId, status: signal.status, kind: signal.kind,
       textCharacters: signal.text.length, owned: this.owns(signal), focused: vscode.window.state.focused });
@@ -91,12 +91,12 @@ export class WindowNotifications {
   private async showToast(signal: Signal, message: string, click: () => void, allowed: () => boolean): Promise<void> {
     const binding = this.window.valid();
     if (!this.ports.config('toast', true)) {
-      this.diagnostics.trace('toast.skipped', { notificationId: signal.notificationId,
+      diagnostic: this.diagnostics.trace('toast.skipped', { notificationId: signal.notificationId,
         windowInstanceId: signal.windowInstanceId, reason: 'toast-disabled' });
       return;
     }
     const windowInstanceId = this.window.windowInstanceId;
-    this.diagnostics.trace('toast.requested', { notificationId: signal.notificationId, windowInstanceId,
+    diagnostic: this.diagnostics.trace('toast.requested', { notificationId: signal.notificationId, windowInstanceId,
       bound: !!binding, hwnd: binding?.hwnd.toString(), messageCharacters: message.length });
     await this.toast.show({
       notificationId: signal.notificationId,

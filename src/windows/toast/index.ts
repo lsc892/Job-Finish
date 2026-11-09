@@ -50,13 +50,13 @@ export class WindowsToast {
     if (this.registration) return this.registration;
     let ready = false;
     const args = this.codeExecutable ? ['--register', this.codeExecutable] : ['--register'];
-    this.diagnostics.trace('toast.registration.started', { appId: WindowsToast.appId });
+    diagnostic: this.diagnostics.trace('toast.registration.started', { appId: WindowsToast.appId });
     const run = this.processes.run(args, undefined, event => {
       if (event.event !== 'toast.registration.ready' || event.appId !== WindowsToast.appId) {
         throw new Error('Invalid native registration response');
       }
       ready = true;
-      this.diagnostics.trace('toast.registration.ready', {
+      diagnostic: this.diagnostics.trace('toast.registration.ready', {
         appId: event.appId,
         changed: event.changed,
         legacyBackup: event.legacyBackup,
@@ -70,14 +70,14 @@ export class WindowsToast {
       })
       .catch(error => {
         this.registration = undefined;
-        this.diagnostics.trace('toast.registration.failed');
+        diagnostic: this.diagnostics.trace('toast.registration.failed');
         throw error;
       });
     return this.registration;
   }
 
   async show(request: ToastRequest, stillAllowed: () => boolean = () => true): Promise<void> {
-    if (this.disposed) { this.traceSkipped(request, 'disposed', 'requested'); return; }
+    if (this.disposed) { diagnostic: this.traceSkipped(request, 'disposed', 'requested'); return; }
     if (request.appId !== WindowsToast.appId) {
       throw new Error('Toast app ID does not match registered application');
     }
@@ -87,7 +87,7 @@ export class WindowsToast {
 
     const generation = ++this.generation;
     this.cancelActiveToast('replaced');
-    if (!stillAllowed()) { this.traceSkipped(request, 'policy', 'before-registration'); return; }
+    if (!stillAllowed()) { diagnostic: this.traceSkipped(request, 'policy', 'before-registration'); return; }
 
     await this.initialize();
     if (!this.isDeliveryAllowed(generation, stillAllowed, request, 'after-registration')) return;
@@ -133,12 +133,12 @@ export class WindowsToast {
 
   private isDeliveryAllowed(generation: number, stillAllowed: () => boolean, request: ToastRequest, stage: string): boolean {
     const reason = this.disposed ? 'disposed' : generation !== this.generation ? 'superseded' : !stillAllowed() ? 'policy' : undefined;
-    if (reason) this.traceSkipped(request, reason, stage);
+    diagnostic: if (reason) this.traceSkipped(request, reason, stage);
     return !reason;
   }
 
   private traceSkipped(request: ToastRequest, reason: string, stage: string): void {
-    this.diagnostics.trace('toast.skipped', { notificationId: request.notificationId, windowInstanceId: request.windowInstanceId, reason, stage });
+    diagnostic: this.diagnostics.trace('toast.skipped', { notificationId: request.notificationId, windowInstanceId: request.windowInstanceId, reason, stage });
   }
 
   private launchToast(request: ToastRequest, pipe: string, delivered: () => void, failed: (error: unknown) => void): void {
@@ -160,7 +160,7 @@ export class WindowsToast {
         this.handleDeliveryEvent.bind(this, request, state),
         run => {
           this.active!.process = run;
-          this.diagnostics.trace('toast.launched', {
+          diagnostic: this.diagnostics.trace('toast.launched', {
             notificationId: request.notificationId,
             windowInstanceId: request.windowInstanceId,
             helperPid: run.pid,
@@ -188,7 +188,7 @@ export class WindowsToast {
     state.submitted ||= event.event === 'toast.submitted';
     state.observationComplete ||= event.event === 'toast.observation.complete';
     state.failed ||= event.event === 'toast.failed';
-    this.diagnostics.trace(String(event.event), {
+    diagnostic: this.diagnostics.trace(String(event.event), {
       notificationId: request.notificationId,
       windowInstanceId: request.windowInstanceId,
       errorCode: event.errorCode,
@@ -199,7 +199,7 @@ export class WindowsToast {
   }
 
   private cancelActiveToast(reason: string): void {
-    if (this.active) this.diagnostics.trace('toast.cancelled', { notificationId: this.active.id, reason, delivering: !!this.active.process });
+    diagnostic: if (this.active) this.diagnostics.trace('toast.cancelled', { notificationId: this.active.id, reason, delivering: !!this.active.process });
     // 교체·중지 시 show() 대기를 먼저 해소하고 클릭 채널과 helper를 정리한다.
     this.active?.finishDelivery?.();
     this.clear();

@@ -36,7 +36,7 @@ export class CodeWindow {
   }
 
   private handleWindowStateChanged(state: vscode.WindowState): void {
-    this.diagnostics.trace('window.focus', { windowInstanceId: this.windowInstanceId, focused: state.focused, foreground: this.native?.foreground().toString() });
+    diagnostic: this.diagnostics.trace('window.focus', { windowInstanceId: this.windowInstanceId, focused: state.focused, foreground: this.native?.foreground().toString() });
     this.identity?.changed();
     if (state.focused) {
       this.stopFlash();
