@@ -9,6 +9,7 @@ export interface AgentEvents {
 
 export interface EventContext {
   readonly connectionId: string;
+  trace(event: string, fields: Record<string, unknown>): void;
   session(id: string): Session | undefined;
   existingSession(id: string): Session | undefined;
 }

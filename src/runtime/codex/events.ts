@@ -1,8 +1,10 @@
 // 관찰한 Codex 실시간 이벤트를 해석하고 임시·하위 스레드를 제외해 세션에 반영한다.
 import type { AgentEvents, EventContext } from '../agent-provider';
-import { sessionTitleText, TerminalStatus } from '../../core/model';
+import { LIMITS, sessionTitleText, TerminalStatus } from '../../core/model';
 import type { Session } from '../../core/session';
 import { bound, identifier, record } from '../message';
+import { CodexThreadDiagnostics } from './thread-diagnostics';
+import { isExcludedCodexThread } from './thread-metadata';
 
 const SESSION_EVENT_METHODS: readonly string[] = [
   'turn/started', 'turn/completed', 'item/started', 'item/completed', 'serverRequest/resolved', 'error',
@@ -64,9 +66,13 @@ export class CodexEvents implements AgentEvents {
   private readonly pendingThreadStarts = new Map<string, boolean>();
   private readonly excludedThreads = new Set<string>();
   private readonly titles = new Map<string, { name?: string; preview?: string }>();
-  constructor(private readonly context: EventContext) {}
+  private readonly threadDiagnostics: CodexThreadDiagnostics;
+  constructor(private readonly context: EventContext) {
+    this.threadDiagnostics = new CodexThreadDiagnostics(context.trace, this.excludedThreads);
+  }
 
   outgoing(message: Record<string, unknown>): void {
+    this.threadDiagnostics.outgoing(message);
     switch (message.method) {
       case 'thread/start': {
         if (message.id === undefined) return;
@@ -96,9 +102,10 @@ export class CodexEvents implements AgentEvents {
     // 임시·하위 스레드를 제외하고 이력은 제목에만, 실시간 이벤트는 턴 상태에 반영한다.
     if (thread && identifier(thread.id)) {
       const pendingKey = JSON.stringify(message.id);
-      if (thread.ephemeral === true || thread.parentThreadId || record(thread.source)?.subAgent
-        || this.pendingThreadStarts.get(pendingKey)) {
+      if (isExcludedCodexThread(thread) || this.pendingThreadStarts.get(pendingKey)) {
         this.excludedThreads.add(thread.id as string);
+        if (this.excludedThreads.size > LIMITS.dedup) this.context.trace('codex.thread.exclusion.evicted', {
+          sessionId: this.excludedThreads.values().next().value, reason: 'capacity' });
         bound(this.excludedThreads);
       }
       this.pendingThreadStarts.delete(pendingKey);
@@ -110,6 +117,7 @@ export class CodexEvents implements AgentEvents {
         if (entry && typeof entry.preview === 'string') this.recordTitle(entry);
       }
     }
+    this.threadDiagnostics.incoming(message);
     if (message.method === 'thread/name/updated' && params) {
       this.recordTitle({ id: params.threadId, name: params.threadName });
       return;
@@ -117,7 +125,9 @@ export class CodexEvents implements AgentEvents {
 
     if (typeof message.method !== 'string' || !params) return;
     const id = identifier(params.threadId);
-    if (!id || this.excludedThreads.has(id)) return;
+    if (!id) return;
+    this.threadDiagnostics.turn(message, params);
+    if (this.excludedThreads.has(id)) return;
     const event = codexSessionEvent(message);
     if (!event) return;
     const session = this.context.session(id);
@@ -134,7 +144,7 @@ export class CodexEvents implements AgentEvents {
   private recordTitle(thread: Record<string, unknown>): void {
     const id = identifier(thread.id);
     if (!id || this.excludedThreads.has(id)) return;
-    if (thread.ephemeral === true || thread.parentThreadId || record(thread.source)?.subAgent) return;
+    if (isExcludedCodexThread(thread)) return;
     this.rememberTitle(id, thread.name, thread.preview);
   }
 
@@ -233,5 +243,6 @@ export class CodexEvents implements AgentEvents {
     this.pendingThreadStarts.clear();
     this.excludedThreads.clear();
     this.titles.clear();
+    this.threadDiagnostics.clear();
   }
 }

@@ -20,6 +20,8 @@ export class AgentEventRouter {
   constructor(readonly provider: Provider, private windowInstanceId: string, private runtimeId: string,
     private emit: (signal: Signal) => void, private diagnostics: Diagnostics) {
     this.events = agentProviders[provider].createEvents({ connectionId: this.connectionId,
+      trace: (event, fields) => this.diagnostics.trace(event, { ...fields, windowInstanceId: this.windowInstanceId,
+        provider: this.provider, runtimeId: this.runtimeId, connectionId: this.connectionId }),
       session: id => this.session(id), existingSession: id => this.sessions.get(id) });
   }
   outgoing(value: unknown): void {
