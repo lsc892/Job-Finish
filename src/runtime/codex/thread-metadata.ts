@@ -3,5 +3,7 @@ import { record } from '../message';
 
 export function isExcludedCodexThread(thread: Record<string, unknown>): boolean {
   const source = record(thread.source);
-  return thread.ephemeral === true || !!(thread.parentThreadId || source?.subAgent);
+  return thread.ephemeral === true || !!(thread.parentThreadId || thread.parent_thread_id
+    || source?.subAgent || source?.subagent) || thread.source === 'subagent'
+    || thread.threadSource === 'subagent' || thread.thread_source === 'subagent';
 }

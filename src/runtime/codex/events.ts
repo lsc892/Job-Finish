@@ -100,22 +100,22 @@ export class CodexEvents implements AgentEvents {
     const result = record(message.result);
     const thread = record(params?.thread ?? result?.thread);
     // 임시·하위 스레드를 제외하고 이력은 제목에만, 실시간 이벤트는 턴 상태에 반영한다.
-    if (thread && identifier(thread.id)) {
-      const pendingKey = JSON.stringify(message.id);
-      if (isExcludedCodexThread(thread) || this.pendingThreadStarts.get(pendingKey)) {
-        this.excludedThreads.add(thread.id as string);
-        if (this.excludedThreads.size > LIMITS.dedup) this.context.trace('codex.thread.exclusion.evicted', {
-          sessionId: this.excludedThreads.values().next().value, reason: 'capacity' });
-        bound(this.excludedThreads);
-      }
-      this.pendingThreadStarts.delete(pendingKey);
-    }
-    if (thread) this.recordTitle(thread);
+    const pendingKey = message.method === undefined ? JSON.stringify(message.id) : undefined;
+    if (thread) this.recordThread(thread, pendingKey ? this.pendingThreadStarts.get(pendingKey) : false);
+    if (pendingKey) this.pendingThreadStarts.delete(pendingKey);
     if (Array.isArray(result?.data)) {
       for (const item of result.data) {
         const entry = record(item);
-        if (entry && typeof entry.preview === 'string') this.recordTitle(entry);
+        if (entry) this.recordThread(entry);
       }
+    }
+    // 하위 스레드 메타데이터가 오지 않아도 생성 활동으로 자식을 먼저 제외한다.
+    if (message.method === 'item/started' || message.method === 'item/completed') {
+      this.recordSubagentItem(record(params?.item), params);
+    }
+    if (message.method === 'turn/started' || message.method === 'turn/completed') {
+      const items = record(params?.turn)?.items;
+      if (Array.isArray(items)) for (const item of items) this.recordSubagentItem(record(item), params);
     }
     this.threadDiagnostics.incoming(message);
     if (message.method === 'thread/name/updated' && params) {
@@ -139,6 +139,34 @@ export class CodexEvents implements AgentEvents {
     // Unlike an RPC history response, this comes directly from this window's active runtime connection.
     if (turnId && message.method !== 'error') session.start(turnId, this.context.connectionId);
     this.apply(session, event);
+  }
+
+  private recordThread(thread: Record<string, unknown>, pendingEphemeral = false): void {
+    if (isExcludedCodexThread(thread) || pendingEphemeral) this.excludeThread(thread.id, 'thread-metadata');
+    this.recordTitle(thread);
+  }
+
+  private recordSubagentItem(item: Record<string, unknown> | undefined, params: Record<string, unknown> | undefined): void {
+    const parentThreadId = identifier(params?.threadId);
+    if (!parentThreadId || !item) return;
+    // 메시지 교환(interacted)의 상대는 부모·형제일 수도 있으므로 생성만 제외 근거로 쓴다.
+    const ids = item.type === 'subAgentActivity' && item.kind === 'started' ? [item.agentThreadId]
+      : item.type === 'collabAgentToolCall' && item.tool === 'spawnAgent' && Array.isArray(item.receiverThreadIds)
+        ? item.receiverThreadIds : [];
+    for (const value of ids) {
+      if (value !== parentThreadId) this.excludeThread(value, 'subagent-activity', { parentThreadId, itemType: item.type });
+    }
+  }
+
+  private excludeThread(value: unknown, reason: string, fields: Record<string, unknown> = {}): void {
+    const id = identifier(value);
+    if (!id || this.excludedThreads.has(id)) return;
+    this.excludedThreads.add(id);
+    this.titles.delete(id);
+    this.context.trace('codex.thread.excluded', { sessionId: id, reason, ...fields });
+    if (this.excludedThreads.size > LIMITS.dedup) this.context.trace('codex.thread.exclusion.evicted', {
+      sessionId: this.excludedThreads.values().next().value, reason: 'capacity' });
+    bound(this.excludedThreads);
   }
 
   private recordTitle(thread: Record<string, unknown>): void {

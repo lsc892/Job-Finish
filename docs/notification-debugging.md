@@ -16,6 +16,7 @@
 | `runtime.lifecycle` | Codex 턴 시작·완료/오류 또는 Claude 결과가 실제 스트림에 도착했는지 확인 |
 | `codex.thread.request/response` | 스레드 RPC 요청·응답의 method·requestId, 메타데이터 유무·목록 크기·오류 여부 |
 | `codex.thread.metadata` | 단일/목록 메타데이터의 수신 경로, 부모·source·임시 여부, 제외 후보와 실제 등록 상태 |
+| `codex.thread.excluded` | 메타데이터 또는 부모의 서브에이전트 활동으로 실제 제외 등록된 자식 ID·근거 |
 | `codex.turn.selection` | 시작·완료 턴의 통과/제외 판정과 사유, 마지막 메타데이터·부모·루트 턴 ID |
 | `codex.thread.metadata.evicted`, `codex.thread.exclusion.evicted` | 각각 512개 상한으로 진단 이력 또는 실제 제외 목록에서 제거된 세션 ID |
 | `signal.received` | 완료·입력 대기 신호 생성 여부. 이후 기록은 notificationId로 연결 |
@@ -44,7 +45,22 @@ Windows 제출이나 알림 센터 기록 확인만으로 화면 배너 표시�
 | `metadata-unseen` | 현재 연결의 진단 이력에 메타데이터가 없는 상태로 통과함. 활성화 이전 수신·512개 상한 제거 여부도 앞선 로그로 확인 |
 | `not-excluded` | 마지막으로 받은 메타데이터가 현재 제외 조건에 해당하지 않아 통과함 |
 
-진단 처리기는 판정을 기록하며, 실제 제외 등록은 이벤트 처리기가 담당한다.
+진단 처리기는 판정을 기록하며, 실제 제외 등록은 이벤트 처리기가 담당한다. 현재 코드는 단일·목록 메타데이터에 같은 제외 조건을 적용하고, `subAgentActivity`의 `kind: started`와 `collabAgentToolCall`의 `spawnAgent`에서도 자식 ID를 등록한다. `interacted`의 상대는 부모·형제일 수도 있으므로 생성 외의 활동은 제외 근거로 사용하지 않는다. 활동으로 먼저 제외하면 `metadataSeen: false`와 `decision: excluded`가 함께 나올 수 있으며, 근거는 앞선 `codex.thread.excluded`에 남는다.
+
+### 2026-11-09 메인 대화 알림 누락 조사
+
+- **확인한 로그**: `%APPDATA%\Code\logs\20261109T122909\window3\exthost\output_logging_20261109T123211\2-Job-Finish.log`. 정상 사용자 대화 세 개가 `subagent-activity`로 제외됐고, 이후 비활성 창에서 받은 정상 완료 8건·오류 종료 2건이 `excluded-thread`로 차단됐다. 별도로 활성 창의 정상 완료·취소 각 1건도 같은 제외 판정을 받았으며, 이 두 건은 기존 포커스 정책으로도 표시 대상이 아니다.
+- **방향이 뒤집힌 근거**: 자식 `01a1c033-ce86-7b82-88d5-b89ffc8c6291`의 rollout에서 21:08:34.431(한국 시간)에 `/root`로 `send_message`를 호출했고, 21:08:34.441에 `kind: interacted`·`agent_thread_id: 01a1bfd4-1886-7cb0-b75b-d5425a9d242b`·`agent_path: /root` 활동이 기록됐다. 원본 메타데이터의 부모는 이 상대 ID이며, Job-Finish는 바로 다음 21:08:34.442에 부모를 제외했다. 21:11:48·22:22:39·22:25:22의 부모 완료는 실제로 수신됐지만 알림 신호로 전달되지 않았다.
+- **원인**: 설치 번들과 소스의 `recordSubagentItem()`이 모든 `subAgentActivity.agentThreadId`를 자식으로 간주했다. 이미 제외된 자식의 활동도 자식 분류를 위해 먼저 처리하므로 부모에게 보낸 메시지가 부모를 제외 목록에 넣었고, 이후 정상 메타데이터를 받아도 제외 상태가 유지됐다.
+- **수정과 확인**: 생성 관계를 나타내는 `kind: started`만 활동 기반 제외에 사용하도록 수정했다. `interacted`·`interrupted`·`completed`·종류가 없는 활동은 제외 등록을 하지 않으며, 항목 시작·완료와 턴 항목 목록 모두 같은 조건을 거친다. 단일·목록 메타데이터와 협업 `spawnAgent`의 기존 제외 경로는 유지한다. 실제 생성/메시지 교환 기록과 프로토콜·코드·참조·diff를 검토했고, 제품 TypeScript 컴파일(`tsc --noEmit -p tsconfig.json`)이 통과했다. 사용자 지침에 따라 테스트 코드와 자동 테스트는 수정·실행하지 않았으며, 수정본의 실제 새 작업·배너 재현과 사용자 설치본 교체는 수행하지 않았다. 수정본 적용 후 관찰 연결을 새로 시작하면 이전 메모리의 잘못된 제외 목록도 정리된다.
+
+### 2026-11-08 실제 오알림 조사
+
+- **확인한 로그**: `%APPDATA%\Code\logs\20261108T103649\window5\exthost\output_logging_20261108T184909\2-Job-Finish.log`. 세션 `01a1bb13-5ac8-7970-a086-d4e91225b59d`의 완료가 21:14:20·21:15:16·21:16:56·21:18:23(한국 시간)에 `signal.received`로 전달됐고, 각 notificationId가 `toast.submitted`까지 이어졌다. 마지막 제출은 21:18:23.333이다. Windows 제출 기록이며 배너의 시각 표시는 별도로 확인하지 않았다.
+- **부모 관계 대조**: 같은 날짜 Codex rollout의 첫 `session_meta`에서 해당 세션의 부모는 `01a1ba95-209b-7d61-8293-c3e88fc207b4`, `source.subagent.thread_spawn`과 `thread_source`는 하위 에이전트를 나타냈다. 부모 rollout에는 21:12:50.574에 이 자식 ID의 `sub_agent_activity`가 기록돼 있다. 설치된 Codex 실행 파일이 생성한 프로토콜 정의에서 이 활동의 v2 항목은 `subAgentActivity.agentThreadId`다.
+- **코드에서 확인한 누락**: 기존 처리기는 부모의 활동 항목을 제외 근거로 사용하지 않았고, `result.data`의 스레드는 제목만 반영해 제외 등록을 생략했다. 메타데이터 조건도 `parentThreadId`·`source.subAgent` 등에 한정됐다. 자식이 제외 목록에 없으면 실시간 완료만으로 세션을 생성하고 알릴 수 있었다.
+- **확정할 수 없는 범위**: 조사한 로그와 실제 설치 번들에는 추가했던 `codex.thread.metadata`·`codex.turn.selection` 진단이 없었다. 따라서 당시 자식의 별도 메타데이터가 없었는지, 목록 경로로만 왔는지까지는 단정할 수 없다. rollout의 `source.subagent`와 v2 프로토콜의 `source.subAgent`는 표기가 다르므로, 원본 세션의 소문자 표기만으로 실제 RPC의 대소문자 문제를 확정하지 않는다.
+- **수정과 확인**: 활동 항목의 자식 ID를 세션 처리 전에 제외하고, 목록 메타데이터도 단일 응답과 같은 공통 조건으로 등록한다. 등록 근거를 자동 로그에 남긴다. 제품 TypeScript 컴파일과 코드·참조·diff 검토를 수행했다. 사용자 지침에 따라 테스트 코드와 자동 테스트는 수정·실행하지 않았으며 실제 새 작업·배너 재현과 사용자 설치본 교체는 수행하지 않았다. 기존 진단 테스트 중 목록 오알림의 통과를 기대하는 항목은 이전 진단 전용 동작에 대한 기록으로 남아 있다.
 
 ## 긴 본문·한글 표시 검증
 
